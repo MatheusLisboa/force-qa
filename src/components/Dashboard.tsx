@@ -662,6 +662,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                       </span>
                     </div>
 
+                    <div className="mt-1 text-[10px] font-mono text-slate-500 flex items-center gap-1">
+                      <span>CHAVE:</span>
+                      <span className="font-bold text-slate-300 font-mono select-all bg-slate-900 px-1 py-0.5 rounded border border-slate-800">{room.id}</span>
+                    </div>
+
                     <div className="flex items-center gap-2 mt-2 text-xs text-slate-450 font-mono">
                       <span>PROJECT: <span className="text-slate-300 font-semibold">{room.project}</span></span>
                       <span>•</span>

@@ -24,7 +24,8 @@ import {
   Sliders,
   CheckCircle,
   FileText,
-  Clock
+  Clock,
+  Copy
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -43,6 +44,7 @@ interface WarRoomDetailProps {
 
 export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) => {
   const { profile } = useAuth();
+  const [copied, setCopied] = useState(false);
   const [warRoom, setWarRoom] = useState<WarRoom | null>(null);
   const [bugs, setBugs] = useState<Bug[]>([]);
   const [loading, setLoading] = useState(true);
@@ -451,6 +453,23 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
             <span className="p-1 px-2.5 bg-red-500/10 text-red-500 border border-red-500/25 rounded font-mono text-[10px] font-extrabold uppercase">
               SEVERITY: {warRoom.severity}
             </span>
+            <div className="flex items-center gap-1.5 bg-[#171e30] border border-slate-800 px-2 py-0.5 rounded text-xs font-mono">
+              <span className="text-slate-450 uppercase text-[9px] font-bold">ID:</span>
+              <span className="text-red-400 font-bold select-all">{roomId}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(roomId);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }}
+                className="ml-1 p-0.5 hover:bg-slate-805 text-slate-400 hover:text-white rounded transition cursor-pointer"
+                title="Copiar ID da Sala"
+              >
+                {copied ? <CheckCircle className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3 h-3" />}
+              </button>
+              {copied && <span className="text-[9px] text-green-400 font-bold uppercase">Copiado!</span>}
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-4 text-xs font-mono text-slate-450">
@@ -1001,28 +1020,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                       />
                     </div>
 
-                    {/* AI Assistants Trigger panel buttons row */}
-                    <div className="flex flex-wrap gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={triggerAiSuggestions}
-                        disabled={isAiLoading || !bugTitle.trim()}
-                        className="flex items-center gap-1.5 bg-red-504/10 hover:bg-red-500/15 border border-red-505/20 text-red-400 font-mono text-[10px] py-2 px-3 rounded hover:border-red-500/50 cursor-pointer transition disabled:opacity-50"
-                      >
-                        <Sparkles className="w-3.5 h-3.5 animate-pulse" />
-                        {isAiLoading ? "Analisando..." : "Sugerir Campos IA"}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={triggerDuplicationTriage}
-                        disabled={isCheckingDuplicate || !bugTitle.trim()}
-                        className="flex items-center gap-1.5 bg-slate-805 hover:bg-slate-800 border border-slate-750 text-slate-300 font-mono text-[10px] py-2 px-3 rounded cursor-pointer transition disabled:opacity-50"
-                      >
-                        <AlertTriangle className="w-3.5 h-3.5" />
-                        {isCheckingDuplicate ? "Buscando..." : "Checar Duplicados com IA"}
-                      </button>
-                    </div>
+                    {/* AI Assistants Trigger panel buttons removed as requested */}
 
                     {/* AI Prompt suggestions notification feedback boxes */}
                     {aiSuggestions && (
