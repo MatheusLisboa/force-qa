@@ -36,6 +36,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
   const { profile, adminCreateUser } = useAuth();
   const [warRooms, setWarRooms] = useState<WarRoom[]>([]);
   const [allBugs, setAllBugs] = useState<Bug[]>([]);
+  const [selectedDashboardRoomId, setSelectedDashboardRoomId] = useState<string>("all");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -259,22 +260,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
 
   // Compute stats metrics dynamically
   const activeRooms = warRooms.filter(r => r.status === "active").length;
+
+  const filteredBugs = selectedDashboardRoomId === "all"
+    ? allBugs
+    : allBugs.filter(b => b.warRoomId === selectedDashboardRoomId);
+
   const bugsCrit = {
-    blocker: allBugs.filter(b => b.criticism === "blocker" && b.status !== "validated").length,
-    critical: allBugs.filter(b => b.criticism === "critical" && b.status !== "validated").length,
-    high: allBugs.filter(b => b.criticism === "high" && b.status !== "validated").length,
-    medium: allBugs.filter(b => b.criticism === "medium" && b.status !== "validated").length,
-    low: allBugs.filter(b => b.criticism === "low" && b.status !== "validated").length,
+    blocker: filteredBugs.filter(b => b.criticism === "blocker" && b.status !== "validated").length,
+    critical: filteredBugs.filter(b => b.criticism === "critical" && b.status !== "validated").length,
+    high: filteredBugs.filter(b => b.criticism === "high" && b.status !== "validated").length,
+    medium: filteredBugs.filter(b => b.criticism === "medium" && b.status !== "validated").length,
+    low: filteredBugs.filter(b => b.criticism === "low" && b.status !== "validated").length,
   };
 
   const bugsStatus = {
-    open: allBugs.filter(b => b.status !== "validated").length,
-    resolved: allBugs.filter(b => b.status === "validated").length,
-    validating: allBugs.filter(b => b.status === "ready_for_qa").length,
+    open: filteredBugs.filter(b => b.status !== "validated").length,
+    resolved: filteredBugs.filter(b => b.status === "validated").length,
+    validating: filteredBugs.filter(b => b.status === "ready_for_qa").length,
   };
 
   // Calculate average resolution duration in minutes
-  const validatedBugs = allBugs.filter(b => b.status === "validated" && b.resolvedAt && b.createdAt);
+  const validatedBugs = filteredBugs.filter(b => b.status === "validated" && b.resolvedAt && b.createdAt);
   let averageResolutionTimeStr = "--";
   if (validatedBugs.length > 0) {
     const totalDurationMs = validatedBugs.reduce((acc, b) => {
@@ -290,7 +296,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
 
   // Developer with most active tasks
   const devTaskCount: { [name: string]: number } = {};
-  allBugs.forEach((b) => {
+  filteredBugs.forEach((b) => {
     if (b.status !== "validated" && b.ownerName) {
       devTaskCount[b.ownerName] = (devTaskCount[b.ownerName] || 0) + 1;
     }
@@ -417,6 +423,35 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
           )}
         </div>
       </div>
+
+      {/* Filter Selection for Admin Panel */}
+      {profile?.role === "admin" && (
+        <div className="bg-[#0f172a]/40 border border-slate-800/80 p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h3 className="font-display text-sm font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+              <Activity className="w-4 h-4 text-red-500 animate-pulse" />
+              CONTROLE DE FILTRO CENTRALIZADO
+            </h3>
+            <p className="text-slate-400 text-xs mt-0.5">
+              Visualize indicadores estratégicos de maneira consolidada (Geral) ou selecione um escopo individual por Sala de Guerra.
+            </p>
+          </div>
+          <div className="min-w-[320px]">
+            <select
+              value={selectedDashboardRoomId}
+              onChange={(e) => setSelectedDashboardRoomId(e.target.value)}
+              className="w-full bg-[#111827] border border-slate-800 rounded-lg px-4 py-2.5 text-xs text-white font-mono focus:border-red-500/50 focus:outline-none transition"
+            >
+              <option value="all">📊 TODOS OS INCIDENTES (Consolidado Geral)</option>
+              {warRooms.map((room) => (
+                <option key={room.id} value={room.id}>
+                  🛡️ {room.name} ({room.project})
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
 
       {/* Grid counters */}
       {profile?.role === "admin" && (
@@ -549,10 +584,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
             <div>
               <h3 className="font-display text-base font-bold text-white flex items-center gap-2 mb-4">
                 <TrendingUp className="w-4 h-4 text-emerald-550" />
-                Taxa de Resolução Global
+                {selectedDashboardRoomId === "all" ? "Taxa de Resolução Global" : "Taxa de Resolução da Sala"}
               </h3>
               <p className="text-xs text-slate-450 leading-relaxed mb-6">
-                Razão de eficácia de bugs validados e finalizados em relação ao total de relatos críticos.
+                Razão de eficácia de bugs validados e finalizados em relação ao total de relatos nesta seleção.
               </p>
             </div>
 
@@ -562,13 +597,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                   <circle cx="64" cy="64" r="50" fill="transparent" stroke="rgba(255,255,255,0.03)" strokeWidth="10" />
                   <circle cx="64" cy="64" r="50" fill="transparent" stroke="#22c55e" strokeWidth="10" 
                     strokeDasharray={`${2 * Math.PI * 50}`}
-                    strokeDashoffset={`${2 * Math.PI * 50 * (1 - (bugsStatus.resolved / (allBugs.length || 1)))}`}
+                    strokeDashoffset={`${2 * Math.PI * 50 * (1 - (bugsStatus.resolved / (filteredBugs.length || 1)))}`}
                     className="transition-all duration-1000 ease-out" 
                   />
                 </svg>
                 <div className="absolute flex flex-col items-center">
                   <span className="text-2xl font-black text-white">
-                    {Math.round((bugsStatus.resolved / (allBugs.length || 1)) * 100)}%
+                    {Math.round((bugsStatus.resolved / (filteredBugs.length || 1)) * 100)}%
                   </span>
                   <span className="text-[10px] uppercase font-mono text-slate-450">Resolvidos</span>
                 </div>
@@ -583,7 +618,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                 <span className="text-red-400 font-bold">{bugsStatus.open}</span> abertos
               </div>
               <div>
-                total: <span className="text-white font-bold">{allBugs.length}</span>
+                total: <span className="text-white font-bold">{filteredBugs.length}</span>
               </div>
             </div>
           </div>
