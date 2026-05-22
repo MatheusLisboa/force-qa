@@ -86,7 +86,7 @@ export const LoginScreen: React.FC = () => {
     }
 
     if (!warRoomName.trim()) {
-      setGuestError("Por favor, digite o nome exato da WarRoom que deseja entrar.");
+      setGuestError("Por favor, digite o ID da WarRoom que deseja entrar.");
       return;
     }
 
@@ -392,13 +392,13 @@ export const LoginScreen: React.FC = () => {
 
                   <div>
                     <label className="block text-xs font-mono text-slate-400 mb-1.5 flex items-center justify-between">
-                      <span>NOME EXATO DA WAR ROOM</span>
+                      <span>ID DA WAR ROOM</span>
                       <span className="text-[10px] text-red-400">[PRÉ-CRIADA POR ADMIN]</span>
                     </label>
                     <input
                       type="text"
                       required
-                      placeholder="Ex: WarRoom Lançamento Pix 2026"
+                      placeholder="Ex: ab709841-a010-41da-a7a2-dfb8a6e7c2eb"
                       className="w-full bg-[#0a0d16] border border-slate-800 focus:border-red-500/50 rounded-lg px-4 py-2.5 text-sm text-white placeholder-slate-650 focus:outline-none transition"
                       value={warRoomName}
                       onChange={(e) => setWarRoomName(e.target.value)}
