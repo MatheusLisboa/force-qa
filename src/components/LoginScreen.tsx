@@ -56,8 +56,8 @@ export const LoginScreen: React.FC = () => {
       }
     } catch (err: any) {
       console.error(err);
-      if (err.code === "auth/user-not-found") {
-        setEmailError("Usuário não encontrado. Se você é novo por aqui, ative o cadastro abaixo.");
+      if (err.code === "auth/user-not-found" || err.code === "auth/invalid-credential") {
+        setEmailError("E-mail ou senha incorretos. Se este é um ambiente novo ou se ainda não tem registro, use a opção de cadastro abaixo.");
       } else if (err.code === "auth/wrong-password") {
         setEmailError("Senha incorreta. Tente novamente.");
       } else if (err.code === "auth/email-already-in-use") {

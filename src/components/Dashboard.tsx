@@ -328,6 +328,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
 
   const handleCreateRoom = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Security role enforcement for creating war rooms
+    if (profile?.role !== "admin" && profile?.role !== "qa" && profile?.role !== "scrum_master") {
+      setFormError("Permissão negada. Apenas administradores, QAs e Scrum Masters podem iniciar novas Salas de Guerra.");
+      return;
+    }
+
     if (!name.trim() || !project.trim() || !squad.trim()) {
       setFormError("Por favor, preencha todos os campos obrigatórios.");
       return;
@@ -399,7 +406,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
             </button>
           )}
 
-          {profile?.role !== "viewer" && (
+          {(profile?.role === "admin" || profile?.role === "qa" || profile?.role === "scrum_master") && (
             <button
               onClick={() => setIsModalOpen(true)}
               className="flex items-center gap-2 bg-red-600 hover:bg-red-500 hover:shadow-[0_0_15px_rgba(239,68,68,0.25)] text-white font-medium px-4 py-2.5 rounded-lg transition cursor-pointer text-xs font-mono border border-red-500/20"
@@ -412,172 +419,176 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
       </div>
 
       {/* Grid counters */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Metric 1 */}
-        <div className="bg-[#0f172a]/60 border border-slate-800/80 p-5 rounded-xl flex items-center gap-4 relative overflow-hidden">
-          <div className="p-3 bg-red-500/10 text-red-500 rounded-lg">
-            <ShieldAlert className="w-6 h-6" />
-          </div>
-          <div>
-            <span className="text-xs font-mono text-slate-400">Blockers & Críticos</span>
-            <h2 className="text-2xl font-black text-white mt-0.5">
-              {bugsCrit.blocker + bugsCrit.critical}
-            </h2>
-          </div>
-          {bugsCrit.blocker > 0 && (
-            <div className="absolute top-2 right-2 bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold animate-pulse">
-              ALERTA
+      {profile?.role === "admin" && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Metric 1 */}
+          <div className="bg-[#0f172a]/60 border border-slate-800/80 p-5 rounded-xl flex items-center gap-4 relative overflow-hidden">
+            <div className="p-3 bg-red-500/10 text-red-500 rounded-lg">
+              <ShieldAlert className="w-6 h-6" />
             </div>
-          )}
-        </div>
+            <div>
+              <span className="text-xs font-mono text-slate-400">Blockers & Críticos</span>
+              <h2 className="text-2xl font-black text-white mt-0.5">
+                {bugsCrit.blocker + bugsCrit.critical}
+              </h2>
+            </div>
+            {bugsCrit.blocker > 0 && (
+              <div className="absolute top-2 right-2 bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold animate-pulse">
+                ALERTA
+              </div>
+            )}
+          </div>
 
-        {/* Metric 2 */}
-        <div className="bg-[#0f172a]/60 border border-slate-800/80 p-5 rounded-xl flex items-center gap-4">
-          <div className="p-3 bg-blue-500/10 text-blue-400 rounded-lg">
-            <Layers className="w-6 h-6" />
+          {/* Metric 2 */}
+          <div className="bg-[#0f172a]/60 border border-slate-800/80 p-5 rounded-xl flex items-center gap-4">
+            <div className="p-3 bg-blue-500/10 text-blue-400 rounded-lg">
+              <Layers className="w-6 h-6" />
+            </div>
+            <div>
+              <span className="text-xs font-mono text-slate-400">Total Bugs Abertos</span>
+              <h2 className="text-2xl font-black text-white mt-0.5">{bugsStatus.open}</h2>
+            </div>
           </div>
-          <div>
-            <span className="text-xs font-mono text-slate-400">Total Bugs Abertos</span>
-            <h2 className="text-2xl font-black text-white mt-0.5">{bugsStatus.open}</h2>
-          </div>
-        </div>
 
-        {/* Metric 3 */}
-        <div className="bg-[#0f172a]/60 border border-slate-800/80 p-5 rounded-xl flex items-center gap-4">
-          <div className="p-3 bg-green-500/10 text-green-400 rounded-lg">
-            <CheckCircle className="w-6 h-6" />
+          {/* Metric 3 */}
+          <div className="bg-[#0f172a]/60 border border-slate-800/80 p-5 rounded-xl flex items-center gap-4">
+            <div className="p-3 bg-green-500/10 text-green-400 rounded-lg">
+              <CheckCircle className="w-6 h-6" />
+            </div>
+            <div>
+              <span className="text-xs font-mono text-slate-400">Tempo Médio Resolução</span>
+              <h2 className="text-2xl font-black text-white mt-0.5">{averageResolutionTimeStr}</h2>
+            </div>
           </div>
-          <div>
-            <span className="text-xs font-mono text-slate-400">Tempo Médio Resolução</span>
-            <h2 className="text-2xl font-black text-white mt-0.5">{averageResolutionTimeStr}</h2>
-          </div>
-        </div>
 
-        {/* Metric 4 */}
-        <div className="bg-[#0f172a]/60 border border-slate-800/80 p-5 rounded-xl flex items-center gap-4">
-          <div className="p-3 bg-indigo-500/10 text-indigo-400 rounded-lg">
-            <User className="w-6 h-6" />
-          </div>
-          <div>
-            <span className="text-xs font-mono text-slate-400">Dev Mais Sobrecarregado</span>
-            <h2 className="text-lg font-bold text-white mt-1 truncate max-w-[130px]" title={topDevName}>
-              {topDevName === "Nenhum" ? "--" : `${topDevName} (${topDevCount})`}
-            </h2>
+          {/* Metric 4 */}
+          <div className="bg-[#0f172a]/60 border border-slate-800/80 p-5 rounded-xl flex items-center gap-4">
+            <div className="p-3 bg-indigo-500/10 text-indigo-400 rounded-lg">
+              <User className="w-6 h-6" />
+            </div>
+            <div>
+              <span className="text-xs font-mono text-slate-400">Dev Mais Sobrecarregado</span>
+              <h2 className="text-lg font-bold text-white mt-1 truncate max-w-[130px]" title={topDevName}>
+                {topDevName === "Nenhum" ? "--" : `${topDevName} (${topDevCount})`}
+              </h2>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Mid Visual Graph Analytics Panel (Custom high-end SVG bars) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Severity chart */}
-        <div className="lg:col-span-2 bg-[#0f172a]/40 border border-white/[0.04] p-6 rounded-2xl">
-          <h3 className="font-display text-base font-bold text-white flex items-center gap-2 mb-6">
-            <Activity className="w-4 h-4 text-red-500" />
-            Vulnerabilidades por Severidade Geral (Sem Validar)
-          </h3>
-          
-          <div className="space-y-4">
-            {/* Blocker bar */}
-            <div>
-              <div className="flex justify-between text-xs text-slate-400 font-mono mb-1.5">
-                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-600 shadow-[0_0_8px_rgba(220,38,38,0.8)]" /> BLOCKERS</span>
-                <span className="font-bold text-slate-350">{bugsCrit.blocker} bugs</span>
-              </div>
-              <div className="h-2.5 w-full bg-[#111827] rounded-full overflow-hidden">
-                <div className="h-full bg-red-650 rounded-full transition-all duration-500" style={{ width: `${Math.min(100, Math.max(2, (bugsCrit.blocker / (bugsStatus.open || 1)) * 100))}%` }} />
-              </div>
-            </div>
-
-            {/* Critical bar */}
-            <div>
-              <div className="flex justify-between text-xs text-slate-400 font-mono mb-1.5">
-                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-500" /> CRÍTICOS</span>
-                <span className="font-bold text-slate-350">{bugsCrit.critical} bugs</span>
-              </div>
-              <div className="h-2.5 w-full bg-[#111827] rounded-full overflow-hidden">
-                <div className="h-full bg-red-500 rounded-full transition-all duration-500" style={{ width: `${Math.min(100, Math.max(2, (bugsCrit.critical / (bugsStatus.open || 1)) * 100))}%` }} />
-              </div>
-            </div>
-
-            {/* High bar */}
-            <div>
-              <div className="flex justify-between text-xs text-slate-400 font-mono mb-1.5">
-                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-orange-500" /> ALTOS</span>
-                <span className="font-bold text-slate-350">{bugsCrit.high} bugs</span>
-              </div>
-              <div className="h-2.5 w-full bg-[#111827] rounded-full overflow-hidden">
-                <div className="h-full bg-orange-500 rounded-full transition-all duration-500" style={{ width: `${Math.min(100, Math.max(2, (bugsCrit.high / (bugsStatus.open || 1)) * 100))}%` }} />
-              </div>
-            </div>
-
-            {/* Medium bar */}
-            <div>
-              <div className="flex justify-between text-xs text-slate-400 font-mono mb-1.5">
-                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-yellow-500" /> MÉDIOS</span>
-                <span className="font-bold text-slate-350">{bugsCrit.medium} bugs</span>
-              </div>
-              <div className="h-2.5 w-full bg-[#111827] rounded-full overflow-hidden">
-                <div className="h-full bg-yellow-500 rounded-full transition-all duration-500" style={{ width: `${Math.min(100, Math.max(2, (bugsCrit.medium / (bugsStatus.open || 1)) * 100))}%` }} />
-              </div>
-            </div>
-
-            {/* Low bar */}
-            <div>
-              <div className="flex justify-between text-xs text-slate-400 font-mono mb-1.5">
-                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-blue-400" /> BAIXOS</span>
-                <span className="font-bold text-slate-350">{bugsCrit.low} bugs</span>
-              </div>
-              <div className="h-2.5 w-full bg-[#111827] rounded-full overflow-hidden">
-                <div className="h-full bg-blue-400 rounded-full transition-all duration-500" style={{ width: `${Math.min(100, Math.max(2, (bugsCrit.low / (bugsStatus.open || 1)) * 100))}%` }} />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Status ring or breakdown */}
-        <div className="bg-[#0f172a]/40 border border-white/[0.04] p-6 rounded-2xl flex flex-col justify-between">
-          <div>
-            <h3 className="font-display text-base font-bold text-white flex items-center gap-2 mb-4">
-              <TrendingUp className="w-4 h-4 text-emerald-550" />
-              Taxa de Resolução Global
+      {profile?.role === "admin" && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Severity chart */}
+          <div className="lg:col-span-2 bg-[#0f172a]/40 border border-white/[0.04] p-6 rounded-2xl">
+            <h3 className="font-display text-base font-bold text-white flex items-center gap-2 mb-6">
+              <Activity className="w-4 h-4 text-red-500" />
+              Vulnerabilidades por Severidade Geral (Sem Validar)
             </h3>
-            <p className="text-xs text-slate-450 leading-relaxed mb-6">
-              Razão de eficácia de bugs validados e finalizados em relação ao total de relatos críticos.
-            </p>
-          </div>
+            
+            <div className="space-y-4">
+              {/* Blocker bar */}
+              <div>
+                <div className="flex justify-between text-xs text-slate-400 font-mono mb-1.5">
+                  <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-600 shadow-[0_0_8px_rgba(220,38,38,0.8)]" /> BLOCKERS</span>
+                  <span className="font-bold text-slate-350">{bugsCrit.blocker} bugs</span>
+                </div>
+                <div className="h-2.5 w-full bg-[#111827] rounded-full overflow-hidden">
+                  <div className="h-full bg-red-650 rounded-full transition-all duration-500" style={{ width: `${Math.min(100, Math.max(2, (bugsCrit.blocker / (bugsStatus.open || 1)) * 100))}%` }} />
+                </div>
+              </div>
 
-          <div className="flex items-center justify-center p-4">
-            <div className="relative flex items-center justify-center w-32 h-32">
-              <svg className="w-full h-full transform -rotate-90">
-                <circle cx="64" cy="64" r="50" fill="transparent" stroke="rgba(255,255,255,0.03)" strokeWidth="10" />
-                <circle cx="64" cy="64" r="50" fill="transparent" stroke="#22c55e" strokeWidth="10" 
-                  strokeDasharray={`${2 * Math.PI * 50}`}
-                  strokeDashoffset={`${2 * Math.PI * 50 * (1 - (bugsStatus.resolved / (allBugs.length || 1)))}`}
-                  className="transition-all duration-1000 ease-out" 
-                />
-              </svg>
-              <div className="absolute flex flex-col items-center">
-                <span className="text-2xl font-black text-white">
-                  {Math.round((bugsStatus.resolved / (allBugs.length || 1)) * 100)}%
-                </span>
-                <span className="text-[10px] uppercase font-mono text-slate-450">Resolvidos</span>
+              {/* Critical bar */}
+              <div>
+                <div className="flex justify-between text-xs text-slate-400 font-mono mb-1.5">
+                  <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-500" /> CRÍTICOS</span>
+                  <span className="font-bold text-slate-350">{bugsCrit.critical} bugs</span>
+                </div>
+                <div className="h-2.5 w-full bg-[#111827] rounded-full overflow-hidden">
+                  <div className="h-full bg-red-500 rounded-full transition-all duration-500" style={{ width: `${Math.min(100, Math.max(2, (bugsCrit.critical / (bugsStatus.open || 1)) * 100))}%` }} />
+                </div>
+              </div>
+
+              {/* High bar */}
+              <div>
+                <div className="flex justify-between text-xs text-slate-405 font-mono mb-1.5">
+                  <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-orange-500" /> ALTOS</span>
+                  <span className="font-bold text-slate-350">{bugsCrit.high} bugs</span>
+                </div>
+                <div className="h-2.5 w-full bg-[#111827] rounded-full overflow-hidden">
+                  <div className="h-full bg-orange-500 rounded-full transition-all duration-500" style={{ width: `${Math.min(100, Math.max(2, (bugsCrit.high / (bugsStatus.open || 1)) * 100))}%` }} />
+                </div>
+              </div>
+
+              {/* Medium bar */}
+              <div>
+                <div className="flex justify-between text-xs text-slate-400 font-mono mb-1.5">
+                  <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-yellow-500" /> MÉDIOS</span>
+                  <span className="font-bold text-slate-350">{bugsCrit.medium} bugs</span>
+                </div>
+                <div className="h-2.5 w-full bg-[#111827] rounded-full overflow-hidden">
+                  <div className="h-full bg-yellow-500 rounded-full transition-all duration-500" style={{ width: `${Math.min(100, Math.max(2, (bugsCrit.medium / (bugsStatus.open || 1)) * 100))}%` }} />
+                </div>
+              </div>
+
+              {/* Low bar */}
+              <div>
+                <div className="flex justify-between text-xs text-slate-400 font-mono mb-1.5">
+                  <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-blue-400" /> BAIXOS</span>
+                  <span className="font-bold text-slate-350">{bugsCrit.low} bugs</span>
+                </div>
+                <div className="h-2.5 w-full bg-[#111827] rounded-full overflow-hidden">
+                  <div className="h-full bg-blue-400 rounded-full transition-all duration-500" style={{ width: `${Math.min(100, Math.max(2, (bugsCrit.low / (bugsStatus.open || 1)) * 100))}%` }} />
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="flex justify-between items-center text-xs font-mono text-[#94a3b8] mt-4 border-t border-white/[0.04] pt-4">
+          {/* Status ring or breakdown */}
+          <div className="bg-[#0f172a]/40 border border-white/[0.04] p-6 rounded-2xl flex flex-col justify-between">
             <div>
-              <span className="text-[#22c55e] font-bold">{bugsStatus.resolved}</span> validados
+              <h3 className="font-display text-base font-bold text-white flex items-center gap-2 mb-4">
+                <TrendingUp className="w-4 h-4 text-emerald-550" />
+                Taxa de Resolução Global
+              </h3>
+              <p className="text-xs text-slate-450 leading-relaxed mb-6">
+                Razão de eficácia de bugs validados e finalizados em relação ao total de relatos críticos.
+              </p>
             </div>
-            <div>
-              <span className="text-red-400 font-bold">{bugsStatus.open}</span> abertos
+
+            <div className="flex items-center justify-center p-4">
+              <div className="relative flex items-center justify-center w-32 h-32">
+                <svg className="w-full h-full transform -rotate-90">
+                  <circle cx="64" cy="64" r="50" fill="transparent" stroke="rgba(255,255,255,0.03)" strokeWidth="10" />
+                  <circle cx="64" cy="64" r="50" fill="transparent" stroke="#22c55e" strokeWidth="10" 
+                    strokeDasharray={`${2 * Math.PI * 50}`}
+                    strokeDashoffset={`${2 * Math.PI * 50 * (1 - (bugsStatus.resolved / (allBugs.length || 1)))}`}
+                    className="transition-all duration-1000 ease-out" 
+                  />
+                </svg>
+                <div className="absolute flex flex-col items-center">
+                  <span className="text-2xl font-black text-white">
+                    {Math.round((bugsStatus.resolved / (allBugs.length || 1)) * 100)}%
+                  </span>
+                  <span className="text-[10px] uppercase font-mono text-slate-450">Resolvidos</span>
+                </div>
+              </div>
             </div>
-            <div>
-              total: <span className="text-white font-bold">{allBugs.length}</span>
+
+            <div className="flex justify-between items-center text-xs font-mono text-[#94a3b8] mt-4 border-t border-white/[0.04] pt-4">
+              <div>
+                <span className="text-[#22c55e] font-bold">{bugsStatus.resolved}</span> validados
+              </div>
+              <div>
+                <span className="text-red-400 font-bold">{bugsStatus.open}</span> abertos
+              </div>
+              <div>
+                total: <span className="text-white font-bold">{allBugs.length}</span>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Active War Rooms Grid List */}
       <div>
