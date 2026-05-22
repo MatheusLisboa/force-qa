@@ -24,7 +24,8 @@ import {
   Trash2,
   Edit2,
   Check,
-  X
+  X,
+  Download
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -332,6 +333,107 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
     return false;
   });
 
+  const handleExportCSV = () => {
+    // Determine the name of the file
+    let filename = "relatorio_geral_warrooms.csv";
+    let reportTitle = "Relatorio Consolidado de Incidentes - Todas as WarRooms";
+    
+    let scopeRoom: WarRoom | undefined = undefined;
+    if (selectedDashboardRoomId !== "all") {
+      scopeRoom = warRooms.find(r => r.id === selectedDashboardRoomId);
+      if (scopeRoom) {
+        filename = `relatorio_warroom_${scopeRoom.name.toLowerCase().replace(/[^a-z0-9]/g, "_")}.csv`;
+        reportTitle = `Relatorio Operacional - WarRoom: ${scopeRoom.name}`;
+      }
+    }
+
+    // Build the csv rows
+    const csvRows: string[][] = [];
+
+    // Header Metadata
+    csvRows.push([reportTitle]);
+    csvRows.push([`Gerado em: ${new Date().toLocaleString()}`]);
+    if (scopeRoom) {
+      csvRows.push([`ID da War Room: ${scopeRoom.id}`]);
+      csvRows.push([`Projeto: ${scopeRoom.project}`]);
+      csvRows.push([`Squad Responsavel: ${scopeRoom.squad}`]);
+      csvRows.push([`Status: ${scopeRoom.status === "active" ? "ATIVA" : "ARQUIVADA"}`]);
+      csvRows.push([`Data de Criacao: ${scopeRoom.createdAt ? new Date(scopeRoom.createdAt).toLocaleString() : "N/A"}`]);
+    }
+    csvRows.push([]); // Empty row separator
+
+    // Metric Summary section
+    csvRows.push(["--- SUMARIO DE METRICAS ---"]);
+    csvRows.push(["Metrica", "Valor"]);
+    csvRows.push(["Blockers Ativos", bugsCrit.blocker.toString()]);
+    csvRows.push(["Criticos Ativos", bugsCrit.critical.toString()]);
+    csvRows.push(["Altos Ativos", bugsCrit.high.toString()]);
+    csvRows.push(["Medios Ativos", bugsCrit.medium.toString()]);
+    csvRows.push(["Baixos Ativos", bugsCrit.low.toString()]);
+    csvRows.push(["Total Bugs Abertos", bugsStatus.open.toString()]);
+    csvRows.push(["Total Bugs Validados/Resolvidos", bugsStatus.resolved.toString()]);
+    csvRows.push(["Bugs Prontos p/ Validar (Ready For QA)", bugsStatus.validating.toString()]);
+    csvRows.push(["Tempo Medio de Resolucao", averageResolutionTimeStr]);
+    csvRows.push(["Dev Mais Sobrecarregado", topDevName === "Nenhum" ? "--" : `${topDevName} (${topDevCount} bugs)`]);
+    csvRows.push([]); // Empty row separator
+
+    // Bugs Detail list
+    csvRows.push(["--- DETALHAMENTO DE BUGS E INCIDENTES ---"]);
+    csvRows.push([
+      "ID do Bug",
+      "Titulo",
+      "Status",
+      "Criticidade / Severidade",
+      "Tipo",
+      "Ambiente",
+      "Responsavel (Owner)",
+      "Criado por",
+      "Total de Reaberturas",
+      "Link de Evidencia",
+      "Link de Prototipo (Figma)",
+      "Criado em",
+      "Resolvido em",
+      "Fracao da URL Afetada",
+      "Versao do Build"
+    ]);
+
+    filteredBugs.forEach((bug) => {
+      csvRows.push([
+        bug.id,
+        bug.title,
+        bug.status,
+        bug.criticism,
+        bug.type || "N/A",
+        bug.environment || "N/A",
+        bug.ownerName || "Nao Atribuido",
+        bug.createdByName || "Sistema",
+        (bug.reopenCount || 0).toString(),
+        bug.evidenceUrl || "N/A",
+        bug.prototypeUrl || "N/A",
+        bug.createdAt ? new Date(bug.createdAt).toLocaleString() : "N/A",
+        bug.resolvedAt ? new Date(bug.resolvedAt).toLocaleString() : "Operando",
+        bug.affectedUrl || "N/A",
+        bug.buildVersion || "N/A"
+      ]);
+    });
+
+    // Convert CSV rows into formatted string, escaping double quotes
+    const csvContent = csvRows
+      .map(row => row.map(value => `"${value.replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+
+    // Standard DOM chemical injection to force triggers
+    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", filename);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleCreateRoom = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -436,11 +538,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
               Visualize indicadores estratégicos de maneira consolidada (Geral) ou selecione um escopo individual por Sala de Guerra.
             </p>
           </div>
-          <div className="min-w-[320px]">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 min-w-[320px] md:min-w-[480px]">
             <select
               value={selectedDashboardRoomId}
               onChange={(e) => setSelectedDashboardRoomId(e.target.value)}
-              className="w-full bg-[#111827] border border-slate-800 rounded-lg px-4 py-2.5 text-xs text-white font-mono focus:border-red-500/50 focus:outline-none transition"
+              className="flex-1 bg-[#111827] border border-slate-800 rounded-lg px-4 py-2.5 text-xs text-white font-mono focus:border-red-500/50 focus:outline-none transition"
             >
               <option value="all">📊 TODOS OS INCIDENTES (Consolidado Geral)</option>
               {warRooms.map((room) => (
@@ -449,6 +551,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                 </option>
               ))}
             </select>
+            <button
+              onClick={handleExportCSV}
+              className="flex items-center justify-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-mono text-[11px] font-bold px-4 py-2.5 rounded-lg border border-slate-700 transition cursor-pointer whitespace-nowrap"
+              title="Exportar dados selecionados para formato CSV"
+            >
+              <Download className="w-3.5 h-3.5 text-red-400" />
+              EXPORTAR RELATÓRIO
+            </button>
           </div>
         </div>
       )}
