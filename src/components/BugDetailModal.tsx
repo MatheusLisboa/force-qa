@@ -239,14 +239,14 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
                 <span>•</span>
                 <span>MODAL: <span className="text-slate-300 uppercase">{bug.type}</span></span>
                 <span>•</span>
-                <span>ENV: <span className="text-slate-300 uppercase">{bug.environment}</span></span>
+                <span>ENV: <span className="text-slate-300 uppercase">{bug.environment === "homologation" ? "HMG" : bug.environment === "production" ? "PROD" : "DEV"}</span></span>
               </div>
             </div>
 
             {/* Description text block */}
             <div className="bg-[#0f172a]/20 border border-slate-850 p-4 rounded-xl">
               <span className="text-[10px] font-mono text-slate-450 uppercase flex items-center gap-1.5 mb-2">
-                <FileText className="w-3.5 h-3.5" /> Descrição Completa do Incidente
+                <FileText className="w-3.5 h-3.5" /> DESCRIÇÃO
               </span>
               <p className="text-slate-200 text-sm whitespace-pre-wrap leading-relaxed">
                 {bug.description || "Nenhuma descrição operacional complementar foi fornecida originalmente por este analista."}

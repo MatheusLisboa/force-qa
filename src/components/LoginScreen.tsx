@@ -4,7 +4,7 @@ import { LogIn, Sparkles, AlertTriangle, ShieldCheck, Zap, Mail, UserPlus, HelpC
 import { motion, AnimatePresence } from "motion/react";
 
 export const LoginScreen: React.FC = () => {
-  const { loginWithEmail, loginAsGuest } = useAuth();
+  const { loginWithEmail, signUpUser, loginAsGuest } = useAuth();
 
   // Tab state
   const [activeTab, setActiveTab] = useState<"email" | "guest">("email");
@@ -15,6 +15,11 @@ export const LoginScreen: React.FC = () => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailError, setEmailError] = useState("");
+
+  // Sign up fields state
+  const [signUpName, setSignUpName] = useState("");
+  const [signUpRole, setSignUpRole] = useState<"qa" | "developer" | "dba" | "devops" | "scrum_master">("qa");
+  const [signUpSquad, setSignUpSquad] = useState("");
 
   // Guest form state
   const [guestName, setGuestName] = useState("");
@@ -38,7 +43,17 @@ export const LoginScreen: React.FC = () => {
     setEmailLoading(true);
     setEmailError("");
     try {
-      await loginWithEmail(email.trim(), password, isSignUp);
+      if (isSignUp) {
+        if (!signUpName.trim()) {
+          setEmailError("Por favor, informe seu nome completo.");
+          setEmailLoading(false);
+          return;
+        }
+        const finalSquad = signUpSquad.trim() || `Squad ${signUpRole.toUpperCase()}`;
+        await signUpUser(signUpName, email, password, signUpRole, finalSquad);
+      } else {
+        await loginWithEmail(email.trim(), password, false);
+      }
     } catch (err: any) {
       console.error(err);
       if (err.code === "auth/user-not-found") {
@@ -179,6 +194,55 @@ export const LoginScreen: React.FC = () => {
                 )}
 
                 <form onSubmit={handleEmailSubmit} className="space-y-4">
+                  {isSignUp && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      className="space-y-4 overflow-hidden pt-1 pb-2"
+                    >
+                      <div>
+                        <label className="block text-xs font-mono text-slate-400 mb-1.5Packed">NOME COMPLETO</label>
+                        <input
+                          type="text"
+                          required={isSignUp}
+                          className="w-full bg-[#0a0d16] border border-slate-800 focus:border-red-500/50 rounded-lg px-4 py-2 text-sm text-white placeholder-slate-600 focus:outline-none transition font-sans"
+                          placeholder="Ex: Matheus Lisboa"
+                          value={signUpName}
+                          onChange={(e) => setSignUpName(e.target.value)}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-mono text-slate-400 mb-1.5">TIME / FUNÇÃO</label>
+                          <select
+                            className="w-full bg-[#0a0d16] border border-slate-800 focus:border-red-500/50 rounded-lg px-2 py-2 text-sm text-white focus:outline-none transition font-mono"
+                            value={signUpRole}
+                            onChange={(e) => setSignUpRole(e.target.value as any)}
+                          >
+                            <option value="qa">QA</option>
+                            <option value="developer">DEV</option>
+                            <option value="dba">DBA</option>
+                            <option value="devops">DEVOPS</option>
+                            <option value="scrum_master">SCRUM MASTER</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-mono text-slate-400 mb-1.5">SQUAD DE ATUAÇÃO</label>
+                          <input
+                            type="text"
+                            required={isSignUp}
+                            className="w-full bg-[#0a0d16] border border-slate-800 focus:border-red-500/50 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none transition font-mono"
+                            placeholder="Ex: Squad Pix"
+                            value={signUpSquad}
+                            onChange={(e) => setSignUpSquad(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+
                   <div>
                     <label className="block text-xs font-mono text-slate-400 mb-1.5">E-MAIL CORPORATIVO / PESSOAL</label>
                     <div className="relative">

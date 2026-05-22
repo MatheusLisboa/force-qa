@@ -2,7 +2,7 @@
  * Type declarations for ForceQA "War Room" Operations board
  */
 
-export type UserRole = "admin" | "qa" | "developer" | "dba" | "viewer";
+export type UserRole = "admin" | "qa" | "developer" | "dba" | "devops" | "scrum_master" | "viewer";
 
 export interface UserProfile {
   id: string;
@@ -34,6 +34,7 @@ export interface WarRoom {
   createdAt: any;
   createdBy: string;
   createdByName?: string;
+  guestAccessDisabled?: boolean;
 }
 
 export interface Bug {

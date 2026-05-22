@@ -10,6 +10,7 @@ interface AuthContextType {
   loading: boolean;
   login: () => Promise<User>;
   loginWithEmail: (email: string, password: string, isSignUp: boolean) => Promise<User>;
+  signUpUser: (name: string, email: string, password: string, role: UserRole, squad: string) => Promise<User>;
   loginAsGuest: (name: string, squad: string, warRoomName: string) => Promise<string>;
   adminCreateUser: (name: string, email: string, password: string, role: UserRole, squad: string) => Promise<void>;
   changePassword: (newPassword: string) => Promise<void>;
@@ -76,6 +77,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const signUpUser = async (name: string, email: string, password: string, role: UserRole, squad: string): Promise<User> => {
+    setLoading(true);
+    try {
+      const credentials = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      const newUser = credentials.user;
+
+      const newUserProfile: UserProfile = {
+        id: newUser.uid,
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        role,
+        squad: squad.trim(),
+        createdAt: new Date().toISOString()
+      };
+
+      await setDoc(doc(db, "users", newUser.uid), newUserProfile);
+      setProfile(newUserProfile);
+      return newUser;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const loginAsGuest = async (name: string, squad: string, warRoomName: string): Promise<string> => {
     setLoading(true);
     let guestUser: User | null = null;
@@ -87,18 +111,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const credentials = await createUserWithEmailAndPassword(auth, tempEmail, tempPassword);
       guestUser = credentials.user;
 
-      // 2. Now authenticated, verify if war room exists
-      let roomsSnap = await getDocs(query(collection(db, "warRooms"), where("name", "==", warRoomName.trim())));
-      let roomDoc = roomsSnap.docs[0];
-      if (!roomDoc) {
-        // Fallback case-insensitive check
-        const allRoomsSnap = await getDocs(collection(db, "warRooms"));
-        roomDoc = allRoomsSnap.docs.find(
-          (d) => d.data().name?.trim().toLowerCase() === warRoomName.trim().toLowerCase()
-        ) as any;
+      // 2. Now authenticated, verify if war room exists (either by ID or by Name)
+      let roomDocData: any = null;
+      let roomId = "";
+
+      const directDocRef = doc(db, "warRooms", warRoomName.trim());
+      const directDocSnap = await getDoc(directDocRef);
+
+      if (directDocSnap.exists()) {
+        roomDocData = directDocSnap.data();
+        roomId = directDocSnap.id;
+      } else {
+        // Look up by name
+        let roomsSnap = await getDocs(query(collection(db, "warRooms"), where("name", "==", warRoomName.trim())));
+        let foundDoc = roomsSnap.docs[0];
+        if (!foundDoc) {
+          // Fallback case-insensitive check
+          const allRoomsSnap = await getDocs(collection(db, "warRooms"));
+          foundDoc = allRoomsSnap.docs.find(
+            (d) => d.data().name?.trim().toLowerCase() === warRoomName.trim().toLowerCase()
+          ) as any;
+        }
+
+        if (foundDoc) {
+          roomDocData = foundDoc.data();
+          roomId = foundDoc.id;
+        }
       }
 
-      if (!roomDoc) {
+      if (!roomId || !roomDocData) {
         // Sign out and try to clean up if room doesn't exist
         try {
           await guestUser.delete();
@@ -106,10 +147,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.error("Error deleting temp user:", delErr);
           await auth.signOut();
         }
-        throw new Error("A sala de guerra informada não existe. Verifique se o nome está correto ou peça para o administrador criá-la previamente.");
+        throw new Error("A sala de guerra informada não existe ou o ID é inválido. Verifique se o ID/Nome está correto.");
       }
 
-      const roomId = roomDoc.id;
+      // Check if guest access is disabled
+      if (roomDocData.guestAccessDisabled === true) {
+        try {
+          await guestUser.delete();
+        } catch (delErr) {
+          console.error("Error deleting temp user:", delErr);
+          await auth.signOut();
+        }
+        throw new Error("O acesso de convidados (Guest) para esta Sala de Guerra foi desativado pelo administrador.");
+      }
 
       // 3. Create Profile
       const guestProfile: UserProfile = {
@@ -227,7 +277,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, login, loginWithEmail, loginAsGuest, adminCreateUser, changePassword, logout, createProfile, updateProfile }}>
+    <AuthContext.Provider value={{ user, profile, loading, login, loginWithEmail, signUpUser, loginAsGuest, adminCreateUser, changePassword, logout, createProfile, updateProfile }}>
       {children}
     </AuthContext.Provider>
   );

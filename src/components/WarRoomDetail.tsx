@@ -433,7 +433,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
   });
 
   return (
-    <div className="space-y-6 p-6 lg:p-8 max-w-7xl mx-auto room-banner-glow">
+    <div className="space-y-6 p-6 lg:p-8 max-w-[2100px] w-full mx-auto room-banner-glow">
       {/* Top context header */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-white/[0.04] pb-6">
         <div className="space-y-1">
@@ -512,6 +512,82 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
         </div>
       </div>
 
+      {/* Admin Panel for room creator or admin */}
+      {(profile?.role === "admin" || warRoom.createdBy === profile?.id) && (
+        <div className="bg-[#0f1220]/75 border border-slate-800 p-4 rounded-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-lg">
+          <div className="flex items-center gap-3">
+            <Sliders className="w-5 h-5 text-indigo-400" />
+            <div>
+              <h4 className="text-xs font-mono font-bold text-white uppercase tracking-wider">Painel Administrativo da Sala</h4>
+              <p className="text-[11px] text-slate-400 font-mono">Gerencie o status operacional, controle o acesso de convidados e execute comandos de controle.</p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-4">
+            {/* Status Selector */}
+            <div className="flex items-center gap-2 bg-[#171e30] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs font-mono">
+              <span className="text-slate-450 font-bold">STATUS:</span>
+              <select
+                value={warRoom.status}
+                onChange={async (e) => {
+                  try {
+                    const nextStatus = e.target.value as any;
+                    const { doc, updateDoc } = await import("firebase/firestore");
+                    await updateDoc(doc(db, "warRooms", roomId), { status: nextStatus });
+                  } catch (err) {
+                    console.error("Erro ao atualizar status da sala:", err);
+                  }
+                }}
+                className="bg-transparent text-white focus:outline-none border-none text-xs font-semibold cursor-pointer"
+              >
+                <option value="active" className="bg-[#0f172a]">ATIVO</option>
+                <option value="paused" className="bg-[#0f172a]">PAUSADO</option>
+                <option value="ended" className="bg-[#0f172a]">ENCERRADO</option>
+              </select>
+            </div>
+
+            {/* Guest Access Switch */}
+            <label className="flex items-center gap-2.5 bg-[#171e30] border border-slate-800 px-3 py-1.5 rounded-lg text-xs font-mono font-semibold text-slate-305 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={!!warRoom.guestAccessDisabled}
+                onChange={async (e) => {
+                  try {
+                    const isDisabled = e.target.checked;
+                    const { doc, updateDoc } = await import("firebase/firestore");
+                    await updateDoc(doc(db, "warRooms", roomId), { guestAccessDisabled: isDisabled });
+                  } catch (err) {
+                    console.error("Erro ao alterar acesso convidado:", err);
+                  }
+                }}
+                className="rounded border-slate-800 text-red-650 bg-black focus:ring-0 cursor-pointer"
+              />
+              Bloquear Acesso Convidado (Guest)
+            </label>
+
+            {/* Permanent Delete Button */}
+            <button
+              onClick={async () => {
+                if (!window.confirm("ATENÇÃO: Deseja realmente EXCLUIR DEFINITIVAMENTE esta Sala de Guerra? Todos os bugs e logs serão removidos e esta ação é irreversível!")) {
+                  return;
+                }
+                try {
+                  const { doc, deleteDoc } = await import("firebase/firestore");
+                  await deleteDoc(doc(db, "warRooms", roomId));
+                  onBack(); // Go back to dashboard!
+                } catch (err) {
+                  console.error("Erro ao excluir sala:", err);
+                  alert("Erro ao excluir a sala de guerra. Permissão inválida.");
+                }
+              }}
+              className="bg-red-950/40 hover:bg-red-900/40 border border-red-500/30 text-red-400 font-mono text-xs font-bold px-3.5 py-1.5 rounded-lg transition"
+            >
+              Excluir Sala
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* FILTER SEARCH PANEL BAR */}
       <div className="bg-[#0f172a]/20 border border-white/[0.03] p-4 rounded-xl flex flex-col md:flex-row gap-4 items-center">
         <div className="flex-1 w-full relative">
@@ -536,7 +612,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
             >
               <option value="all">TODOS</option>
               <option value="production">PROD</option>
-              <option value="homologation">HOMOLOG</option>
+              <option value="homologation">HMG</option>
               <option value="dev">DEV</option>
             </select>
           </div>
@@ -727,7 +803,9 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                     return (
                       <div key={env}>
                         <div className="flex justify-between text-[11px] font-mono text-slate-400 mb-1">
-                          <span className="uppercase font-semibold">{env === "homologation" ? "HOMOLOG" : env}</span>
+                          <span className="uppercase font-semibold">
+                            {env === "homologation" ? "HMG" : env === "production" ? "PROD" : "DEV"}
+                          </span>
                           <span>{count} ocorrências</span>
                         </div>
                         <div className="h-2 bg-slate-950 rounded-full overflow-hidden">
@@ -912,7 +990,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
 
                     <div>
                       <label className="block text-[10px] font-mono font-bold text-slate-450 uppercase mb-1.5">
-                        Descrição e Passos de Reprodução
+                        DESCRIÇÃO
                       </label>
                       <textarea
                         rows={5}
@@ -1003,9 +1081,9 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                           onChange={(e) => setBugEnv(e.target.value as any)}
                           className="w-full bg-[#111827] border border-slate-850 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-red-500/30 font-bold"
                         >
-                          <option value="production">PRODUCTION</option>
-                          <option value="homologation">HOMOLOGATION</option>
-                          <option value="dev">DEV ENVIRONMENT</option>
+                          <option value="production">PROD</option>
+                          <option value="homologation">HMG</option>
+                          <option value="dev">DEV</option>
                         </select>
                       </div>
                     </div>
@@ -1045,44 +1123,16 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[10px] font-mono font-bold text-slate-450 uppercase mb-1.2">
-                          URL Relacionada
-                        </label>
-                        <input
-                          type="url"
-                          className="w-full bg-[#111827] border border-slate-850 focus:border-red-500/30 rounded-lg px-3 py-2 text-white placeholder-slate-650 focus:outline-none font-mono text-[11px]"
-                          placeholder="https://example.com/checkout"
-                          value={bugUrl}
-                          onChange={(e) => setBugUrl(e.target.value)}
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[10px] font-mono font-bold text-slate-450 uppercase mb-1.2">
-                          Build / Versão da Aplicação
-                        </label>
-                        <input
-                          type="text"
-                          className="w-full bg-[#111827] border border-slate-850 focus:border-red-500/30 rounded-lg px-3 py-2 text-white placeholder-slate-650 focus:outline-none font-mono text-[11px]"
-                          placeholder="Ex: v1.4.2-build390"
-                          value={bugBuild}
-                          onChange={(e) => setBugBuild(e.target.value)}
-                        />
-                      </div>
-                    </div>
-
                     <div>
                       <label className="block text-[10px] font-mono font-bold text-slate-450 uppercase mb-1.2">
-                        Tags Classificatórias (separados por vírgula)
+                        URL Relacionada
                       </label>
                       <input
-                        type="text"
+                        type="url"
                         className="w-full bg-[#111827] border border-slate-850 focus:border-red-500/30 rounded-lg px-3 py-2 text-white placeholder-slate-650 focus:outline-none font-mono text-[11px]"
-                        placeholder="Ex: frontend, pix, auth, login"
-                        value={bugTagsInput}
-                        onChange={(e) => setBugTagsInput(e.target.value)}
+                        placeholder="https://example.com/checkout"
+                        value={bugUrl}
+                        onChange={(e) => setBugUrl(e.target.value)}
                       />
                     </div>
 

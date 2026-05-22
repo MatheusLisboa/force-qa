@@ -26,7 +26,8 @@ export async function createWarRoom(data: Omit<WarRoom, "id" | "createdAt">): Pr
     const newRoom: WarRoom = {
       ...data,
       id: customId,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      guestAccessDisabled: false
     };
     await setDoc(doc(db, "warRooms", customId), newRoom);
     return customId;

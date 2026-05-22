@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, doc, getDoc, getDocs, where, deleteDoc, updateDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { createWarRoom } from "../lib/services";
 import { useAuth } from "../context/AuthContext";
@@ -19,7 +19,12 @@ import {
   TrendingUp,
   User,
   Share2,
-  UserPlus
+  UserPlus,
+  Key,
+  Trash2,
+  Edit2,
+  Check,
+  X
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -34,17 +39,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // Search by ID State
+  const [enterRoomIdInput, setEnterRoomIdInput] = useState("");
+  const [enteringRoomLoading, setEnteringRoomLoading] = useState(false);
+  const [enterRoomError, setEnterRoomError] = useState("");
+  const [enterRoomSuccess, setEnterRoomSuccess] = useState("");
+
   // User Management State
   const [isAdminUsersModalOpen, setIsAdminUsersModalOpen] = useState(false);
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
   const [newUserName, setNewUserName] = useState("");
-  const [newUserRole, setNewUserRole] = useState<"admin" | "qa" | "developer" | "dba" | "viewer">("developer");
+  const [newUserRole, setNewUserRole] = useState<"admin" | "qa" | "developer" | "dba" | "viewer" | "devops" | "scrum_master">("developer");
   const [newUserSquad, setNewUserSquad] = useState("");
   const [isCreatingUser, setIsCreatingUser] = useState(false);
   const [userCreationError, setUserCreationError] = useState("");
   const [userCreationSuccess, setUserCreationSuccess] = useState("");
   const [usersList, setUsersList] = useState<any[]>([]);
+
+  // User inline editing state
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
+  const [editingRole, setEditingRole] = useState<any>("developer");
+  const [editingSquad, setEditingSquad] = useState("");
 
   // Live real-time stream subscription for System Users
   useEffect(() => {
@@ -95,6 +112,108 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
       setUserCreationError(err.message || "Erro desconhecido ao cadastrar usuário.");
     } finally {
       setIsCreatingUser(false);
+    }
+  };
+
+  const handleEnterRoomById = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const inputVal = enterRoomIdInput.trim();
+    if (!inputVal) return;
+
+    setEnteringRoomLoading(true);
+    setEnterRoomError("");
+    setEnterRoomSuccess("");
+
+    try {
+      let roomData: any = null;
+      let roomId = "";
+
+      const directRef = doc(db, "warRooms", inputVal);
+      const directSnap = await getDoc(directRef);
+
+      if (directSnap.exists()) {
+        roomData = directSnap.data();
+        roomId = directSnap.id;
+      } else {
+        const qByExactName = query(collection(db, "warRooms"), where("name", "==", inputVal));
+        const nameSnap = await getDocs(qByExactName);
+
+        if (!nameSnap.empty) {
+          roomData = nameSnap.docs[0].data();
+          roomId = nameSnap.docs[0].id;
+        } else {
+          const allRoomsSnap = await getDocs(collection(db, "warRooms"));
+          const matchByName = allRoomsSnap.docs.find(
+            (d) => d.data().name?.trim().toLowerCase() === inputVal.toLowerCase()
+          );
+          if (matchByName) {
+            roomData = matchByName.data();
+            roomId = matchByName.id;
+          }
+        }
+      }
+
+      if (!roomId || !roomData) {
+        throw new Error("Sala de Guerra não encontrada. Certifique-se de que o ID ou Nome está correto.");
+      }
+
+      const accessedStr = localStorage.getItem("accessed_rooms") || "[]";
+      let accessedList: string[] = JSON.parse(accessedStr);
+      if (!accessedList.includes(roomId)) {
+        accessedList.push(roomId);
+        localStorage.setItem("accessed_rooms", JSON.stringify(accessedList));
+      }
+
+      setEnterRoomSuccess("Canal destrancado operacionalmente!");
+      setEnterRoomIdInput("");
+
+      onSelectRoom(roomId);
+    } catch (err: any) {
+      console.error(err);
+      setEnterRoomError(err.message || "Erro de localização.");
+    } finally {
+      setEnteringRoomLoading(false);
+    }
+  };
+
+  const handleStartEdit = (usr: any) => {
+    setEditingUserId(usr.id);
+    setEditingName(usr.name || "");
+    setEditingRole(usr.role || "developer");
+    setEditingSquad(usr.squad || "");
+  };
+
+  const handleCancelEdit = () => {
+    setEditingUserId(null);
+  };
+
+  const handleSaveEdit = async (userId: string) => {
+    if (!editingName.trim() || !editingSquad.trim()) {
+      setUserCreationError("Todos os campos de edição são obrigatórios.");
+      return;
+    }
+    try {
+      await updateDoc(doc(db, "users", userId), {
+        name: editingName.trim(),
+        role: editingRole,
+        squad: editingSquad.trim()
+      });
+      setEditingUserId(null);
+    } catch (err: any) {
+      console.error(err);
+      setUserCreationError(err.message || "Erro ao atualizar usuário.");
+    }
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    if (!window.confirm("ATENÇÃO: Deseja realmente remover este usuário do sistema? Esta ação removerá o perfil no Firestore.")) {
+      return;
+    }
+    try {
+      await deleteDoc(doc(db, "users", userId));
+    } catch (err: any) {
+      console.error(err);
+      setUserCreationError(err.message || "Erro ao deletar usuário.");
     }
   };
 
@@ -185,6 +304,28 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
     }
   });
 
+  // Filter displayed War Rooms based on authenticated user access
+  const accessedRoomsStr = localStorage.getItem("accessed_rooms") || "[]";
+  let accessedRoomIds: string[] = [];
+  try {
+    accessedRoomIds = JSON.parse(accessedRoomsStr);
+  } catch (err) {
+    accessedRoomIds = [];
+  }
+
+  const displayedRooms = warRooms.filter((room) => {
+    // Admin sees all
+    if (profile?.role === "admin") return true;
+    
+    // User sees rooms they created
+    if (room.createdBy === profile?.id) return true;
+
+    // User sees rooms they have explicitly joined via ID
+    if (accessedRoomIds.includes(room.id)) return true;
+
+    return false;
+  });
+
   const handleCreateRoom = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !project.trim() || !squad.trim()) {
@@ -232,7 +373,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
   };
 
   return (
-    <div className="space-y-8 p-6 lg:p-8 max-w-7xl mx-auto">
+    <div className="space-y-8 p-6 lg:p-8 max-w-[2100px] w-full mx-auto">
       {/* Upper header section */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-white/[0.04] pb-6">
         <div>
@@ -440,8 +581,42 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
 
       {/* Active War Rooms Grid List */}
       <div>
+        {/* Code to enter a War Room by ID */}
+        <div className="bg-[#0a0f1d]/80 border border-slate-805 p-4 rounded-xl mb-6 shadow-md">
+          <h4 className="text-xs font-mono font-bold text-slate-450 mb-2 uppercase tracking-wider flex items-center gap-1.5">
+            <Key className="w-3.5 h-3.5 text-red-500" /> Acessar Nova Sala de Guerra via ID
+          </h4>
+          <form onSubmit={handleEnterRoomById} className="flex gap-3">
+            <input
+              type="text"
+              required
+              placeholder="Digite ou cole a chave ID da Sala de Guerra (Ex: room-XXXXXX)"
+              className="flex-1 bg-black/40 border border-slate-800 focus:border-red-500/50 rounded-lg px-3.5 py-2 text-sm text-white placeholder-slate-650 focus:outline-none transition font-mono"
+              value={enterRoomIdInput}
+              onChange={(e) => setEnterRoomIdInput(e.target.value)}
+            />
+            <button
+              type="submit"
+              disabled={enteringRoomLoading}
+              className="bg-red-650 hover:bg-red-600 border border-red-500/20 text-white px-5 py-2 rounded-lg text-sm font-semibold transition cursor-pointer flex items-center gap-1.5 font-mono"
+            >
+              {enteringRoomLoading ? (
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                "LIBERAR ACESSO"
+              )}
+            </button>
+          </form>
+          {enterRoomError && (
+            <p className="text-red-400 text-xs mt-2 font-mono">{enterRoomError}</p>
+          )}
+          {enterRoomSuccess && (
+            <p className="text-green-400 text-xs mt-2 font-mono">{enterRoomSuccess}</p>
+          )}
+        </div>
+
         <h3 className="font-display text-lg font-bold text-white flex items-center gap-1.5 mb-5 uppercase tracking-wide">
-          <Server className="w-4 h-4 text-red-500" /> Salas de Guerra Ativas / Operações ({warRooms.length})
+          <Server className="w-4 h-4 text-red-500" /> Salas de Guerra Acessadas / Operações ({displayedRooms.length})
         </h3>
 
         {loading ? (
@@ -449,17 +624,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
             <div className="w-6 h-6 border-2 border-red-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
             <p className="text-slate-400 text-sm font-mono">Sincronizando Banco de Dados...</p>
           </div>
-        ) : warRooms.length === 0 ? (
-          <div className="text-center py-16 bg-[#000000]/20 border border-slate-800 rounded-xl">
+        ) : displayedRooms.length === 0 ? (
+          <div className="text-center py-16 bg-[#000000]/25 border border-slate-800 rounded-xl">
             <AlertOctagon className="w-10 h-10 text-slate-650 mx-auto mb-3" />
-            <h4 className="text-slate-200 font-bold font-display text-base">Nenhuma operação tática aberta</h4>
+            <h4 className="text-slate-200 font-bold font-display text-base">Nenhuma operação ativa liberada</h4>
             <p className="text-slate-550 text-xs mt-1 max-w-sm mx-auto">
-              Tudo limpo por aqui. Caso ocorra um incidente crítico, crie uma nova War Room para coordenar as correções com o time.
+              Seu perfil não possui salas criadas. Para ingressar em uma existente, cole o ID da Sala de Guerra no painel de liberação acima.
             </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {warRooms.map((room) => {
+            {displayedRooms.map((room) => {
               const activeRoomBugs = allBugs.filter(b => b.warRoomId === room.id);
               const roomBlocker = activeRoomBugs.filter(b => b.criticism === "blocker" && b.status !== "validated").length;
               const roomTotalOpen = activeRoomBugs.filter(b => b.status !== "validated").length;
@@ -859,6 +1034,71 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                       </div>
                     ) : (
                       usersList.map((usr: any) => {
+                        const isEditing = editingUserId === usr.id;
+
+                        if (isEditing) {
+                          return (
+                            <div key={usr.id} className="p-3 bg-indigo-950/20 border border-indigo-500/30 rounded-xl space-y-3 font-mono">
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="block text-[9px] uppercase text-slate-400 mb-1">Nome</label>
+                                  <input
+                                    type="text"
+                                    value={editingName}
+                                    onChange={(e) => setEditingName(e.target.value)}
+                                    className="w-full bg-black border border-slate-800 rounded px-2.5 py-1 text-xs text-white focus:outline-none focus:border-indigo-500"
+                                    placeholder="Nome"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[9px] uppercase text-slate-400 mb-1">Squad</label>
+                                  <input
+                                    type="text"
+                                    value={editingSquad}
+                                    onChange={(e) => setEditingSquad(e.target.value)}
+                                    className="w-full bg-black border border-slate-800 rounded px-2.5 py-1 text-xs text-white focus:outline-none focus:border-indigo-500"
+                                    placeholder="Squad"
+                                  />
+                                </div>
+                              </div>
+                              <div className="flex justify-between items-end gap-2">
+                                <div className="flex-1">
+                                  <label className="block text-[9px] uppercase text-slate-400 mb-1">Função</label>
+                                  <select
+                                    value={editingRole}
+                                    onChange={(e) => setEditingRole(e.target.value as any)}
+                                    className="w-full bg-black border border-slate-800 rounded px-2 py-1 text-xs text-white focus:outline-none"
+                                  >
+                                    <option value="developer">DEV</option>
+                                    <option value="qa">QA</option>
+                                    <option value="dba">DBA</option>
+                                    <option value="devops">DEVOPS</option>
+                                    <option value="scrum_master">SCRUM MASTER</option>
+                                    <option value="admin">ADMIN</option>
+                                    <option value="viewer">VIEWER</option>
+                                  </select>
+                                </div>
+                                <div className="flex gap-1.5 pb-[2px]">
+                                  <button
+                                    onClick={() => handleSaveEdit(usr.id)}
+                                    className="p-1.5 bg-green-700 hover:bg-green-600 rounded text-white cursor-pointer transition"
+                                    title="Confirmar Alteração"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={handleCancelEdit}
+                                    className="p-1.5 bg-slate-800 hover:bg-slate-750 rounded text-white cursor-pointer transition"
+                                    title="Cancelar"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }
+
                         const roleColor = usr.role === "admin" 
                           ? "text-red-450 bg-red-950/20 border-red-900/30" 
                           : usr.role === "dba" 
@@ -867,7 +1107,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                               ? "text-green-400 bg-green-950/20 border-green-900/30"
                               : usr.role === "developer"
                                 ? "text-orange-400 bg-orange-950/20 border-orange-900/30"
-                                : "text-slate-400 bg-slate-800/40 border-slate-700/30";
+                                : usr.role === "devops"
+                                  ? "text-purple-400 bg-purple-950/25 border-purple-900/25"
+                                  : usr.role === "scrum_master"
+                                    ? "text-yellow-450 bg-yellow-950/15 border-yellow-900/25"
+                                    : "text-slate-400 bg-slate-800/40 border-slate-700/30";
 
                         const roleLabel = usr.role === "admin" 
                           ? "ADMIN" 
@@ -877,7 +1121,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                               ? "QA" 
                               : usr.role === "developer" 
                                 ? "DEV" 
-                                : "OBS/VIEWER";
+                                : usr.role === "devops"
+                                  ? "DEVOPS"
+                                  : usr.role === "scrum_master"
+                                    ? "SCRUM"
+                                    : "OBS/VIEWER";
 
                         return (
                           <div 
@@ -895,8 +1143,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                                 {usr.email}
                               </div>
                             </div>
-                            <div className="text-right font-mono text-[9px] uppercase text-slate-400 bg-[#0a0d16] border border-slate-900 py-0.5 px-2 rounded-md">
-                              {usr.squad || "Sem Squad"}
+                            <div className="flex items-center gap-2">
+                              <div className="text-right font-mono text-[9px] uppercase text-slate-400 bg-[#0a0d16] border border-slate-900 py-0.5 px-2 rounded-md">
+                                {usr.squad || "Sem Squad"}
+                              </div>
+                              <button
+                                onClick={() => handleStartEdit(usr)}
+                                className="p-1 hover:bg-slate-800 text-slate-400 hover:text-white rounded transition cursor-pointer"
+                                title="Editar membro"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteUser(usr.id)}
+                                className="p-1 hover:bg-red-950/45 text-slate-400 hover:text-red-400 rounded transition cursor-pointer"
+                                title="Excluir membro"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </div>
                           </div>
                         );

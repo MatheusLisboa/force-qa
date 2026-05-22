@@ -38,7 +38,7 @@ service cloud.firestore {
         && incoming().id == userId
         && incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 100
         && incoming().email is string && incoming().email.size() > 0 && incoming().email.size() <= 150
-        && incoming().role in ['admin', 'qa', 'developer', 'dba', 'viewer']
+        && incoming().role in ['admin', 'qa', 'developer', 'dba', 'devops', 'scrum_master', 'viewer']
         && incoming().squad is string && incoming().squad.size() <= 100;
         
       allow update: if isSignedIn() 
@@ -46,11 +46,11 @@ service cloud.firestore {
         && incoming().id == userId
         && incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 100
         && (incoming().email == existing().email || isAdmin())
-        && incoming().role in ['admin', 'qa', 'developer', 'dba', 'viewer']
+        && incoming().role in ['admin', 'qa', 'developer', 'dba', 'devops', 'scrum_master', 'viewer']
         && (incoming().role == existing().role || existing().role == 'admin' || isAdmin()) 
         && incoming().squad is string && incoming().squad.size() <= 100;
       
-      allow delete: if false; // User accounts are immutable/permanent in war room context
+      allow delete: if isSignedIn() && isAdmin();
     }
 
     // ------------------
@@ -60,6 +60,7 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create: if isSignedIn()
         && isValidId(warRoomId)
+        && (isAdmin() || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'qa')
         && incoming().id == warRoomId
         && incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 200
         && incoming().project is string && incoming().project.size() > 0 && incoming().project.size() <= 200
@@ -68,13 +69,14 @@ service cloud.firestore {
         && incoming().createdBy == request.auth.uid;
         
       allow update: if isSignedIn()
+        && (existing().createdBy == request.auth.uid || isAdmin())
         && incoming().id == existing().id
         && incoming().createdBy == existing().createdBy // Creator is immutable
         && incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 200
         && incoming().project is string && incoming().project.size() > 0 && incoming().project.size() <= 200
         && incoming().status in ['active', 'ended', 'paused'];
         
-      allow delete: if isSignedIn() && existing().createdBy == request.auth.uid;
+      allow delete: if isSignedIn() && (existing().createdBy == request.auth.uid || isAdmin());
     }
 
     // ------------------
