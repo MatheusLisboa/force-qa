@@ -17,18 +17,31 @@ import { db, handleFirestoreError, OperationType } from "./firebase";
 import { WarRoom, Bug, BugComment, ActivityLog, AISuggestion, AIDuplicateCheck, AIWarRoomSummary, SeverityLevel, BugStatus, BugPriority, BugType } from "../types";
 
 // -------------------------
+// Helper to strip undefined values for Firestore compatibility
+// -------------------------
+function cleanUndefined<T extends object>(obj: T): T {
+  const result = { ...obj } as any;
+  Object.keys(result).forEach((key) => {
+    if (result[key] === undefined) {
+      delete result[key];
+    }
+  });
+  return result;
+}
+
+// -------------------------
 // 1. WarRoom Operations
 // -------------------------
 export async function createWarRoom(data: Omit<WarRoom, "id" | "createdAt">): Promise<string> {
   const customId = "room-" + Math.random().toString(36).substring(2, 11).toUpperCase();
   const path = `warRooms/${customId}`;
   try {
-    const newRoom: WarRoom = {
+    const newRoom: WarRoom = cleanUndefined({
       ...data,
       id: customId,
       createdAt: new Date().toISOString(),
       guestAccessDisabled: false
-    };
+    });
     await setDoc(doc(db, "warRooms", customId), newRoom);
     return customId;
   } catch (error) {
@@ -57,13 +70,13 @@ export async function createBug(
   const path = `bugs/${customId}`;
   try {
     const now = new Date().toISOString();
-    const newBug: Bug = {
+    const newBug: Bug = cleanUndefined({
       ...data,
       id: customId,
       createdAt: now,
       updatedAt: now,
       reopenCount: 0
-    };
+    });
     await setDoc(doc(db, "bugs", customId), newBug);
 
     // Initialise Activity Log
@@ -93,10 +106,10 @@ export async function updateBugField(
   const path = `bugs/${bugId}`;
   try {
     const now = new Date().toISOString();
-    const updatePayload: any = {
+    const updatePayload: any = cleanUndefined({
       ...fields,
       updatedAt: now
-    };
+    });
 
     if (fields.status === "validated") {
       updatePayload.resolvedAt = now;
