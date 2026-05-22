@@ -1,0 +1,142 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // ------------------
+    // 1. Users Collection Rules
+    // ------------------
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() 
+        && (userId == request.auth.uid || isAdmin())
+        && incoming().id == userId
+        && incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 100
+        && incoming().email is string && incoming().email.size() > 0 && incoming().email.size() <= 150
+        && incoming().role in ['admin', 'qa', 'developer', 'dba', 'viewer']
+        && incoming().squad is string && incoming().squad.size() <= 100;
+        
+      allow update: if isSignedIn() 
+        && (userId == request.auth.uid || isAdmin())
+        && incoming().id == userId
+        && incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 100
+        && (incoming().email == existing().email || isAdmin())
+        && incoming().role in ['admin', 'qa', 'developer', 'dba', 'viewer']
+        && (incoming().role == existing().role || existing().role == 'admin' || isAdmin()) 
+        && incoming().squad is string && incoming().squad.size() <= 100;
+      
+      allow delete: if false; // User accounts are immutable/permanent in war room context
+    }
+
+    // ------------------
+    // 2. WarRooms Collection Rules
+    // ------------------
+    match /warRooms/{warRoomId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && isValidId(warRoomId)
+        && incoming().id == warRoomId
+        && incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 200
+        && incoming().project is string && incoming().project.size() > 0 && incoming().project.size() <= 200
+        && incoming().squad is string && incoming().squad.size() > 0 && incoming().squad.size() <= 200
+        && incoming().status in ['active', 'ended', 'paused']
+        && incoming().createdBy == request.auth.uid;
+        
+      allow update: if isSignedIn()
+        && incoming().id == existing().id
+        && incoming().createdBy == existing().createdBy // Creator is immutable
+        && incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 200
+        && incoming().project is string && incoming().project.size() > 0 && incoming().project.size() <= 200
+        && incoming().status in ['active', 'ended', 'paused'];
+        
+      allow delete: if isSignedIn() && existing().createdBy == request.auth.uid;
+    }
+
+    // ------------------
+    // 3. Bugs Collection Rules
+    // ------------------
+    match /bugs/{bugId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && isValidId(bugId)
+        && incoming().id == bugId
+        && incoming().warRoomId is string && incoming().warRoomId.size() > 0
+        && incoming().title is string && incoming().title.size() > 0 && incoming().title.size() <= 200
+        && incoming().criticism in ['blocker', 'critical', 'high', 'medium', 'low']
+        && incoming().status in ['new', 'under_analysis', 'in_progress', 'ready_for_qa', 'validated', 'reopened']
+        && incoming().environment in ['production', 'homologation', 'dev']
+        && incoming().type in ['bug', 'improvement', 'ui_adjustment', 'performance', 'security']
+        && incoming().createdBy == request.auth.uid;
+
+      allow update: if isSignedIn()
+        && incoming().id == existing().id
+        && incoming().warRoomId == existing().warRoomId // War Room associations are immutable
+        && incoming().createdBy == existing().createdBy // Creation record is immutable
+        && incoming().title is string && incoming().title.size() > 0 && incoming().title.size() <= 200
+        && incoming().criticism in ['blocker', 'critical', 'high', 'medium', 'low']
+        && incoming().status in ['new', 'under_analysis', 'in_progress', 'ready_for_qa', 'validated', 'reopened']
+        && incoming().environment in ['production', 'homologation', 'dev']
+        && incoming().type in ['bug', 'improvement', 'ui_adjustment', 'performance', 'security'];
+
+      allow delete: if isSignedIn(); // Allow removal inside operation if necessary
+
+      // ------------------
+      // 4. Nested Comments Collection Rules
+      // ------------------
+      match /comments/{commentId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn()
+          && isValidId(commentId)
+          && incoming().id == commentId
+          && incoming().bugId == bugId
+          && incoming().userId == request.auth.uid
+          && incoming().text is string && incoming().text.size() > 0 && incoming().text.size() <= 2000;
+          
+        allow update: if isSignedIn()
+          && existing().userId == request.auth.uid
+          && incoming().userId == request.auth.uid
+          && incoming().text is string && incoming().text.size() > 0 && incoming().text.size() <= 2000;
+          
+        allow delete: if isSignedIn() && (existing().userId == request.auth.uid);
+      }
+
+      // ------------------
+      // 5. Nested Activity Logs Collection Rules
+      // ------------------
+      match /activityLogs/{logId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn()
+          && isValidId(logId)
+          && incoming().id == logId
+          && incoming().bugId == bugId
+          && incoming().userId == request.auth.uid;
+        allow update, delete: if false; // Activity logs are immutable audit trails
+      }
+    }
+  }
+}

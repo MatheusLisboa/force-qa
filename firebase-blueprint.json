@@ -1,0 +1,120 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User profile data stored upon registration or login",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique user ID matching Auth UID" },
+        "name": { "type": "string", "description": "Display name of the user" },
+        "email": { "type": "string", "format": "email", "description": "User email address" },
+        "role": { "type": "string", "enum": ["admin", "qa", "developer", "dba", "viewer"], "description": "Security and work role" },
+        "squad": { "type": "string", "description": "The agile squad this user belongs to" },
+        "avatarUrl": { "type": "string", "description": "URL to user profile picture" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp when user was created in DB" }
+      },
+      "required": ["id", "name", "email", "role"]
+    },
+    "WarRoom": {
+      "title": "War Room Operation",
+      "description": "An active or archived War Room for critical QA operations",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique War Room ID" },
+        "name": { "type": "string", "description": "Name of the critical operation" },
+        "project": { "type": "string", "description": "Target project or system under test" },
+        "squad": { "type": "string", "description": " Squad responsible for resolution" },
+        "date": { "type": "string", "description": "Calendar date of the war room" },
+        "description": { "type": "string", "description": "Overview of the target war room tasks" },
+        "severity": { "type": "string", "enum": ["blocker", "critical", "high", "medium", "low"], "description": "General severity of the issue tracker" },
+        "status": { "type": "string", "enum": ["active", "ended", "paused"], "description": "Current state of the War Room" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "createdBy": { "type": "string", "description": "User ID who created the War Room" }
+      },
+      "required": ["id", "name", "project", "squad", "status", "createdBy"]
+    },
+    "Bug": {
+      "title": "Bug Tracker Task",
+      "description": "A single bug or refinement task reported in a War Room",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique bug task ID" },
+        "warRoomId": { "type": "string", "description": "The War Room this bug belongs to" },
+        "title": { "type": "string", "description": "Short descriptive title of the bug" },
+        "description": { "type": "string", "description": "Detailed bug description and steps" },
+        "criticism": { "type": "string", "enum": ["blocker", "critical", "high", "medium", "low"], "description": "Criticism / Severity level" },
+        "status": { "type": "string", "enum": ["new", "under_analysis", "in_progress", "ready_for_qa", "validated", "reopened"], "description": "Status in Kanban flow" },
+        "evidenceUrl": { "type": "string", "description": "Uploaded base64 or storage url for screenshot/video/gif" },
+        "ownerId": { "type": "string", "description": "Developer currently working on this task" },
+        "ownerName": { "type": "string", "description": "Name of developer working on this" },
+        "environment": { "type": "string", "enum": ["production", "homologation", "dev"], "description": "Environment where bug was found" },
+        "affectedUrl": { "type": "string", "description": "Affected application URL" },
+        "buildVersion": { "type": "string", "description": "Current build number / system version under test" },
+        "tags": { "type": "array", "description": "Tags associated with the bug" },
+        "priority": { "type": "string", "enum": ["immediate", "high", "medium", "low"], "description": "Priority assessment" },
+        "type": { "type": "string", "enum": ["bug", "improvement", "ui_adjustment", "performance", "security"], "description": "Nature of the task" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the bug was logged" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "When the bug was last updated" },
+        "createdBy": { "type": "string", "description": "QA who created the bug" },
+        "createdByName": { "type": "string", "description": "Name of the QA who created the bug" },
+        "resolvedAt": { "type": "string", "format": "date-time", "description": "When the bug transitioned to validated state" },
+        "reopenCount": { "type": "integer", "description": "Number of times this bug was re-opened" }
+      },
+      "required": ["id", "warRoomId", "title", "criticism", "status", "environment", "type", "createdAt", "createdBy"]
+    },
+    "Comment": {
+      "title": "Bug Comment",
+      "description": "Collaborative discussion on a single bug in real time",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique comment ID" },
+        "bugId": { "type": "string", "description": "Bug ID associated" },
+        "warRoomId": { "type": "string", "description": "War Room ID context" },
+        "userId": { "type": "string", "description": "User ID who commented" },
+        "userName": { "type": "string", "description": "Name of user who commented" },
+        "avatarUrl": { "type": "string", "description": "User avatar" },
+        "text": { "type": "string", "description": "Comment content" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Comment timestamp" }
+      },
+      "required": ["id", "bugId", "warRoomId", "userId", "userName", "text", "createdAt"]
+    },
+    "ActivityLog": {
+      "title": "Bug Activity Log",
+      "description": "Audit trail logging changes to a bug task",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique activity ID" },
+        "bugId": { "type": "string", "description": "Bug ID" },
+        "warRoomId": { "type": "string", "description": "War Room ID" },
+        "userId": { "type": "string", "description": "Modifier user ID" },
+        "userName": { "type": "string", "description": "Modifier name" },
+        "type": { "type": "string", "description": "Type of event (creation, status_change, assignment, comment, etc)" },
+        "description": { "type": "string", "description": "Human-friendly log message" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "History timestamp" }
+      },
+      "required": ["id", "bugId", "warRoomId", "userId", "userName", "type", "description", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile collection synchronized with Firebase Auth"
+    },
+    "/warRooms/{warRoomId}": {
+      "schema": "WarRoom",
+      "description": "Operation War Rooms"
+    },
+    "/bugs/{bugId}": {
+      "schema": "Bug",
+      "description": "QA bugs collection"
+    },
+    "/bugs/{bugId}/comments/{commentId}": {
+      "schema": "Comment",
+      "description": "Comments left on a bug task"
+    },
+    "/bugs/{bugId}/activityLogs/{logId}": {
+      "schema": "ActivityLog",
+      "description": "Audit trail log collection nested under a bug"
+    }
+  }
+}
