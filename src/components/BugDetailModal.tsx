@@ -212,7 +212,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
         initial={{ opacity: 0, scale: 0.98, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.98 }}
-        className="w-full max-w-5xl h-[92vh] bg-[#0d1220] border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+        className="w-full max-w-7xl h-[92vh] bg-[#0d1220] border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
       >
         {/* Header toolbar */}
         <div className="p-4 lg:p-5 border-b border-slate-800/60 bg-[#0f172a]/40 flex justify-between items-center bg-zinc-900/10">
@@ -237,9 +237,9 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
         </div>
 
         {/* Workspace body columns hierarchy scrolling container */}
-        <div className="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-3">
+        <div className="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-12">
           {/* Column 1: Bug details & screenshot evidences */}
-          <div className="lg:col-span-2 p-6 border-r border-slate-800/50 space-y-6">
+          <div className="lg:col-span-5 p-6 border-r border-slate-800/50 space-y-6">
             <div>
               <h2 className="font-display text-2xl font-black text-white hover:text-red-400 transition duration-150 leading-tight">
                 {activeBug.title}
@@ -359,7 +359,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
           </div>
 
           {/* Column 2: Status controls, assign and audit logging sidebar */}
-          <div className="p-6 bg-[#0f172a]/20 border-r border-slate-800/50 space-y-6">
+          <div className="lg:col-span-3 p-6 bg-[#0f172a]/20 border-r border-slate-800/50 space-y-6 flex flex-col">
             <div>
               <h3 className="font-mono text-xs font-bold text-slate-450 uppercase tracking-widest border-b border-slate-850 pb-2 mb-4">
                 Painel Tático Operacional
@@ -470,14 +470,15 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
           </div>
 
           {/* Column 3: Live real-time comments section */}
-          <div className="p-6 bg-[#0c101b] flex flex-col justify-between h-full min-h-[300px]">
+          <div className="lg:col-span-4 p-6 bg-[#0c101b] flex flex-col justify-between h-full min-h-[350px] lg:min-h-0">
             <div className="flex flex-col flex-1 overflow-hidden">
-              <span className="block text-xs font-mono text-slate-450 mb-3 uppercase tracking-widest border-b border-white/[0.04] pb-2">
-                Comentários e Notas ({comments.length})
+              <span className="block text-xs font-mono text-slate-450 mb-3 uppercase tracking-widest border-b border-white/[0.04] pb-2 flex items-center justify-between">
+                <span>Comentários e Notas ({comments.length})</span>
+                <span className="text-[10px] text-red-400 bg-red-400/10 px-2 py-0.5 rounded font-bold uppercase tracking-normal">Anotações do Bug</span>
               </span>
 
               {/* Chat list bubble cards replaced by professional logs */}
-              <div className="flex-1 space-y-3 overflow-y-auto pr-1 pb-4 max-h-[365px]">
+              <div className="flex-1 space-y-3 overflow-y-auto pr-1 pb-4 max-h-[365px] lg:max-h-[580px] scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
                 {comments.length === 0 ? (
                   <div className="text-center py-12">
                     <Terminal className="w-8 h-8 text-slate-700 mx-auto mb-2" />
@@ -514,12 +515,12 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
             </div>
 
             {/* Comment post form inputs wrapper - styled as a clear textarea and submission button */}
-            <form onSubmit={handlePostComment} className="pt-4 border-t border-white/[0.04] flex flex-col gap-2">
+            <form onSubmit={handlePostComment} className="pt-4 border-t border-white/[0.04] flex flex-col gap-3">
               <textarea
                 required
-                rows={3}
-                className="w-full bg-[#111827] border border-slate-850 focus:border-red-500/50 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-650 focus:outline-none resize-none font-sans"
-                placeholder="Adicionar nota técnica, comentário ou atualização de progresso..."
+                rows={5}
+                className="w-full bg-[#111827] border border-slate-850 focus:border-red-500/50 rounded-lg px-4 py-3 text-sm text-white placeholder-slate-650 focus:outline-none resize-none font-sans leading-relaxed focus:ring-1 focus:ring-red-500/25"
+                placeholder="Escreva uma nota técnica detalhada, comentários ou atualização de progresso operacional para este incidente..."
                 value={newComment}
                 onChange={(e) => setNewComment(e.target.value)}
               />
