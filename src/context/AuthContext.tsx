@@ -1,9 +1,7 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState, useRef } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import {
   supabase,
-  handleDbError,
-  OperationType,
   toUserProfile,
   findWarRoomByIdOrName,
 } from "../lib/supabase";
@@ -31,8 +29,12 @@ async function fetchProfile(userId: string): Promise<UserProfile | null> {
     .select("*")
     .eq("id", userId)
     .maybeSingle();
-  if (error || !data) return null;
-  return toUserProfile(data);
+
+  if (error) {
+    console.error("[Auth] fetchProfile error:", error.message);
+    return null;
+  }
+  return data ? toUserProfile(data) : null;
 }
 
 async function saveProfile(profile: UserProfile): Promise<void> {
@@ -45,40 +47,77 @@ async function saveProfile(profile: UserProfile): Promise<void> {
     avatar_url: profile.avatarUrl || null,
     created_at: profile.createdAt || new Date().toISOString(),
   });
-  if (error) handleDbError(error, OperationType.WRITE, `users/${profile.id}`);
+
+  if (error) {
+    console.error("[Auth] saveProfile error:", error.message, error);
+    throw new Error(
+      error.message.includes("row-level security") || error.code === "42501"
+        ? "Não foi possível salvar o perfil (permissão negada). Verifique as policies da tabela users no Supabase."
+        : `Não foi possível salvar o perfil: ${error.message}`
+    );
+  }
 }
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const profileRef = useRef<UserProfile | null>(null);
+
+  const applyProfile = (next: UserProfile | null) => {
+    profileRef.current = next;
+    setProfile(next);
+  };
 
   useEffect(() => {
+    let mounted = true;
+
+    const syncProfile = async (userId: string) => {
+      const fetched = await fetchProfile(userId);
+      if (!mounted) return;
+      applyProfile(fetched ?? profileRef.current);
+    };
+
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchProfile(session.user.id).then(setProfile).finally(() => setLoading(false));
+      if (!mounted) return;
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      if (currentUser) {
+        syncProfile(currentUser.id).finally(() => {
+          if (mounted) setLoading(false);
+        });
       } else {
-        setProfile(null);
+        applyProfile(null);
         setLoading(false);
       }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session: Session | null) => {
+      (event, session: Session | null) => {
         const currentUser = session?.user ?? null;
         setUser(currentUser);
-        if (currentUser) {
-          const p = await fetchProfile(currentUser.id);
-          setProfile(p);
-        } else {
-          setProfile(null);
+
+        if (!currentUser) {
+          applyProfile(null);
+          setLoading(false);
+          return;
         }
-        setLoading(false);
+
+        // Evita deadlock/race com signUp + insert do perfil (recomendação Supabase)
+        setTimeout(() => {
+          if (event === "SIGNED_IN" || event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED") {
+            syncProfile(currentUser.id).finally(() => setLoading(false));
+          } else {
+            setLoading(false);
+          }
+        }, 0);
       }
     );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const loginWithEmail = async (
@@ -86,27 +125,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     password: string,
     isSignUp: boolean
   ): Promise<User> => {
-    setLoading(true);
-    try {
-      if (isSignUp) {
-        const { data, error } = await supabase.auth.signUp({
-          email: email.trim(),
-          password,
-        });
-        if (error) throw error;
-        if (!data.user) throw new Error("Falha ao criar conta.");
-        return data.user;
-      }
-      const { data, error } = await supabase.auth.signInWithPassword({
+    if (isSignUp) {
+      const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password,
       });
       if (error) throw error;
-      if (!data.user) throw new Error("Falha ao autenticar.");
+      if (!data.user) throw new Error("Falha ao criar conta.");
       return data.user;
-    } finally {
-      setLoading(false);
     }
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+    if (error) throw error;
+    if (!data.user) throw new Error("Falha ao autenticar.");
+    return data.user;
   };
 
   const signUpUser = async (
@@ -116,36 +151,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     role: UserRole,
     squad: string
   ): Promise<User> => {
-    setLoading(true);
+    const { data, error } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: {
+        data: {
+          name: name.trim(),
+          role,
+          squad: squad.trim(),
+        },
+      },
+    });
+
+    if (error) throw error;
+    if (!data.user) throw new Error("Falha ao criar conta.");
+
+    if (!data.session) {
+      throw new Error(
+        "Conta criada, mas o login exige confirmação de e-mail. " +
+          "Confirme o e-mail ou desative 'Confirm email' em Supabase → Authentication → Email."
+      );
+    }
+
+    const newUserProfile: UserProfile = {
+      id: data.user.id,
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
+      role,
+      squad: squad.trim(),
+      createdAt: new Date().toISOString(),
+    };
+
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email: email.trim(),
-        password,
-      });
-      if (error) throw error;
-      if (!data.user) throw new Error("Falha ao criar conta.");
-
-      if (!data.session) {
-        throw new Error(
-          "Conta criada, mas o login exige confirmação de e-mail. " +
-            "Confirme o e-mail ou desative 'Confirm email' em Supabase → Authentication → Email."
-        );
-      }
-
-      const newUserProfile: UserProfile = {
-        id: data.user.id,
-        name: name.trim(),
-        email: email.trim().toLowerCase(),
-        role,
-        squad: squad.trim(),
-        createdAt: new Date().toISOString(),
-      };
-
       await saveProfile(newUserProfile);
-      setProfile(newUserProfile);
+      applyProfile(newUserProfile);
+      setUser(data.user);
       return data.user;
-    } finally {
-      setLoading(false);
+    } catch (profileError) {
+      await supabase.auth.signOut();
+      applyProfile(null);
+      setUser(null);
+      throw profileError;
     }
   };
 
@@ -154,7 +200,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     squad: string,
     warRoomName: string
   ): Promise<string> => {
-    setLoading(true);
     const tempEmail = `guest_${Date.now()}_${Math.floor(Math.random() * 1000)}@guest.forceqa.com`;
     const tempPassword = `guestPass_${Math.floor(Math.random() * 900000) + 100000}`;
 
@@ -164,18 +209,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         password: tempPassword,
       });
       if (error) throw error;
-      if (!data.user) throw new Error("Falha ao criar sessão de convidado.");
+      if (!data.user || !data.session) {
+        throw new Error("Falha ao criar sessão de convidado.");
+      }
 
       const room = await findWarRoomByIdOrName(warRoomName);
       if (!room) {
-        await supabase.auth.signOut();
         throw new Error(
           "A sala de guerra informada não existe ou o ID é inválido. Verifique se o ID/Nome está correto."
         );
       }
 
       if (room.guestAccessDisabled === true) {
-        await supabase.auth.signOut();
         throw new Error(
           "O acesso de convidados (Guest) para esta Sala de Guerra foi desativado pelo administrador."
         );
@@ -191,13 +236,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
 
       await saveProfile(guestProfile);
-      setProfile(guestProfile);
+      applyProfile(guestProfile);
+      setUser(data.user);
       return room.id;
     } catch (error) {
       await supabase.auth.signOut();
+      applyProfile(null);
+      setUser(null);
       throw error;
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -232,14 +278,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
-    setLoading(true);
-    try {
-      await supabase.auth.signOut();
-      setUser(null);
-      setProfile(null);
-    } finally {
-      setLoading(false);
-    }
+    await supabase.auth.signOut();
+    setUser(null);
+    applyProfile(null);
   };
 
   const createProfile = async (name: string, role: UserRole, squad: string) => {
@@ -256,7 +297,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       newProfile.avatarUrl = user.user_metadata.avatar_url;
     }
     await saveProfile(newProfile);
-    setProfile(newProfile);
+    applyProfile(newProfile);
   };
 
   const updateProfile = async (profileData: Partial<UserProfile>) => {
@@ -268,7 +309,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       email: profile.email,
     };
     await saveProfile(updated);
-    setProfile(updated);
+    applyProfile(updated);
   };
 
   return (
