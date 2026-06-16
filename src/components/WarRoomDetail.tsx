@@ -4,7 +4,9 @@ import { createBug, updateBugField, fetchAISuggestions, fetchAIDuplicateCheck, f
 import { useAuth } from "../context/AuthContext";
 import { WarRoom, Bug, SeverityLevel, BugStatus, BugPriority, BugType, AISuggestion, AIDuplicateCheck, AIWarRoomSummary } from "../types";
 import { BugDetailModal } from "./BugDetailModal";
+import { BugTypeTag } from "./BugTypeTag";
 import { evidenceLabel } from "../lib/evidence";
+import { getBugTypeLabel } from "../lib/bugLabels";
 import { 
   ArrowLeft, 
   Terminal, 
@@ -392,16 +394,6 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
     }
   };
 
-  const getTypeBadgeLabels = (type: BugType) => {
-    switch(type) {
-      case "bug": return "🐞 Bug";
-      case "improvement": return "⚡ Melhoria";
-      case "ui_adjustment": return "🎨 Ajuste Visual";
-      case "performance": return "🚀 Performance";
-      case "security": return "🔒 Segurança";
-    }
-  };
-
   if (!warRoom) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
@@ -744,28 +736,39 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                       )}
 
                       <div>
-                        <div className="flex justify-between items-start gap-1">
-                          <span className={`text-[9px] font-mono font-black py-0.5 px-2 rounded ${getSeverityBadgeColors(bug.criticism)}`}>
-                            {severityLabels[bug.criticism]}
-                          </span>
-                          <span className="text-[9px] font-mono text-slate-500 font-bold uppercase truncate max-w-[80px]" title={bug.id}>
+                        <div className="flex justify-between items-start gap-1.5 mb-2">
+                          <div className="flex flex-wrap items-center gap-1">
+                            <BugTypeTag type={bug.type} />
+                            <span className={`text-[9px] font-mono font-bold py-0.5 px-1.5 rounded border ${getSeverityBadgeColors(bug.criticism)}`}>
+                              {severityLabels[bug.criticism]}
+                            </span>
+                          </div>
+                          <span className="text-[9px] font-mono text-slate-500 truncate max-w-[72px]" title={bug.id}>
                             {bug.id}
                           </span>
                         </div>
 
-                        <h4 className="font-semibold text-white group-hover:text-red-400 text-xs transition duration-150 leading-relaxed mt-2" title={bug.title}>
+                        <h4 className="font-semibold text-white group-hover:text-red-400 text-xs transition duration-150 leading-relaxed" title={bug.title}>
                           {bug.title}
                         </h4>
 
-                        {/* Evidence icon indicator */}
-                        <div className="flex gap-2 items-center flex-wrap pt-2">
-                          <span className="text-[9px] text-slate-450 font-mono inline-block bg-[#0f172a]/80 py-0.5 px-1.5 rounded">
-                            {getTypeBadgeLabels(bug.type)}
-                          </span>
-                          
+                        <div className="flex gap-1.5 items-center flex-wrap pt-2">
+                          {bug.tags?.length > 0 &&
+                            bug.tags.slice(0, 3).map((tag) => (
+                              <span
+                                key={tag}
+                                className="text-[9px] text-neutral-400 bg-white/[0.04] border border-white/[0.06] py-0.5 px-1.5 rounded"
+                              >
+                                #{tag}
+                              </span>
+                            ))}
+                          {bug.tags && bug.tags.length > 3 && (
+                            <span className="text-[9px] text-neutral-600">+{bug.tags.length - 3}</span>
+                          )}
+
                           {bug.evidenceUrl && (
                             <span className="text-[9px] bg-indigo-950/20 border border-indigo-500/10 text-indigo-400 font-mono py-0.5 px-1.5 rounded">
-                              {evidenceLabel(bug.evidenceUrl) === "image" ? "📸 ATTACHED" : "🔗 LINK"}
+                              {evidenceLabel(bug.evidenceUrl) === "image" ? "📸" : "🔗"}
                             </span>
                           )}
                         </div>
@@ -849,7 +852,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                     const count = filteredBugs.filter(b => b.type === type).length;
                     return (
                       <div key={type} className="flex justify-between text-[11px] font-mono py-1 border-b border-white/[0.02]">
-                        <span className="text-slate-350">{getTypeBadgeLabels(type as BugType)}</span>
+                        <span className="text-slate-350">{getBugTypeLabel(type as BugType)}</span>
                         <span className="font-bold text-white">{count}</span>
                       </div>
                     );

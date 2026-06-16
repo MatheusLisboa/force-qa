@@ -4,6 +4,8 @@ import { updateBugField, createComment, fetchUsersList } from "../lib/services";
 import { useAuth } from "../context/AuthContext";
 import { Bug, BugComment, ActivityLog, BugStatus, SeverityLevel } from "../types";
 import { isImageEvidence } from "../lib/evidence";
+import { truncateForLog } from "../lib/bugLabels";
+import { BugTypeTag } from "./BugTypeTag";
 import { 
   X, 
   Terminal, 
@@ -17,7 +19,9 @@ import {
   Grid,
   FileText,
   AlertCircle,
-  ExternalLink
+  ExternalLink,
+  Pencil,
+  Check
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -36,6 +40,13 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
   const [users, setUsers] = useState<any[]>([]);
   const [isFullscreenEvidence, setIsFullscreenEvidence] = useState(false);
   const [fullscreenUrl, setFullscreenUrl] = useState<string | null>(null);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editTitle, setEditTitle] = useState(bug.title);
+  const [isEditingDescription, setIsEditingDescription] = useState(false);
+  const [editDescription, setEditDescription] = useState(bug.description);
+  const [savingField, setSavingField] = useState<"title" | "description" | null>(null);
+
+  const canEdit = profile?.role !== "viewer";
 
   // Status mappings with labels & border colors
   const statusLabels: { [key in BugStatus]: { text: string; bg: string; textCol: string } } = {
@@ -79,6 +90,72 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
       unsubscribeLogs();
     };
   }, [bug.id]);
+
+  useEffect(() => {
+    setEditTitle(activeBug.title);
+    setEditDescription(activeBug.description);
+  }, [activeBug.title, activeBug.description]);
+
+  const handleSaveTitle = async () => {
+    if (!profile || !canEdit) return;
+    const trimmed = editTitle.trim();
+    if (!trimmed) {
+      alert("O título não pode ficar vazio.");
+      return;
+    }
+    if (trimmed === activeBug.title) {
+      setIsEditingTitle(false);
+      return;
+    }
+
+    setSavingField("title");
+    try {
+      const oldTitle = activeBug.title;
+      await updateBugField(
+        activeBug.id,
+        activeBug.warRoomId,
+        { title: trimmed },
+        profile.id,
+        profile.name,
+        `Alterou o título de "${truncateForLog(oldTitle, 60)}" para "${truncateForLog(trimmed, 60)}"`,
+        "title_edit"
+      );
+      setIsEditingTitle(false);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingField(null);
+    }
+  };
+
+  const handleSaveDescription = async () => {
+    if (!profile || !canEdit) return;
+    const trimmed = editDescription.trim();
+    if (trimmed === (activeBug.description || "").trim()) {
+      setIsEditingDescription(false);
+      return;
+    }
+
+    setSavingField("description");
+    try {
+      const oldDesc = activeBug.description || "(vazio)";
+      const newDesc = trimmed || "(vazio)";
+      await updateBugField(
+        activeBug.id,
+        activeBug.warRoomId,
+        { description: trimmed },
+        profile.id,
+        profile.name,
+        `Alterou a descrição de "${truncateForLog(oldDesc, 60)}" para "${truncateForLog(newDesc, 60)}"`,
+        "description_edit"
+      );
+      setIsEditingDescription(false);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingField(null);
+    }
+  };
 
   const handlePostComment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -186,10 +263,11 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
       >
         {/* Header toolbar */}
         <div className="p-4 lg:p-5 border-b border-slate-800/60 bg-[#0f172a]/40 flex justify-between items-center bg-zinc-900/10">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <span className="p-1 px-2.5 bg-slate-805 text-slate-400 border border-slate-800 rounded font-mono text-[10px] font-bold">
               ID: {activeBug.id}
             </span>
+            <BugTypeTag type={activeBug.type} size="md" />
             <span className={`p-1 px-2.5 text-[10px] font-mono tracking-wider font-extrabold rounded ${severityColors[activeBug.criticism]}`}>
               {severityLabels[activeBug.criticism]}
             </span>
@@ -211,13 +289,57 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
           {/* Column 1: Bug details & screenshot evidences */}
           <div className="lg:col-span-5 p-6 border-r border-slate-800/50 space-y-6">
             <div>
-              <h2 className="font-display text-2xl font-black text-white hover:text-red-400 transition duration-150 leading-tight">
-                {activeBug.title}
-              </h2>
+              {isEditingTitle ? (
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    maxLength={200}
+                    className="w-full fq-input text-lg font-semibold"
+                    autoFocus
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSaveTitle}
+                      disabled={savingField === "title" || !editTitle.trim()}
+                      className="fq-btn-primary text-[12px] py-1.5"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      Salvar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditTitle(activeBug.title);
+                        setIsEditingTitle(false);
+                      }}
+                      className="fq-btn-ghost text-[12px] py-1.5"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-start gap-2 group/title">
+                  <h2 className="font-display text-2xl font-black text-white leading-tight flex-1">
+                    {activeBug.title}
+                  </h2>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingTitle(true)}
+                      className="p-1.5 text-neutral-500 hover:text-neutral-200 hover:bg-white/[0.06] rounded-md opacity-0 group-hover/title:opacity-100 transition"
+                      title="Editar título"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              )}
               <div className="flex flex-wrap items-center gap-4 text-xs font-mono text-slate-450 mt-3 border-b border-slate-850 pb-4">
                 <span>HUNTER: <span className="text-slate-300">{activeBug.createdByName}</span></span>
-                <span>•</span>
-                <span>MODAL: <span className="text-slate-300 uppercase">{activeBug.type}</span></span>
                 <span>•</span>
                 <span>ENV: <span className="text-slate-300 uppercase">{activeBug.environment === "homologation" ? "HMG" : activeBug.environment === "production" ? "PROD" : "DEV"}</span></span>
               </div>
@@ -225,12 +347,57 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
 
             {/* Description text block */}
             <div className="bg-[#0f172a]/20 border border-slate-850 p-4 rounded-xl">
-              <span className="text-[10px] font-mono text-slate-450 uppercase flex items-center gap-1.5 mb-2">
-                <FileText className="w-3.5 h-3.5" /> DESCRIÇÃO
-              </span>
-              <p className="text-slate-200 text-sm whitespace-pre-wrap leading-relaxed">
-                {activeBug.description || "Nenhuma descrição operacional complementar foi fornecida originalmente por este analista."}
-              </p>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-mono text-slate-450 uppercase flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5" /> DESCRIÇÃO
+                </span>
+                {canEdit && !isEditingDescription && (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingDescription(true)}
+                    className="p-1 text-neutral-500 hover:text-neutral-200 hover:bg-white/[0.06] rounded-md transition"
+                    title="Editar descrição"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+              {isEditingDescription ? (
+                <div className="space-y-2">
+                  <textarea
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    rows={6}
+                    className="w-full fq-input text-sm resize-y min-h-[120px]"
+                    autoFocus
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSaveDescription}
+                      disabled={savingField === "description"}
+                      className="fq-btn-primary text-[12px] py-1.5"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      Salvar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditDescription(activeBug.description);
+                        setIsEditingDescription(false);
+                      }}
+                      className="fq-btn-ghost text-[12px] py-1.5"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-slate-200 text-sm whitespace-pre-wrap leading-relaxed">
+                  {activeBug.description || "Nenhuma descrição complementar foi fornecida."}
+                </p>
+              )}
             </div>
 
             {/* Structured details meta card */}
@@ -441,16 +608,35 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
               </span>
 
               <div className="space-y-3.5 overflow-y-auto max-h-[220px] pr-1">
-                {activityLogs.map((log) => (
-                  <div key={log.id} className="text-xs">
-                    <span className="font-semibold text-slate-200 block">{log.description}</span>
-                    <div className="flex gap-2 text-[10px] font-mono text-slate-450 mt-1">
-                      <span>{log.userName}</span>
-                      <span>•</span>
-                      <span>{log.createdAt ? new Date(log.createdAt).toLocaleTimeString() : ""}</span>
+                {activityLogs.map((log) => {
+                  const isEditLog =
+                    log.type === "title_edit" || log.type === "description_edit";
+                  return (
+                    <div
+                      key={log.id}
+                      className={`text-xs rounded-lg p-2 ${
+                        isEditLog ? "bg-violet-500/5 border border-violet-500/15" : ""
+                      }`}
+                    >
+                      <span className="font-semibold text-slate-200 block">{log.description}</span>
+                      <div className="flex gap-2 text-[10px] font-mono text-slate-450 mt-1">
+                        <span>{log.userName}</span>
+                        <span>•</span>
+                        <span>
+                          {log.createdAt
+                            ? new Date(log.createdAt).toLocaleString()
+                            : ""}
+                        </span>
+                        {isEditLog && (
+                          <>
+                            <span>•</span>
+                            <span className="text-violet-400">edição</span>
+                          </>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>

@@ -169,7 +169,8 @@ export async function updateBugField(
   fields: Partial<Bug>,
   userId: string,
   userName: string,
-  logDescription: string
+  logDescription: string,
+  logType = "update"
 ): Promise<void> {
   const now = new Date().toISOString();
   const payload: Record<string, unknown> = { updated_at: now };
@@ -201,7 +202,7 @@ export async function updateBugField(
     warRoomId,
     userId,
     userName,
-    type: "update",
+    type: logType,
     description: logDescription,
   });
 }
