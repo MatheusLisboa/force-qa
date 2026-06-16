@@ -5,6 +5,7 @@ import {
   toUserProfile,
   findWarRoomByIdOrName,
 } from "../lib/supabase";
+import { isUserAlreadyRegistered } from "../lib/authErrors";
 import { UserProfile, UserRole } from "../types";
 
 interface AuthContextType {
@@ -151,48 +152,77 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     role: UserRole,
     squad: string
   ): Promise<User> => {
-    const { data, error } = await supabase.auth.signUp({
-      email: email.trim(),
-      password,
-      options: {
-        data: {
-          name: name.trim(),
-          role,
-          squad: squad.trim(),
-        },
-      },
-    });
-
-    if (error) throw error;
-    if (!data.user) throw new Error("Falha ao criar conta.");
-
-    if (!data.session) {
-      throw new Error(
-        "Conta criada, mas o login exige confirmação de e-mail. " +
-          "Confirme o e-mail ou desative 'Confirm email' em Supabase → Authentication → Email."
-      );
-    }
-
+    const trimmedEmail = email.trim().toLowerCase();
     const newUserProfile: UserProfile = {
-      id: data.user.id,
+      id: "",
       name: name.trim(),
-      email: email.trim().toLowerCase(),
+      email: trimmedEmail,
       role,
       squad: squad.trim(),
       createdAt: new Date().toISOString(),
     };
 
-    try {
+    let authUser: User | null = null;
+
+    const signUpResult = await supabase.auth.signUp({
+      email: trimmedEmail,
+      password,
+      options: {
+        data: {
+          name: newUserProfile.name,
+          role,
+          squad: newUserProfile.squad,
+        },
+      },
+    });
+
+    if (isUserAlreadyRegistered(signUpResult.error)) {
+      const loginResult = await supabase.auth.signInWithPassword({
+        email: trimmedEmail,
+        password,
+      });
+
+      if (loginResult.error) {
+        throw new Error(
+          "Este e-mail já foi registrado em uma tentativa anterior que não completou o cadastro, e a senha não confere. " +
+            "No Supabase → Authentication → Users, exclua este e-mail e cadastre-se novamente, " +
+            "ou redefina a senha pelo painel do Supabase."
+        );
+      }
+
+      authUser = loginResult.data.user;
+      if (!loginResult.data.session) {
+        throw new Error("Não foi possível iniciar sessão com este e-mail.");
+      }
+    } else if (signUpResult.error) {
+      throw signUpResult.error;
+    } else {
+      if (!signUpResult.data.user) throw new Error("Falha ao criar conta.");
+
+      if (!signUpResult.data.session) {
+        throw new Error(
+          "Conta criada, mas o login exige confirmação de e-mail. " +
+            "Confirme o e-mail ou desative 'Confirm email' em Supabase → Authentication → Email."
+        );
+      }
+
+      authUser = signUpResult.data.user;
+    }
+
+    if (!authUser) throw new Error("Falha ao autenticar após cadastro.");
+
+    newUserProfile.id = authUser.id;
+
+    const existing = await fetchProfile(authUser.id);
+    if (!existing) {
       await saveProfile(newUserProfile);
       applyProfile(newUserProfile);
-      setUser(data.user);
-      return data.user;
-    } catch (profileError) {
-      await supabase.auth.signOut();
-      applyProfile(null);
-      setUser(null);
-      throw profileError;
+    } else {
+      applyProfile(existing);
     }
+
+    setUser(authUser);
+    return authUser;
   };
 
   const loginAsGuest = async (

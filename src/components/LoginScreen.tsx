@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { isSupabaseConfigured } from "../lib/supabase";
+import { getAuthErrorCode, getAuthErrorMessage, isUserAlreadyRegistered } from "../lib/authErrors";
 import { LogIn, Sparkles, AlertTriangle, ShieldCheck, Zap, Mail, UserPlus, HelpCircle } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -55,35 +56,29 @@ export const LoginScreen: React.FC = () => {
       } else {
         await loginWithEmail(email.trim(), password, false);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      const code = err.code || "";
-      const msg = err.message || "";
+      const code = getAuthErrorCode(err);
+      const msg = getAuthErrorMessage(err);
 
-      if (
-        code === "invalid_credentials" ||
-        msg.includes("Invalid login credentials")
-      ) {
+      if (code === "invalid_credentials" || msg.includes("Invalid login credentials")) {
         setEmailError(
-          "E-mail ou senha incorretos. Se ainda não tem conta, use a opção de cadastro abaixo."
+          "E-mail ou senha incorretos. Se você já tentou cadastrar antes, exclua o usuário em Supabase → Authentication → Users e tente de novo."
         );
       } else if (code === "email_not_confirmed" || msg.includes("Email not confirmed")) {
         setEmailError(
           "E-mail não confirmado. Verifique sua caixa de entrada ou desative a confirmação no Supabase."
         );
-      } else if (
-        code === "user_already_exists" ||
-        msg.includes("already registered")
-      ) {
-        setEmailError("Este e-mail já está sendo utilizado.");
-      } else if (code === "weak_password" || msg.includes("Password")) {
-        setEmailError("Senha fraca. Use no mínimo 6 caracteres.");
-      } else if (code === "invalid_email" || msg.includes("invalid email")) {
-        setEmailError("Endereço de e-mail inválido.");
-      } else if (msg.includes("row-level security") || msg.includes("RLS")) {
+      } else if (isUserAlreadyRegistered(err)) {
         setEmailError(
-          "Autenticação OK, mas falhou ao salvar perfil. Verifique as policies da tabela users no Supabase."
+          "Este e-mail já está registrado. Use a opção de login abaixo (não cadastro). Se não lembra a senha, exclua o usuário no Supabase e cadastre de novo."
         );
+      } else if (code === "weak_password" || msg.toLowerCase().includes("password")) {
+        setEmailError("Senha fraca. Use no mínimo 6 caracteres.");
+      } else if (code === "invalid_email" || msg.toLowerCase().includes("invalid email")) {
+        setEmailError("Endereço de e-mail inválido.");
+      } else if (msg.includes("row-level security") || msg.includes("RLS") || msg.includes("perfil")) {
+        setEmailError(msg);
       } else {
         setEmailError(msg || "Erro ao autenticar. Tente novamente.");
       }
