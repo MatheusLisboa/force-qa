@@ -10,9 +10,21 @@ import {
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn(
-    "[ForceQA] VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY são obrigatórios no .env"
+/** Vite embute VITE_* no build — na Vercel as vars precisam existir antes do deploy. */
+export function isSupabaseConfigured(): boolean {
+  return Boolean(
+    supabaseUrl &&
+    supabaseAnonKey &&
+    supabaseUrl.startsWith("https://") &&
+    !supabaseUrl.includes("placeholder") &&
+    supabaseAnonKey !== "placeholder"
+  );
+}
+
+if (!isSupabaseConfigured()) {
+  console.error(
+    "[ForceQA] Supabase não configurado. Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY " +
+      "(Vercel: Settings → Environment Variables → redeploy obrigatório)."
   );
 }
 

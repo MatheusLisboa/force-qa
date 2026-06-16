@@ -125,6 +125,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (error) throw error;
       if (!data.user) throw new Error("Falha ao criar conta.");
 
+      if (!data.session) {
+        throw new Error(
+          "Conta criada, mas o login exige confirmação de e-mail. " +
+            "Confirme o e-mail ou desative 'Confirm email' em Supabase → Authentication → Email."
+        );
+      }
+
       const newUserProfile: UserProfile = {
         id: data.user.id,
         name: name.trim(),

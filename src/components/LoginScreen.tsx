@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import { isSupabaseConfigured } from "../lib/supabase";
 import { LogIn, Sparkles, AlertTriangle, ShieldCheck, Zap, Mail, UserPlus, HelpCircle } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -56,16 +57,35 @@ export const LoginScreen: React.FC = () => {
       }
     } catch (err: any) {
       console.error(err);
-      if (err.code === "auth/user-not-found" || err.code === "auth/invalid-credential") {
-        setEmailError("E-mail ou senha incorretos. Se este é um ambiente novo ou se ainda não tem registro, use a opção de cadastro abaixo.");
-      } else if (err.code === "auth/wrong-password") {
-        setEmailError("Senha incorreta. Tente novamente.");
-      } else if (err.code === "auth/email-already-in-use") {
+      const code = err.code || "";
+      const msg = err.message || "";
+
+      if (
+        code === "invalid_credentials" ||
+        msg.includes("Invalid login credentials")
+      ) {
+        setEmailError(
+          "E-mail ou senha incorretos. Se ainda não tem conta, use a opção de cadastro abaixo."
+        );
+      } else if (code === "email_not_confirmed" || msg.includes("Email not confirmed")) {
+        setEmailError(
+          "E-mail não confirmado. Verifique sua caixa de entrada ou desative a confirmação no Supabase."
+        );
+      } else if (
+        code === "user_already_exists" ||
+        msg.includes("already registered")
+      ) {
         setEmailError("Este e-mail já está sendo utilizado.");
-      } else if (err.code === "auth/invalid-email") {
+      } else if (code === "weak_password" || msg.includes("Password")) {
+        setEmailError("Senha fraca. Use no mínimo 6 caracteres.");
+      } else if (code === "invalid_email" || msg.includes("invalid email")) {
         setEmailError("Endereço de e-mail inválido.");
+      } else if (msg.includes("row-level security") || msg.includes("RLS")) {
+        setEmailError(
+          "Autenticação OK, mas falhou ao salvar perfil. Verifique as policies da tabela users no Supabase."
+        );
       } else {
-        setEmailError(err.message || "Erro ao autenticar. Tente novamente.");
+        setEmailError(msg || "Erro ao autenticar. Tente novamente.");
       }
     } finally {
       setEmailLoading(false);
@@ -136,6 +156,16 @@ export const LoginScreen: React.FC = () => {
           className="w-full max-w-lg bg-[#0d1220]/90 border border-[#1e293b] backdrop-blur-xl rounded-2xl p-8 shadow-[0_20px_50px_rgba(0,0,0,0.5)]"
         >
           <div className="text-center">
+            {!isSupabaseConfigured() && (
+              <div className="p-3 bg-amber-900/25 border border-amber-500/30 text-amber-300 text-xs rounded-lg mb-4 text-left font-mono leading-relaxed">
+                <strong className="text-amber-200">Supabase não configurado neste deploy.</strong>
+                <br />
+                Na Vercel, adicione <code>VITE_SUPABASE_URL</code> e{" "}
+                <code>VITE_SUPABASE_ANON_KEY</code> (com prefixo VITE_) e faça um{" "}
+                <strong>novo deploy</strong> — variáveis só entram no build, não em runtime.
+              </div>
+            )}
+
             <div className="inline-flex p-3 bg-red-500/10 text-red-500 rounded-xl border border-red-500/20 mb-4 relative">
               <ShieldCheck className="w-8 h-8" />
               <span className="absolute -top-1 -right-1 flex h-3 w-3">
