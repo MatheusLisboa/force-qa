@@ -6,7 +6,9 @@ import { motion } from "motion/react";
 
 export const Onboarding: React.FC = () => {
   const { user, createProfile } = useAuth();
-  const [name, setName] = useState(user?.displayName || "");
+  const [name, setName] = useState(
+    user?.user_metadata?.full_name || user?.user_metadata?.name || ""
+  );
   const [squad, setSquad] = useState("");
   const [role, setRole] = useState<UserRole>("developer");
   const [submitting, setSubmitting] = useState(false);

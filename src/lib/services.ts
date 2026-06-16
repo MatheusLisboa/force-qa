@@ -1,202 +1,300 @@
-import { 
-  collection, 
-  doc, 
-  setDoc, 
-  updateDoc, 
-  addDoc,
-  deleteDoc,
-  serverTimestamp, 
-  getDocs, 
-  getDoc, 
-  query, 
-  where, 
-  orderBy, 
-  onSnapshot 
-} from "firebase/firestore";
-import { db, handleFirestoreError, OperationType } from "./firebase";
-import { WarRoom, Bug, BugComment, ActivityLog, AISuggestion, AIDuplicateCheck, AIWarRoomSummary, SeverityLevel, BugStatus, BugPriority, BugType } from "../types";
+import {
+  supabase,
+  handleDbError,
+  OperationType,
+  toUserProfile,
+  toWarRoom,
+} from "./supabase";
+import {
+  WarRoom,
+  Bug,
+  BugComment,
+  ActivityLog,
+  AISuggestion,
+  AIDuplicateCheck,
+  AIWarRoomSummary,
+  UserProfile,
+} from "../types";
 
-// -------------------------
-// Helper to strip undefined values for Firestore compatibility
-// -------------------------
 function cleanUndefined<T extends object>(obj: T): T {
-  const result = { ...obj } as any;
+  const result = { ...obj } as Record<string, unknown>;
   Object.keys(result).forEach((key) => {
-    if (result[key] === undefined) {
-      delete result[key];
-    }
+    if (result[key] === undefined) delete result[key];
   });
-  return result;
+  return result as T;
+}
+
+function generateId(prefix: string): string {
+  return prefix + Math.random().toString(36).substring(2, 11).toUpperCase();
+}
+
+function warRoomToRow(data: Omit<WarRoom, "id" | "createdAt">, customId: string) {
+  return cleanUndefined({
+    id: customId,
+    name: data.name,
+    project: data.project,
+    squad: data.squad,
+    date: data.date,
+    period_end: data.periodEnd || "",
+    description: data.description,
+    severity: data.severity,
+    status: data.status,
+    room_type: data.roomType,
+    created_by: data.createdBy,
+    created_by_name: data.createdByName,
+    guest_access_disabled: data.guestAccessDisabled ?? false,
+  });
 }
 
 // -------------------------
-// 1. WarRoom Operations
+// WarRoom / Board Operations
 // -------------------------
-export async function createWarRoom(data: Omit<WarRoom, "id" | "createdAt">): Promise<string> {
-  const customId = "room-" + Math.random().toString(36).substring(2, 11).toUpperCase();
-  const path = `warRooms/${customId}`;
+
+export async function createWarRoom(
+  data: Omit<WarRoom, "id" | "createdAt">
+): Promise<string> {
+  const prefix = data.roomType === "board" ? "board-" : "room-";
+  const customId = generateId(prefix);
   try {
-    const newRoom: WarRoom = cleanUndefined({
-      ...data,
-      id: customId,
-      createdAt: new Date().toISOString(),
-      guestAccessDisabled: false
-    });
-    await setDoc(doc(db, "warRooms", customId), newRoom);
+    const row = warRoomToRow(data, customId);
+    const { error } = await supabase.from("war_rooms").insert(row);
+    if (error) handleDbError(error, OperationType.CREATE, `war_rooms/${customId}`);
     return customId;
   } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, path);
+    handleDbError(error, OperationType.CREATE, `war_rooms/${customId}`);
   }
 }
 
-export async function updateWarRoomStatus(roomId: string, status: "active" | "ended" | "paused"): Promise<void> {
-  const path = `warRooms/${roomId}`;
-  try {
-    await updateDoc(doc(db, "warRooms", roomId), { status });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, path);
-  }
+export async function createBoard(
+  data: Omit<WarRoom, "id" | "createdAt" | "roomType" | "status" | "date" | "periodEnd">
+): Promise<string> {
+  return createWarRoom({
+    ...data,
+    roomType: "board",
+    status: "active",
+    date: "",
+    periodEnd: "",
+    severity: data.severity || "medium",
+  });
+}
+
+export async function updateWarRoomStatus(
+  roomId: string,
+  status: "active" | "ended" | "paused"
+): Promise<void> {
+  const { error } = await supabase
+    .from("war_rooms")
+    .update({ status })
+    .eq("id", roomId);
+  if (error) handleDbError(error, OperationType.UPDATE, `war_rooms/${roomId}`);
+}
+
+export async function updateWarRoom(
+  roomId: string,
+  fields: Partial<Pick<WarRoom, "status" | "guestAccessDisabled">>
+): Promise<void> {
+  const payload: Record<string, unknown> = {};
+  if (fields.status !== undefined) payload.status = fields.status;
+  if (fields.guestAccessDisabled !== undefined)
+    payload.guest_access_disabled = fields.guestAccessDisabled;
+
+  const { error } = await supabase
+    .from("war_rooms")
+    .update(payload)
+    .eq("id", roomId);
+  if (error) handleDbError(error, OperationType.UPDATE, `war_rooms/${roomId}`);
+}
+
+export async function deleteWarRoom(roomId: string): Promise<void> {
+  const { error } = await supabase.from("war_rooms").delete().eq("id", roomId);
+  if (error) handleDbError(error, OperationType.DELETE, `war_rooms/${roomId}`);
 }
 
 // -------------------------
-// 2. Bug Tracker Operations
+// Bug Operations
 // -------------------------
+
 export async function createBug(
   data: Omit<Bug, "id" | "createdAt" | "updatedAt">,
   userId: string,
   userName: string
 ): Promise<string> {
-  const customId = "bug-" + Math.random().toString(36).substring(2, 11).toUpperCase();
-  const path = `bugs/${customId}`;
+  const customId = generateId("bug-");
   try {
     const now = new Date().toISOString();
-    const newBug: Bug = cleanUndefined({
-      ...data,
+    const row = cleanUndefined({
       id: customId,
-      createdAt: now,
-      updatedAt: now,
-      reopenCount: 0
+      war_room_id: data.warRoomId,
+      title: data.title,
+      description: data.description,
+      criticism: data.criticism,
+      status: data.status,
+      evidence_url: data.evidenceUrl,
+      prototype_url: data.prototypeUrl,
+      owner_id: data.ownerId,
+      owner_name: data.ownerName,
+      environment: data.environment,
+      affected_url: data.affectedUrl,
+      build_version: data.buildVersion,
+      tags: data.tags,
+      priority: data.priority,
+      type: data.type,
+      created_at: now,
+      updated_at: now,
+      created_by: data.createdBy,
+      created_by_name: data.createdByName,
+      reopen_count: 0,
     });
-    await setDoc(doc(db, "bugs", customId), newBug);
+    const { error } = await supabase.from("bugs").insert(row);
+    if (error) handleDbError(error, OperationType.CREATE, `bugs/${customId}`);
 
-    // Initialise Activity Log
     await createActivityLog({
       bugId: customId,
       warRoomId: data.warRoomId,
       userId,
       userName,
       type: "creation",
-      description: `Registrou o bug "${data.title}" com criticidade [${data.criticism.toUpperCase()}]`
+      description: `Registrou o bug "${data.title}" com criticidade [${data.criticism.toUpperCase()}]`,
     });
 
     return customId;
   } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, path);
+    handleDbError(error, OperationType.CREATE, `bugs/${customId}`);
   }
 }
 
 export async function updateBugField(
-  bugId: string, 
+  bugId: string,
   warRoomId: string,
   fields: Partial<Bug>,
   userId: string,
   userName: string,
   logDescription: string
 ): Promise<void> {
-  const path = `bugs/${bugId}`;
-  try {
-    const now = new Date().toISOString();
-    const updatePayload: any = cleanUndefined({
-      ...fields,
-      updatedAt: now
-    });
+  const now = new Date().toISOString();
+  const payload: Record<string, unknown> = { updated_at: now };
 
-    if (fields.status === "validated") {
-      updatePayload.resolvedAt = now;
-    }
-
-    await updateDoc(doc(db, "bugs", bugId), updatePayload);
-
-    // Log the change
-    await createActivityLog({
-      bugId,
-      warRoomId,
-      userId,
-      userName,
-      type: "update",
-      description: logDescription
-    });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, path);
+  if (fields.title !== undefined) payload.title = fields.title;
+  if (fields.description !== undefined) payload.description = fields.description;
+  if (fields.criticism !== undefined) payload.criticism = fields.criticism;
+  if (fields.status !== undefined) {
+    payload.status = fields.status;
+    if (fields.status === "validated") payload.resolved_at = now;
   }
+  if (fields.evidenceUrl !== undefined) payload.evidence_url = fields.evidenceUrl;
+  if (fields.prototypeUrl !== undefined) payload.prototype_url = fields.prototypeUrl;
+  if (fields.ownerId !== undefined) payload.owner_id = fields.ownerId;
+  if (fields.ownerName !== undefined) payload.owner_name = fields.ownerName;
+  if (fields.environment !== undefined) payload.environment = fields.environment;
+  if (fields.affectedUrl !== undefined) payload.affected_url = fields.affectedUrl;
+  if (fields.buildVersion !== undefined) payload.build_version = fields.buildVersion;
+  if (fields.tags !== undefined) payload.tags = fields.tags;
+  if (fields.priority !== undefined) payload.priority = fields.priority;
+  if (fields.type !== undefined) payload.type = fields.type;
+  if (fields.reopenCount !== undefined) payload.reopen_count = fields.reopenCount;
+
+  const { error } = await supabase.from("bugs").update(payload).eq("id", bugId);
+  if (error) handleDbError(error, OperationType.UPDATE, `bugs/${bugId}`);
+
+  await createActivityLog({
+    bugId,
+    warRoomId,
+    userId,
+    userName,
+    type: "update",
+    description: logDescription,
+  });
 }
 
 // -------------------------
-// 3. Comments Operations
+// Comments
 // -------------------------
+
 export async function createComment(
   commentData: Omit<BugComment, "id" | "createdAt">,
   userName: string
 ): Promise<void> {
-  const commentId = "com-" + Math.random().toString(36).substring(2, 11).toUpperCase();
-  const path = `bugs/${commentData.bugId}/comments/${commentId}`;
-  try {
-    const payload: BugComment = {
-      ...commentData,
-      id: commentId,
-      createdAt: new Date().toISOString()
-    };
-    await setDoc(doc(db, "bugs", commentData.bugId, "comments", commentId), payload);
+  const commentId = generateId("com-");
+  const { error } = await supabase.from("bug_comments").insert({
+    id: commentId,
+    bug_id: commentData.bugId,
+    war_room_id: commentData.warRoomId,
+    user_id: commentData.userId,
+    user_name: commentData.userName,
+    avatar_url: commentData.avatarUrl,
+    text: commentData.text,
+  });
+  if (error) handleDbError(error, OperationType.CREATE, `bug_comments/${commentId}`);
 
-    // Log that comment was added
-    await createActivityLog({
-      bugId: commentData.bugId,
-      warRoomId: commentData.warRoomId,
-      userId: commentData.userId,
-      userName,
-      type: "comment",
-      description: `Adicionou um comentário: "${commentData.text.length > 30 ? commentData.text.substring(0, 30) + "..." : commentData.text}"`
-    });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, path);
-  }
+  await createActivityLog({
+    bugId: commentData.bugId,
+    warRoomId: commentData.warRoomId,
+    userId: commentData.userId,
+    userName,
+    type: "comment",
+    description: `Adicionou um comentário: "${commentData.text.length > 30 ? commentData.text.substring(0, 30) + "..." : commentData.text}"`,
+  });
 }
 
 // -------------------------
-// 4. Activity Logs Operations
+// Activity Logs
 // -------------------------
-export async function createActivityLog(logData: Omit<ActivityLog, "id" | "createdAt">): Promise<void> {
-  const logId = "log-" + Math.random().toString(36).substring(2, 11).toUpperCase();
-  const path = `bugs/${logData.bugId}/activityLogs/${logId}`;
-  try {
-    const payload: ActivityLog = {
-      ...logData,
-      id: logId,
-      createdAt: new Date().toISOString()
-    };
-    await setDoc(doc(db, "bugs", logData.bugId, "activityLogs", logId), payload);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, path);
-  }
+
+export async function createActivityLog(
+  logData: Omit<ActivityLog, "id" | "createdAt">
+): Promise<void> {
+  const logId = generateId("log-");
+  const { error } = await supabase.from("activity_logs").insert({
+    id: logId,
+    bug_id: logData.bugId,
+    war_room_id: logData.warRoomId,
+    user_id: logData.userId,
+    user_name: logData.userName,
+    type: logData.type,
+    description: logData.description,
+  });
+  if (error) handleDbError(error, OperationType.CREATE, `activity_logs/${logId}`);
 }
 
 // -------------------------
-// 5. User Profile Fetching List
+// Users
 // -------------------------
-export async function fetchUsersList(): Promise<any[]> {
-  try {
-    const snap = await getDocs(collection(db, "users"));
-    return snap.docs.map(d => d.data());
-  } catch (error) {
-    console.error("Error fetching user lists:", error);
+
+export async function fetchUsersList(): Promise<UserProfile[]> {
+  const { data, error } = await supabase.from("users").select("*");
+  if (error) {
+    console.error("Error fetching users:", error);
     return [];
   }
+  return (data || []).map(toUserProfile);
+}
+
+export async function updateUserProfile(
+  userId: string,
+  fields: { name?: string; role?: string; squad?: string }
+): Promise<void> {
+  const payload: Record<string, unknown> = {};
+  if (fields.name !== undefined) payload.name = fields.name;
+  if (fields.role !== undefined) payload.role = fields.role;
+  if (fields.squad !== undefined) payload.squad = fields.squad;
+
+  const { error } = await supabase.from("users").update(payload).eq("id", userId);
+  if (error) handleDbError(error, OperationType.UPDATE, `users/${userId}`);
+}
+
+export async function deleteUserProfile(userId: string): Promise<void> {
+  const { error } = await supabase.from("users").delete().eq("id", userId);
+  if (error) handleDbError(error, OperationType.DELETE, `users/${userId}`);
 }
 
 // -------------------------
-// 6. Server-Side AI Integrations Proxy Calls
+// AI proxy calls
 // -------------------------
-export async function fetchAISuggestions(title: string, description: string): Promise<AISuggestion> {
+
+export async function fetchAISuggestions(
+  title: string,
+  description: string
+): Promise<AISuggestion> {
   const response = await fetch("/api/ai/suggest-bug-fields", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -210,8 +308,8 @@ export async function fetchAISuggestions(title: string, description: string): Pr
 }
 
 export async function fetchAIDuplicateCheck(
-  title: string, 
-  description: string, 
+  title: string,
+  description: string,
   existingBugs: Partial<Bug>[]
 ): Promise<AIDuplicateCheck> {
   const response = await fetch("/api/ai/detect-duplicate", {
@@ -226,7 +324,10 @@ export async function fetchAIDuplicateCheck(
   return response.json();
 }
 
-export async function fetchAIWarRoomSummary(warRoom: WarRoom, bugs: Bug[]): Promise<AIWarRoomSummary> {
+export async function fetchAIWarRoomSummary(
+  warRoom: WarRoom,
+  bugs: Bug[]
+): Promise<AIWarRoomSummary> {
   const response = await fetch("/api/ai/summarize-warroom", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -238,3 +339,5 @@ export async function fetchAIWarRoomSummary(warRoom: WarRoom, bugs: Bug[]): Prom
   }
   return response.json();
 }
+
+// Re-export for convenience

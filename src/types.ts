@@ -22,15 +22,19 @@ export type BugPriority = "immediate" | "high" | "medium" | "low";
 
 export type BugType = "bug" | "improvement" | "ui_adjustment" | "performance" | "security";
 
+export type RoomType = "war_room" | "board";
+
 export interface WarRoom {
   id: string;
   name: string;
   project: string;
   squad: string;
   date: string;
+  periodEnd?: string;
   description: string;
   severity: SeverityLevel;
   status: "active" | "ended" | "paused";
+  roomType: RoomType;
   createdAt: any;
   createdBy: string;
   createdByName?: string;
@@ -44,7 +48,7 @@ export interface Bug {
   description: string;
   criticism: SeverityLevel;
   status: BugStatus;
-  evidenceUrl?: string; // Base64 data URL for drag-and-drop screens
+  evidenceUrl?: string; // Base64 data URL, image URL, or external link
   prototypeUrl?: string; // Optional figma/prototype screenshot
   ownerId: string | null;
   ownerName: string | null;

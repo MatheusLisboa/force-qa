@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
+import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -10,6 +11,75 @@ const app = express();
 app.use(express.json({ limit: "10mb" })); // Allow payload sizes for evidence embedding
 
 const PORT = 3000;
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+
+function getSupabaseAdmin() {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY e VITE_SUPABASE_URL são obrigatórios para operações admin.");
+  }
+  return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
+
+async function verifyAdminToken(authHeader: string | undefined) {
+  if (!authHeader?.startsWith("Bearer ")) {
+    throw new Error("Token de autenticação ausente.");
+  }
+  const token = authHeader.slice(7);
+  const supabaseAdmin = getSupabaseAdmin();
+  const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+  if (error || !user) throw new Error("Sessão inválida ou expirada.");
+
+  const { data: profile } = await supabaseAdmin
+    .from("users")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (profile?.role !== "admin") {
+    throw new Error("Apenas administradores podem executar esta operação.");
+  }
+  return user;
+}
+
+// -------------------------
+// Admin: Create User
+// -------------------------
+app.post("/api/admin/create-user", async (req, res) => {
+  try {
+    await verifyAdminToken(req.headers.authorization);
+    const { name, email, password, role, squad } = req.body;
+    if (!name || !email || !password || !role || !squad) {
+      res.status(400).json({ error: "Todos os campos são obrigatórios." });
+      return;
+    }
+
+    const supabaseAdmin = getSupabaseAdmin();
+    const { data, error } = await supabaseAdmin.auth.admin.createUser({
+      email: email.trim(),
+      password,
+      email_confirm: true,
+    });
+    if (error) throw error;
+    if (!data.user) throw new Error("Falha ao criar usuário no Auth.");
+
+    const { error: profileError } = await supabaseAdmin.from("users").insert({
+      id: data.user.id,
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
+      role,
+      squad: squad.trim(),
+    });
+    if (profileError) throw profileError;
+
+    res.json({ success: true, userId: data.user.id });
+  } catch (error: any) {
+    console.error("Admin create user error:", error);
+    res.status(500).json({ error: error.message || "Falha ao criar usuário." });
+  }
+});
 
 // Lazy initialization of Gemini client to prevent crashes if key is omitted
 let aiClient: GoogleGenAI | null = null;

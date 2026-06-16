@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { collection, onSnapshot, query, orderBy, doc } from "firebase/firestore";
-import { db } from "../lib/firebase";
+import { subscribeBug, subscribeBugComments, subscribeActivityLogs } from "../lib/supabase";
 import { updateBugField, createComment, fetchUsersList } from "../lib/services";
 import { useAuth } from "../context/AuthContext";
 import { Bug, BugComment, ActivityLog, BugStatus, SeverityLevel } from "../types";
+import { isImageEvidence } from "../lib/evidence";
 import { 
   X, 
   Terminal, 
@@ -16,7 +16,8 @@ import {
   Tag, 
   Grid,
   FileText,
-  AlertCircle
+  AlertCircle,
+  ExternalLink
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -64,44 +65,13 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
 
   // Fetch commenters, logs, and users list
   useEffect(() => {
-    // 0. Listen for real-time Bug document
-    const bugRef = doc(db, "bugs", bug.id);
-    const unsubscribeBug = onSnapshot(bugRef, (docSnap) => {
-      if (docSnap.exists()) {
-        setActiveBug({ id: docSnap.id, ...docSnap.data() } as Bug);
-      }
+    const unsubscribeBug = subscribeBug(bug.id, (b) => {
+      if (b) setActiveBug(b);
     });
+    const unsubscribeComments = subscribeBugComments(bug.id, setComments);
+    const unsubscribeLogs = subscribeActivityLogs(bug.id, setActivityLogs);
 
-    // 1. Listen for real-time Comments
-    const commentsQuery = query(
-      collection(db, "bugs", bug.id, "comments"),
-      orderBy("createdAt", "asc")
-    );
-    const unsubscribeComments = onSnapshot(commentsQuery, (snapshot) => {
-      const coms: BugComment[] = [];
-      snapshot.forEach((docSnap) => {
-        coms.push(docSnap.data() as BugComment);
-      });
-      setComments(coms);
-    });
-
-    // 2. Listen for real-time Activity Logs
-    const logsQuery = query(
-      collection(db, "bugs", bug.id, "activityLogs"),
-      orderBy("createdAt", "desc")
-    );
-    const unsubscribeLogs = onSnapshot(logsQuery, (snapshot) => {
-      const logs: ActivityLog[] = [];
-      snapshot.forEach((docSnap) => {
-        logs.push(docSnap.data() as ActivityLog);
-      });
-      setActivityLogs(logs);
-    });
-
-    // 3. Get team members to enable assignment
-    fetchUsersList().then((res) => {
-      setUsers(res);
-    });
+    fetchUsersList().then(setUsers);
 
     return () => {
       unsubscribeBug();
@@ -306,25 +276,41 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
                   {activeBug.evidenceUrl && (
                     <div className="space-y-2">
                       <span className="text-[10px] font-mono text-slate-450 uppercase flex items-center gap-1.5 font-bold">
-                        📸 Evidência do Bug Encontrado
+                        {isImageEvidence(activeBug.evidenceUrl)
+                          ? "📸 Evidência do Bug Encontrado"
+                          : "🔗 Link de Evidência"}
                       </span>
-                      <div 
-                        onClick={() => {
-                          setFullscreenUrl(activeBug.evidenceUrl);
-                          setIsFullscreenEvidence(true);
-                        }}
-                        className="rounded-xl border border-slate-800/80 overflow-hidden max-h-[220px] aspect-video bg-black/40 hover:opacity-85 transition cursor-zoom-in relative group"
-                      >
-                        <img 
-                          src={activeBug.evidenceUrl} 
-                          alt="Evidência do Bug" 
-                          referrerPolicy="no-referrer"
-                          className="w-full h-full object-cover" 
-                        />
-                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-xs text-white font-mono transition">
-                          Clique para ampliar evidência
+                      {isImageEvidence(activeBug.evidenceUrl) ? (
+                        <div 
+                          onClick={() => {
+                            setFullscreenUrl(activeBug.evidenceUrl!);
+                            setIsFullscreenEvidence(true);
+                          }}
+                          className="rounded-xl border border-slate-800/80 overflow-hidden max-h-[220px] aspect-video bg-black/40 hover:opacity-85 transition cursor-zoom-in relative group"
+                        >
+                          <img 
+                            src={activeBug.evidenceUrl} 
+                            alt="Evidência do Bug" 
+                            referrerPolicy="no-referrer"
+                            className="w-full h-full object-cover" 
+                          />
+                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-xs text-white font-mono transition">
+                            Clique para ampliar evidência
+                          </div>
                         </div>
-                      </div>
+                      ) : (
+                        <a
+                          href={activeBug.evidenceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-3 p-4 rounded-xl border border-indigo-500/25 bg-indigo-950/20 hover:bg-indigo-950/35 transition group"
+                        >
+                          <ExternalLink className="w-5 h-5 text-indigo-400 shrink-0" />
+                          <span className="text-xs font-mono text-indigo-300 group-hover:text-indigo-200 break-all line-clamp-3">
+                            {activeBug.evidenceUrl}
+                          </span>
+                        </a>
+                      )}
                     </div>
                   )}
 

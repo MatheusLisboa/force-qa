@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { collection, onSnapshot, query, where, orderBy, doc } from "firebase/firestore";
-import { db } from "../lib/firebase";
-import { createBug, updateBugField, fetchAISuggestions, fetchAIDuplicateCheck, fetchAIWarRoomSummary } from "../lib/services";
+import { subscribeWarRoom, subscribeBugsByRoom } from "../lib/supabase";
+import { createBug, updateBugField, fetchAISuggestions, fetchAIDuplicateCheck, fetchAIWarRoomSummary, updateWarRoom, deleteWarRoom } from "../lib/services";
 import { useAuth } from "../context/AuthContext";
 import { WarRoom, Bug, SeverityLevel, BugStatus, BugPriority, BugType, AISuggestion, AIDuplicateCheck, AIWarRoomSummary } from "../types";
 import { BugDetailModal } from "./BugDetailModal";
+import { evidenceLabel } from "../lib/evidence";
 import { 
   ArrowLeft, 
   Terminal, 
@@ -73,8 +73,9 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
   const [bugUrl, setBugUrl] = useState("");
   const [bugBuild, setBugBuild] = useState("");
   const [bugTagsInput, setBugTagsInput] = useState("");
-  const [bugEvidence, setBugEvidence] = useState<string | null>(null); // base64 URL
-  const [bugPrototype, setBugPrototype] = useState<string | null>(null); // base64 URL for figma prototype screenshot
+  const [bugEvidence, setBugEvidence] = useState<string | null>(null);
+  const [bugEvidenceLink, setBugEvidenceLink] = useState("");
+  const [bugPrototype, setBugPrototype] = useState<string | null>(null);
 
   // AI Assistant states
   const [isAiLoading, setIsAiLoading] = useState(false);
@@ -92,33 +93,11 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
 
   // Live real-time streams subscription
   useEffect(() => {
-    // 1. Fetch War Room details
-    const unsubscribeRoom = onSnapshot(doc(db, "warRooms", roomId), (docSnap) => {
-      if (docSnap.exists()) {
-        setWarRoom(docSnap.data() as WarRoom);
-      } else {
-        console.error("Room document not found in db.");
-      }
-    });
-
-    // 2. Fetch real-time bugs nested inside this War Room
-    const bugsQuery = query(
-      collection(db, "bugs"),
-      where("warRoomId", "==", roomId),
-      orderBy("createdAt", "desc")
-    );
-    const unsubscribeBugs = onSnapshot(bugsQuery, (snapshot) => {
-      const bList: Bug[] = [];
-      snapshot.forEach((doc) => {
-        bList.push(doc.data() as Bug);
-      });
+    const unsubscribeRoom = subscribeWarRoom(roomId, setWarRoom);
+    const unsubscribeBugs = subscribeBugsByRoom(roomId, (bList) => {
       setBugs(bList);
       setLoading(false);
-    }, (error) => {
-      console.error("Error subscribing to war room bugs:", error);
-      setLoading(false);
     });
-
     return () => {
       unsubscribeRoom();
       unsubscribeBugs();
@@ -193,6 +172,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
     const reader = new FileReader();
     reader.onloadend = () => {
       setBugEvidence(reader.result as string);
+      setBugEvidenceLink("");
     };
     reader.readAsDataURL(file);
   };
@@ -291,6 +271,9 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
     setFormSubmitting(true);
     setFormError("");
     try {
+      const evidenceValue =
+        bugEvidence || bugEvidenceLink.trim() || undefined;
+
       // Parse tags
       const splitTags = bugTagsInput
         .split(",")
@@ -303,7 +286,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
         description: bugDesc.trim(),
         criticism: bugCrit,
         status: "new",
-        evidenceUrl: bugEvidence || undefined,
+        evidenceUrl: evidenceValue,
         prototypeUrl: bugPrototype || undefined,
         ownerId: null,
         ownerName: null,
@@ -328,6 +311,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
       setBugBuild("");
       setBugTagsInput("");
       setBugEvidence(null);
+      setBugEvidenceLink("");
       setBugPrototype(null);
       setAiSuggestions(null);
       setDuplicateAlert(null);
@@ -422,7 +406,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
         <div className="w-8 h-8 border-3 border-red-500 border-t-transparent rounded-full animate-spin mb-3" />
-        <p className="text-slate-400 font-mono text-sm leading-relaxed">Localizando Canal Operacional no Firestore...</p>
+        <p className="text-slate-400 font-mono text-sm leading-relaxed">Localizando canal no Supabase...</p>
       </div>
     );
   }
@@ -450,6 +434,15 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
             <h2 className="font-display text-2xl font-black text-white tracking-tight">
               {warRoom.name}
             </h2>
+            {warRoom.roomType === "board" ? (
+              <span className="p-1 px-2.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/25 rounded font-mono text-[10px] font-extrabold uppercase">
+                BOARD PERMANENTE
+              </span>
+            ) : (
+              <span className="p-1 px-2.5 bg-red-500/10 text-red-500 border border-red-500/25 rounded font-mono text-[10px] font-extrabold uppercase">
+                WAR ROOM
+              </span>
+            )}
             <span className="p-1 px-2.5 bg-red-500/10 text-red-500 border border-red-500/25 rounded font-mono text-[10px] font-extrabold uppercase">
               SEVERITY: {warRoom.severity}
             </span>
@@ -476,8 +469,18 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
             <span>SQUAD: <span className="text-slate-300 font-bold">{warRoom.squad}</span></span>
             <span>•</span>
             <span>SYSTEM: <span className="text-slate-300 font-bold">{warRoom.project}</span></span>
-            <span>•</span>
-            <span>DATE: <span className="text-slate-300 font-bold">{warRoom.date}</span></span>
+            {warRoom.roomType !== "board" && warRoom.date && (
+              <>
+                <span>•</span>
+                <span>
+                  PERÍODO:{" "}
+                  <span className="text-slate-300 font-bold">
+                    {warRoom.date}
+                    {warRoom.periodEnd ? ` → ${warRoom.periodEnd}` : ""}
+                  </span>
+                </span>
+              </>
+            )}
           </div>
         </div>
 
@@ -537,33 +540,38 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
           <div className="flex items-center gap-3">
             <Sliders className="w-5 h-5 text-indigo-400" />
             <div>
-              <h4 className="text-xs font-mono font-bold text-white uppercase tracking-wider">Painel Administrativo da Sala</h4>
-              <p className="text-[11px] text-slate-400 font-mono">Gerencie o status operacional, controle o acesso de convidados e execute comandos de controle.</p>
+              <h4 className="text-xs font-mono font-bold text-white uppercase tracking-wider">
+                Painel Administrativo {warRoom.roomType === "board" ? "do Board" : "da War Room"}
+              </h4>
+              <p className="text-[11px] text-slate-400 font-mono">
+                {profile?.role === "admin"
+                  ? "Admin: controle total sobre status, acesso e exclusão."
+                  : "Gerencie status, acesso de convidados e comandos de controle."}
+              </p>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-4">
-            {/* Status Selector */}
-            <div className="flex items-center gap-2 bg-[#171e30] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs font-mono">
-              <span className="text-slate-450 font-bold">STATUS:</span>
-              <select
-                value={warRoom.status}
-                onChange={async (e) => {
-                  try {
-                    const nextStatus = e.target.value as any;
-                    const { doc, updateDoc } = await import("firebase/firestore");
-                    await updateDoc(doc(db, "warRooms", roomId), { status: nextStatus });
-                  } catch (err) {
-                    console.error("Erro ao atualizar status da sala:", err);
-                  }
-                }}
-                className="bg-transparent text-white focus:outline-none border-none text-xs font-semibold cursor-pointer"
-              >
-                <option value="active" className="bg-[#0f172a]">ATIVO</option>
-                <option value="paused" className="bg-[#0f172a]">PAUSADO</option>
-                <option value="ended" className="bg-[#0f172a]">ENCERRADO</option>
-              </select>
-            </div>
+            {warRoom.roomType !== "board" && (
+              <div className="flex items-center gap-2 bg-[#171e30] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs font-mono">
+                <span className="text-slate-450 font-bold">STATUS:</span>
+                <select
+                  value={warRoom.status}
+                  onChange={async (e) => {
+                    try {
+                      await updateWarRoom(roomId, { status: e.target.value as WarRoom["status"] });
+                    } catch (err) {
+                      console.error("Erro ao atualizar status da sala:", err);
+                    }
+                  }}
+                  className="bg-transparent text-white focus:outline-none border-none text-xs font-semibold cursor-pointer"
+                >
+                  <option value="active" className="bg-[#0f172a]">ATIVO</option>
+                  <option value="paused" className="bg-[#0f172a]">PAUSADO</option>
+                  <option value="ended" className="bg-[#0f172a]">ENCERRADO</option>
+                </select>
+              </div>
+            )}
 
             {/* Guest Access Switch */}
             <label className="flex items-center gap-2.5 bg-[#171e30] border border-slate-800 px-3 py-1.5 rounded-lg text-xs font-mono font-semibold text-slate-305 cursor-pointer select-none">
@@ -572,9 +580,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                 checked={!!warRoom.guestAccessDisabled}
                 onChange={async (e) => {
                   try {
-                    const isDisabled = e.target.checked;
-                    const { doc, updateDoc } = await import("firebase/firestore");
-                    await updateDoc(doc(db, "warRooms", roomId), { guestAccessDisabled: isDisabled });
+                    await updateWarRoom(roomId, { guestAccessDisabled: e.target.checked });
                   } catch (err) {
                     console.error("Erro ao alterar acesso convidado:", err);
                   }
@@ -591,9 +597,8 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                   return;
                 }
                 try {
-                  const { doc, deleteDoc } = await import("firebase/firestore");
-                  await deleteDoc(doc(db, "warRooms", roomId));
-                  onBack(); // Go back to dashboard!
+                  await deleteWarRoom(roomId);
+                  onBack();
                 } catch (err) {
                   console.error("Erro ao excluir sala:", err);
                   alert("Erro ao excluir a sala de guerra. Permissão inválida.");
@@ -601,7 +606,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
               }}
               className="bg-red-950/40 hover:bg-red-900/40 border border-red-500/30 text-red-400 font-mono text-xs font-bold px-3.5 py-1.5 rounded-lg transition"
             >
-              Excluir Sala
+              Excluir {warRoom.roomType === "board" ? "Board" : "War Room"}
             </button>
           </div>
         </div>
@@ -760,7 +765,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                           
                           {bug.evidenceUrl && (
                             <span className="text-[9px] bg-indigo-950/20 border border-indigo-500/10 text-indigo-400 font-mono py-0.5 px-1.5 rounded">
-                              📸 ATTACHED
+                              {evidenceLabel(bug.evidenceUrl) === "image" ? "📸 ATTACHED" : "🔗 LINK"}
                             </span>
                           )}
                         </div>
@@ -1134,15 +1139,26 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                       />
                     </div>
 
-                    {/* Drag and drop evidence uploader file picker block */}
+                    {/* Evidência: upload ou link */}
                     <div>
                       <label className="block text-[10px] font-mono font-bold text-slate-450 uppercase mb-1.5">
-                        Importar Imagem de Defeito / Evidência
+                        Evidência do Bug (imagem ou link)
                       </label>
+
+                      <input
+                        type="url"
+                        className="w-full bg-[#111827] border border-slate-850 focus:border-red-500/30 rounded-lg px-3 py-2 text-white placeholder-slate-650 focus:outline-none font-mono text-[11px] mb-2"
+                        placeholder="https://drive.google.com/... ou link da imagem"
+                        value={bugEvidenceLink}
+                        onChange={(e) => {
+                          setBugEvidenceLink(e.target.value);
+                          if (e.target.value.trim()) setBugEvidence(null);
+                        }}
+                      />
+
                       <div className="border border-dashed border-slate-800 hover:border-slate-700 bg-slate-950/40 p-4 rounded-xl text-center space-y-2 relative transition">
                         <Upload className="w-6 h-6 text-slate-500 mx-auto" />
-                        <span className="block text-[10px] font-semibold text-slate-350">Selecione arquivos ou faça drag & drop aqui</span>
-                        <span className="block text-[9px] text-slate-500 font-mono leading-none">Apenas PNG/JPG com menos de 2MB</span>
+                        <span className="block text-[10px] font-semibold text-slate-350">Ou envie imagem (PNG/JPG, máx. 2MB)</span>
                         <input
                           type="file"
                           accept="image/*"
@@ -1151,14 +1167,21 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                         />
                       </div>
 
-                      {bugEvidence && (
+                      {(bugEvidence || bugEvidenceLink.trim()) && (
                         <div className="flex items-center gap-2 mt-2 bg-[#111827] p-2 border border-slate-850 rounded-lg">
-                          <CheckCircle className="w-4 h-4 text-green-500" />
-                          <span className="text-[10px] font-mono text-slate-400 uppercase">Screenshot anexada</span>
+                          <CheckCircle className="w-4 h-4 text-green-500 shrink-0" />
+                          <span className="text-[10px] font-mono text-slate-400 uppercase truncate">
+                            {bugEvidence
+                              ? "Imagem anexada"
+                              : `Link: ${bugEvidenceLink.trim()}`}
+                          </span>
                           <button
                             type="button"
-                            onClick={() => setBugEvidence(null)}
-                            className="ml-auto text-[10px] font-mono text-red-400 hover:underline cursor-pointer"
+                            onClick={() => {
+                              setBugEvidence(null);
+                              setBugEvidenceLink("");
+                            }}
+                            className="ml-auto text-[10px] font-mono text-red-400 hover:underline cursor-pointer shrink-0"
                           >
                             Excluir
                           </button>

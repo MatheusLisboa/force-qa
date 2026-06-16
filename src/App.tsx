@@ -323,10 +323,10 @@ function AppContent() {
       <footer className="bg-[#0b0f19] border-t border-slate-950 p-4 flex flex-col sm:flex-row items-center justify-between gap-4 text-[10px] font-mono text-slate-550">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-          <span>ESTADO: COMUNICAÇÃO SEGUIDA FIELMENTE NO FIRESTORE</span>
+          <span>ESTADO: COMUNICAÇÃO SEGUIDA FIELMENTE NO SUPABASE</span>
         </div>
         <div>
-          DATABASE_REF: <span className="text-slate-450">force-task-firestore-node</span>
+          DATABASE_REF: <span className="text-slate-450">forceqa-supabase</span>
         </div>
       </footer>
     </div>

@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { collection, onSnapshot, query, orderBy, doc, getDoc, getDocs, where, deleteDoc, updateDoc } from "firebase/firestore";
-import { db } from "../lib/firebase";
-import { createWarRoom } from "../lib/services";
+import { createWarRoom, createBoard, updateUserProfile, deleteUserProfile } from "../lib/services";
+import { subscribeWarRooms, subscribeAllBugs, subscribeUsers, findWarRoomByIdOrName } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { WarRoom, Bug, SeverityLevel } from "../types";
 import { 
@@ -25,7 +24,8 @@ import {
   Edit2,
   Check,
   X,
-  Download
+  Download,
+  LayoutGrid
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -38,7 +38,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
   const [warRooms, setWarRooms] = useState<WarRoom[]>([]);
   const [allBugs, setAllBugs] = useState<Bug[]>([]);
   const [selectedDashboardRoomId, setSelectedDashboardRoomId] = useState<string>("all");
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isWarRoomModalOpen, setIsWarRoomModalOpen] = useState(false);
+  const [isBoardModalOpen, setIsBoardModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // Search by ID State
@@ -68,14 +69,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
   // Live real-time stream subscription for System Users
   useEffect(() => {
     if (profile?.role === "admin") {
-      const unsubscribeUsers = onSnapshot(collection(db, "users"), (snapshot) => {
-        const list: any[] = [];
-        snapshot.forEach((doc) => {
-          list.push(doc.data());
-        });
-        setUsersList(list);
-      });
-      return () => unsubscribeUsers();
+      return subscribeUsers((list) => setUsersList(list));
     }
   }, [profile]);
 
@@ -127,35 +121,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
     setEnterRoomSuccess("");
 
     try {
-      let roomData: any = null;
-      let roomId = "";
+      const room = await findWarRoomByIdOrName(inputVal);
+      const roomId = room?.id;
 
-      const directRef = doc(db, "warRooms", inputVal);
-      const directSnap = await getDoc(directRef);
-
-      if (directSnap.exists()) {
-        roomData = directSnap.data();
-        roomId = directSnap.id;
-      } else {
-        const qByExactName = query(collection(db, "warRooms"), where("name", "==", inputVal));
-        const nameSnap = await getDocs(qByExactName);
-
-        if (!nameSnap.empty) {
-          roomData = nameSnap.docs[0].data();
-          roomId = nameSnap.docs[0].id;
-        } else {
-          const allRoomsSnap = await getDocs(collection(db, "warRooms"));
-          const matchByName = allRoomsSnap.docs.find(
-            (d) => d.data().name?.trim().toLowerCase() === inputVal.toLowerCase()
-          );
-          if (matchByName) {
-            roomData = matchByName.data();
-            roomId = matchByName.id;
-          }
-        }
-      }
-
-      if (!roomId || !roomData) {
+      if (!roomId || !room) {
         throw new Error("Sala de Guerra não encontrada. Certifique-se de que o ID ou Nome está correto.");
       }
 
@@ -195,10 +164,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
       return;
     }
     try {
-      await updateDoc(doc(db, "users", userId), {
+      await updateUserProfile(userId, {
         name: editingName.trim(),
         role: editingRole,
-        squad: editingSquad.trim()
+        squad: editingSquad.trim(),
       });
       setEditingUserId(null);
     } catch (err: any) {
@@ -208,11 +177,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
   };
 
   const handleDeleteUser = async (userId: string) => {
-    if (!window.confirm("ATENÇÃO: Deseja realmente remover este usuário do sistema? Esta ação removerá o perfil no Firestore.")) {
+    if (!window.confirm("ATENÇÃO: Deseja realmente remover este usuário do sistema? Esta ação removerá o perfil no banco de dados.")) {
       return;
     }
     try {
-      await deleteDoc(doc(db, "users", userId));
+      await deleteUserProfile(userId);
     } catch (err: any) {
       console.error(err);
       setUserCreationError(err.message || "Erro ao deletar usuário.");
@@ -224,6 +193,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
   const [project, setProject] = useState("");
   const [squad, setSquad] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [periodEnd, setPeriodEnd] = useState("");
   const [description, setDescription] = useState("");
   const [severity, setSeverity] = useState<SeverityLevel>("medium");
   const [submitting, setSubmitting] = useState(false);
@@ -231,28 +201,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
 
   // Live real-time stream subscription for War Rooms
   useEffect(() => {
-    const qRooms = query(collection(db, "warRooms"), orderBy("createdAt", "desc"));
-    const unsubscribeRooms = onSnapshot(qRooms, (snapshot) => {
-      const rooms: WarRoom[] = [];
-      snapshot.forEach((doc) => {
-        rooms.push(doc.data() as WarRoom);
-      });
+    const unsubscribeRooms = subscribeWarRooms((rooms) => {
       setWarRooms(rooms);
       setLoading(false);
-    }, (error) => {
-      console.error("Error subscribing to war rooms:", error);
     });
-
-    const unsubscribeBugs = onSnapshot(collection(db, "bugs"), (snapshot) => {
-      const bugsList: Bug[] = [];
-      snapshot.forEach((doc) => {
-        bugsList.push(doc.data() as Bug);
-      });
-      setAllBugs(bugsList);
-    }, (error) => {
-      console.error("Error subscribing to bugs:", error);
-    });
-
+    const unsubscribeBugs = subscribeAllBugs(setAllBugs);
     return () => {
       unsubscribeRooms();
       unsubscribeBugs();
@@ -321,17 +274,149 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
   }
 
   const displayedRooms = warRooms.filter((room) => {
-    // Admin sees all
     if (profile?.role === "admin") return true;
-    
-    // User sees rooms they created
     if (room.createdBy === profile?.id) return true;
-
-    // User sees rooms they have explicitly joined via ID
     if (accessedRoomIds.includes(room.id)) return true;
-
     return false;
   });
+
+  const displayedWarRooms = displayedRooms.filter(
+    (r) => (r.roomType || "war_room") === "war_room"
+  );
+  const displayedBoards = displayedRooms.filter((r) => r.roomType === "board");
+
+  const canManageSpaces =
+    profile?.role === "admin" ||
+    profile?.role === "qa" ||
+    profile?.role === "scrum_master";
+
+  const copyShareLink = (roomId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const relativeUrl = `${window.location.origin}/?room=${roomId}`;
+    navigator.clipboard.writeText(relativeUrl);
+    alert("Link de compartilhamento rápido copiado para a área de transferência!");
+  };
+
+  const renderSpaceCard = (room: WarRoom) => {
+    const activeRoomBugs = allBugs.filter((b) => b.warRoomId === room.id);
+    const roomBlocker = activeRoomBugs.filter(
+      (b) => b.criticism === "blocker" && b.status !== "validated"
+    ).length;
+    const roomTotalOpen = activeRoomBugs.filter((b) => b.status !== "validated").length;
+    const isBoard = room.roomType === "board";
+
+    return (
+      <div
+        key={room.id}
+        onClick={() => onSelectRoom(room.id)}
+        className="group bg-[#0d1220]/75 hover:bg-[#111827]/90 hover:border-red-500/30 border border-slate-800 transition-all duration-150 rounded-xl p-5 shadow-lg relative cursor-pointer flex flex-col justify-between min-h-[195px]"
+      >
+        <div>
+          <div className="flex justify-between items-start gap-2">
+            <h4
+              className="font-display font-extrabold text-white group-hover:text-red-400 text-lg transition tracking-tight truncate max-w-[180px]"
+              title={room.name}
+            >
+              {room.name}
+            </h4>
+            {isBoard ? (
+              <span className="p-1 px-2 text-[10px] font-mono tracking-wider uppercase font-extrabold rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                BOARD
+              </span>
+            ) : (
+              <span
+                className={`p-1 px-2 text-[10px] font-mono tracking-wider uppercase font-extrabold rounded ${
+                  room.status === "active"
+                    ? "bg-green-500/10 text-green-400 border border-green-500/20"
+                    : room.status === "paused"
+                      ? "bg-yellow-500/10 text-yellow-500 border border-yellow-500/20"
+                      : "bg-slate-800 text-slate-400 border border-slate-700"
+                }`}
+              >
+                {room.status === "active" ? "ATIVO" : room.status === "paused" ? "PAUSADO" : "ENCERRADO"}
+              </span>
+            )}
+          </div>
+
+          <div className="mt-1 text-[10px] font-mono text-slate-500 flex items-center gap-1">
+            <span>CHAVE:</span>
+            <span className="font-bold text-slate-300 font-mono select-all bg-slate-900 px-1 py-0.5 rounded border border-slate-800">
+              {room.id}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 mt-2 text-xs text-slate-450 font-mono">
+            <span>
+              PROJECT: <span className="text-slate-300 font-semibold">{room.project}</span>
+            </span>
+            <span>•</span>
+            <span>
+              SQUAD: <span className="text-slate-300 font-semibold">{room.squad}</span>
+            </span>
+          </div>
+
+          {!isBoard && room.date && (
+            <div className="mt-1.5 text-[10px] font-mono text-slate-500">
+              PERÍODO:{" "}
+              <span className="text-slate-350">
+                {room.date}
+                {room.periodEnd ? ` → ${room.periodEnd}` : ""}
+              </span>
+            </div>
+          )}
+
+          <p className="text-xs text-slate-400 mt-3 line-clamp-2 leading-relaxed" title={room.description}>
+            {room.description ||
+              (isBoard
+                ? "Board permanente de acompanhamento de qualidade."
+                : "Nenhuma descrição operacional adicional foi especificada preliminarmente.")}
+          </p>
+        </div>
+
+        <div className="mt-5 pt-4 border-t border-slate-850 flex justify-between items-center">
+          <div className="flex gap-4">
+            <div className="text-center">
+              <span className="block text-[10px] font-mono uppercase text-slate-450">Abertos</span>
+              <span className={`text-sm font-black ${roomTotalOpen > 0 ? "text-white" : "text-slate-500"}`}>
+                {roomTotalOpen}
+              </span>
+            </div>
+            <div className="text-center">
+              <span className="block text-[10px] font-mono uppercase text-slate-450">Falta QA</span>
+              <span
+                className={`text-sm font-black ${
+                  activeRoomBugs.filter((b) => b.status === "ready_for_qa").length > 0
+                    ? "text-yellow-400"
+                    : "text-slate-500"
+                }`}
+              >
+                {activeRoomBugs.filter((b) => b.status === "ready_for_qa").length}
+              </span>
+            </div>
+            {roomBlocker > 0 && (
+              <div className="text-center">
+                <span className="block text-[10px] font-mono uppercase text-[#e11d48]">BLOCKER</span>
+                <span className="text-sm font-black text-[#e11d48] animate-pulse">{roomBlocker}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={(e) => copyShareLink(room.id, e)}
+              className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-705 cursor-pointer"
+              title="Compartilhar Link"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+            </button>
+            <span className="p-1 px-2 text-[10px] font-mono text-slate-450 flex items-center gap-1 group-hover:text-red-400 transition">
+              ENTRAR <ExternalLink className="w-3 h-3" />
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const handleExportCSV = () => {
     // Determine the name of the file
@@ -434,12 +519,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
     document.body.removeChild(link);
   };
 
-  const handleCreateRoom = async (e: React.FormEvent) => {
+  const handleCreateWarRoom = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Security role enforcement for creating war rooms
-    if (profile?.role !== "admin" && profile?.role !== "qa" && profile?.role !== "scrum_master") {
-      setFormError("Permissão negada. Apenas administradores, QAs e Scrum Masters podem iniciar novas Salas de Guerra.");
+    if (!canManageSpaces) {
+      setFormError("Permissão negada. Apenas administradores, QAs e Scrum Masters podem criar War Rooms.");
       return;
     }
 
@@ -456,22 +540,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
         project: project.trim(),
         squad: squad.trim(),
         date,
+        periodEnd: periodEnd || undefined,
         description: description.trim(),
         severity,
         status: "active",
+        roomType: "war_room",
         createdBy: profile?.id || "unknown",
-        createdByName: profile?.name || "Anonymous Hunter"
+        createdByName: profile?.name || "Anonymous Hunter",
       });
-      
-      // Reset form & close modal
+
       setName("");
       setProject("");
       setSquad("");
       setDescription("");
+      setPeriodEnd("");
       setSeverity("medium");
-      setIsModalOpen(false);
-
-      // Automatically redirect user into newly created room
+      setIsWarRoomModalOpen(false);
       onSelectRoom(roomId);
     } catch (err: any) {
       setFormError("Erro ao criar War Room: " + err.message);
@@ -480,11 +564,43 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
     }
   };
 
-  const copyShareLink = (roomId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const relativeUrl = `${window.location.origin}/?room=${roomId}`;
-    navigator.clipboard.writeText(relativeUrl);
-    alert("Link de compartilhamento rápido copiado para a área de transferência!");
+  const handleCreateBoardSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!canManageSpaces) {
+      setFormError("Permissão negada. Apenas administradores, QAs e Scrum Masters podem criar Boards.");
+      return;
+    }
+
+    if (!name.trim() || !project.trim() || !squad.trim()) {
+      setFormError("Por favor, preencha todos os campos obrigatórios.");
+      return;
+    }
+
+    setSubmitting(true);
+    setFormError("");
+    try {
+      const boardId = await createBoard({
+        name: name.trim(),
+        project: project.trim(),
+        squad: squad.trim(),
+        description: description.trim(),
+        severity: "medium",
+        createdBy: profile?.id || "unknown",
+        createdByName: profile?.name || "Anonymous Hunter",
+      });
+
+      setName("");
+      setProject("");
+      setSquad("");
+      setDescription("");
+      setIsBoardModalOpen(false);
+      onSelectRoom(boardId);
+    } catch (err: any) {
+      setFormError("Erro ao criar Board: " + err.message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -499,7 +615,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
             Painel Central de QA
           </h1>
           <p className="text-slate-400 text-sm mt-0.5">
-            Acompanhe o status tático de testes críticos e salas de guerra recomendadas.
+            War Rooms por período e Boards permanentes de projetos e sistemas.
           </p>
         </div>
 
@@ -514,14 +630,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
             </button>
           )}
 
-          {(profile?.role === "admin" || profile?.role === "qa" || profile?.role === "scrum_master") && (
-            <button
-              onClick={() => setIsModalOpen(true)}
-              className="flex items-center gap-2 bg-red-600 hover:bg-red-500 hover:shadow-[0_0_15px_rgba(239,68,68,0.25)] text-white font-medium px-4 py-2.5 rounded-lg transition cursor-pointer text-xs font-mono border border-red-500/20"
-            >
-              <Plus className="w-4 h-4" />
-              NOVA OPERAÇÃO
-            </button>
+          {canManageSpaces && (
+            <>
+              <button
+                onClick={() => {
+                  setFormError("");
+                  setIsWarRoomModalOpen(true);
+                }}
+                className="flex items-center gap-2 bg-red-600 hover:bg-red-500 hover:shadow-[0_0_15px_rgba(239,68,68,0.25)] text-white font-medium px-4 py-2.5 rounded-lg transition cursor-pointer text-xs font-mono border border-red-500/20"
+              >
+                <Clock className="w-4 h-4" />
+                NOVA WAR ROOM
+              </button>
+              <button
+                onClick={() => {
+                  setFormError("");
+                  setIsBoardModalOpen(true);
+                }}
+                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 hover:shadow-[0_0_15px_rgba(99,102,241,0.25)] text-white font-medium px-4 py-2.5 rounded-lg transition cursor-pointer text-xs font-mono border border-indigo-500/20"
+              >
+                <LayoutGrid className="w-4 h-4" />
+                NOVO BOARD
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -547,7 +678,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
               <option value="all">📊 TODOS OS INCIDENTES (Consolidado Geral)</option>
               {warRooms.map((room) => (
                 <option key={room.id} value={room.id}>
-                  🛡️ {room.name} ({room.project})
+                  {room.roomType === "board" ? "📋" : "🛡️"} {room.name} ({room.project})
                 </option>
               ))}
             </select>
@@ -740,13 +871,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
         {/* Code to enter a War Room by ID */}
         <div className="bg-[#0a0f1d]/80 border border-slate-805 p-4 rounded-xl mb-6 shadow-md">
           <h4 className="text-xs font-mono font-bold text-slate-450 mb-2 uppercase tracking-wider flex items-center gap-1.5">
-            <Key className="w-3.5 h-3.5 text-red-500" /> Acessar Nova Sala de Guerra via ID
+            <Key className="w-3.5 h-3.5 text-red-500" /> Acessar War Room ou Board via ID
           </h4>
           <form onSubmit={handleEnterRoomById} className="flex gap-3">
             <input
               type="text"
               required
-              placeholder="Digite ou cole a chave ID da Sala de Guerra (Ex: room-XXXXXX)"
+              placeholder="Digite o ID (Ex: room-XXXXXX ou board-XXXXXX)"
               className="flex-1 bg-black/40 border border-slate-800 focus:border-red-500/50 rounded-lg px-3.5 py-2 text-sm text-white placeholder-slate-650 focus:outline-none transition font-mono"
               value={enterRoomIdInput}
               onChange={(e) => setEnterRoomIdInput(e.target.value)}
@@ -771,112 +902,53 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
           )}
         </div>
 
+        {/* War Rooms por período */}
         <h3 className="font-display text-lg font-bold text-white flex items-center gap-1.5 mb-5 uppercase tracking-wide">
-          <Server className="w-4 h-4 text-red-500" /> Salas de Guerra Acessadas / Operações ({displayedRooms.length})
+          <Clock className="w-4 h-4 text-red-500" /> War Rooms por Período ({displayedWarRooms.length})
         </h3>
 
         {loading ? (
-          <div className="text-center py-12 bg-[#0d1220]/50 border border-slate-800 rounded-xl">
+          <div className="text-center py-12 bg-[#0d1220]/50 border border-slate-800 rounded-xl mb-10">
             <div className="w-6 h-6 border-2 border-red-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
             <p className="text-slate-400 text-sm font-mono">Sincronizando Banco de Dados...</p>
           </div>
-        ) : displayedRooms.length === 0 ? (
-          <div className="text-center py-16 bg-[#000000]/25 border border-slate-800 rounded-xl">
+        ) : displayedWarRooms.length === 0 ? (
+          <div className="text-center py-12 bg-[#000000]/25 border border-slate-800 rounded-xl mb-10">
             <AlertOctagon className="w-10 h-10 text-slate-650 mx-auto mb-3" />
-            <h4 className="text-slate-200 font-bold font-display text-base">Nenhuma operação ativa liberada</h4>
+            <h4 className="text-slate-200 font-bold font-display text-base">Nenhuma War Room ativa</h4>
             <p className="text-slate-550 text-xs mt-1 max-w-sm mx-auto">
-              Seu perfil não possui salas criadas. Para ingressar em uma existente, cole o ID da Sala de Guerra no painel de liberação acima.
+              War Rooms concentram operações de QA por período específico. Crie uma nova ou entre via ID acima.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
+            {displayedWarRooms.map(renderSpaceCard)}
+          </div>
+        )}
+
+        {/* Boards permanentes */}
+        <h3 className="font-display text-lg font-bold text-white flex items-center gap-1.5 mb-5 uppercase tracking-wide">
+          <LayoutGrid className="w-4 h-4 text-indigo-400" /> Boards Permanentes ({displayedBoards.length})
+        </h3>
+
+        {loading ? null : displayedBoards.length === 0 ? (
+          <div className="text-center py-12 bg-[#000000]/25 border border-slate-800 rounded-xl">
+            <LayoutGrid className="w-10 h-10 text-slate-650 mx-auto mb-3" />
+            <h4 className="text-slate-200 font-bold font-display text-base">Nenhum board permanente</h4>
+            <p className="text-slate-550 text-xs mt-1 max-w-sm mx-auto">
+              Boards são quadros permanentes para projetos e sistemas específicos. Use o botão &quot;NOVO BOARD&quot; para criar.
             </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {displayedRooms.map((room) => {
-              const activeRoomBugs = allBugs.filter(b => b.warRoomId === room.id);
-              const roomBlocker = activeRoomBugs.filter(b => b.criticism === "blocker" && b.status !== "validated").length;
-              const roomTotalOpen = activeRoomBugs.filter(b => b.status !== "validated").length;
-              const roomResolved = activeRoomBugs.filter(b => b.status === "validated").length;
-
-              return (
-                <div 
-                  key={room.id}
-                  onClick={() => onSelectRoom(room.id)}
-                  className="group bg-[#0d1220]/75 hover:bg-[#111827]/90 hover:border-red-500/30 border border-slate-800 transition-all duration-150 rounded-xl p-5 shadow-lg relative cursor-pointer flex flex-col justify-between min-h-[195px]"
-                >
-                  <div>
-                    <div className="flex justify-between items-start gap-2">
-                      <h4 className="font-display font-extrabold text-white group-hover:text-red-400 text-lg transition tracking-tight truncate max-w-[180px]" title={room.name}>
-                        {room.name}
-                      </h4>
-                      <span className={`p-1 px-2 text-[10px] font-mono tracking-wider uppercase font-extrabold rounded ${
-                        room.status === "active" 
-                          ? "bg-green-500/10 text-green-400 border border-green-500/20" 
-                          : room.status === "paused"
-                            ? "bg-yellow-500/10 text-yellow-500 border border-yellow-500/20"
-                            : "bg-slate-800 text-slate-400 border border-slate-700"
-                      }`}>
-                        {room.status === "active" ? "ATIVO" : room.status === "paused" ? "PAUSADO" : "ENCERRADO"}
-                      </span>
-                    </div>
-
-                    <div className="mt-1 text-[10px] font-mono text-slate-500 flex items-center gap-1">
-                      <span>CHAVE:</span>
-                      <span className="font-bold text-slate-300 font-mono select-all bg-slate-900 px-1 py-0.5 rounded border border-slate-800">{room.id}</span>
-                    </div>
-
-                    <div className="flex items-center gap-2 mt-2 text-xs text-slate-450 font-mono">
-                      <span>PROJECT: <span className="text-slate-300 font-semibold">{room.project}</span></span>
-                      <span>•</span>
-                      <span>SQUAD: <span className="text-slate-300 font-semibold">{room.squad}</span></span>
-                    </div>
-
-                    <p className="text-xs text-slate-400 mt-3 line-clamp-2 leading-relaxed" title={room.description}>
-                      {room.description || "Nenhuma descrição operacional adicional foi especificada preliminarmente."}
-                    </p>
-                  </div>
-
-                  <div className="mt-5 pt-4 border-t border-slate-850 flex justify-between items-center">
-                    <div className="flex gap-4">
-                      <div className="text-center">
-                        <span className="block text-[10px] font-mono uppercase text-slate-450">Abertos</span>
-                        <span className={`text-sm font-black ${roomTotalOpen > 0 ? "text-white" : "text-slate-500"}`}>{roomTotalOpen}</span>
-                      </div>
-                      <div className="text-center">
-                        <span className="block text-[10px] font-mono uppercase text-slate-450">Falta QA</span>
-                        <span className={`text-sm font-black ${activeRoomBugs.filter(b => b.status === "ready_for_qa").length > 0 ? "text-yellow-400" : "text-slate-500"}`}>
-                          {activeRoomBugs.filter(b => b.status === "ready_for_qa").length}
-                        </span>
-                      </div>
-                      {roomBlocker > 0 && (
-                        <div className="text-center">
-                          <span className="block text-[10px] font-mono uppercase text-[#e11d48]">BLOCKER</span>
-                          <span className="text-sm font-black text-[#e11d48] animate-pulse">{roomBlocker}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex gap-2">
-                      <button
-                        onClick={(e) => copyShareLink(room.id, e)}
-                        className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-705 cursor-pointer"
-                        title="Compartilhar Link da Sala"
-                      >
-                        <Share2 className="w-3.5 h-3.5" />
-                      </button>
-                      <span className="p-1 px-2 text-[10px] font-mono text-slate-450 flex items-center gap-1 group-hover:text-red-400 transition">
-                        ENTRAR <ExternalLink className="w-3 h-3" />
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+            {displayedBoards.map(renderSpaceCard)}
           </div>
         )}
       </div>
 
-      {/* Creation WarRoom Modal Overlay */}
+      {/* Modal: Nova War Room */}
       <AnimatePresence>
-        {isModalOpen && (
+        {isWarRoomModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#080b13]/85 backdrop-blur-sm">
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
@@ -886,15 +958,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
             >
               <div className="flex justify-between items-center border-b border-white/[0.04] pb-4 mb-5">
                 <h3 className="font-display text-xl font-extrabold text-white flex items-center gap-2">
-                  <Plus className="w-5 h-5 text-red-500" /> Nova Operação / War Room
+                  <Clock className="w-5 h-5 text-red-500" /> Nova War Room
                 </h3>
                 <button 
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={() => setIsWarRoomModalOpen(false)}
                   className="p-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded"
                 >
                   X
                 </button>
               </div>
+
+              <p className="text-xs text-slate-450 font-mono mb-4">
+                Operação concentrada por período específico (release, hotfix, incidente).
+              </p>
 
               {formError && (
                 <div className="p-3 bg-red-900/20 border border-red-500/20 text-red-400 text-xs rounded-lg mb-4">
@@ -902,17 +978,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                 </div>
               )}
 
-              <form onSubmit={handleCreateRoom} className="space-y-4 text-sm text-slate-300">
+              <form onSubmit={handleCreateWarRoom} className="space-y-4 text-sm text-slate-300">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold uppercase text-slate-400 font-mono mb-1.5">
-                      Nome da Operação *
+                      Nome da War Room *
                     </label>
                     <input
                       required
                       type="text"
                       className="w-full bg-[#0f172a] border border-slate-800 focus:border-red-500/50 rounded-lg px-3 py-2 text-white placeholder-slate-600 focus:outline-none transition"
-                      placeholder="Ex: WarRoom Incidente Pix"
+                      placeholder="Ex: WarRoom Release v2.4"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                     />
@@ -920,7 +996,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
 
                   <div>
                     <label className="block text-xs font-semibold uppercase text-slate-400 font-mono mb-1.5">
-                      Projeto / Sistema Sob Teste *
+                      Projeto / Sistema *
                     </label>
                     <input
                       required
@@ -950,9 +1026,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
 
                   <div>
                     <label className="block text-xs font-semibold uppercase text-slate-400 font-mono mb-1.5">
-                      Data da Sala de Guerra
+                      Data de Início *
                     </label>
                     <input
+                      required
                       type="date"
                       className="w-full bg-[#0f172a] border border-slate-800 focus:border-red-500/50 rounded-lg px-3 py-2 text-white focus:outline-none transition"
                       value={date}
@@ -963,12 +1040,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
 
                 <div>
                   <label className="block text-xs font-semibold uppercase text-slate-400 font-mono mb-1.5">
-                    Descrição do Escopo operacional
+                    Data de Término (opcional)
+                  </label>
+                  <input
+                    type="date"
+                    className="w-full bg-[#0f172a] border border-slate-800 focus:border-red-500/50 rounded-lg px-3 py-2 text-white focus:outline-none transition"
+                    value={periodEnd}
+                    onChange={(e) => setPeriodEnd(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-slate-400 font-mono mb-1.5">
+                    Descrição do Escopo
                   </label>
                   <textarea
                     rows={3}
                     className="w-full bg-[#0f172a] border border-slate-800 focus:border-red-500/50 rounded-lg px-3 py-2 text-white placeholder-slate-600 focus:outline-none transition"
-                    placeholder="Especifique o contexto do incidente e escopo dos testes..."
+                    placeholder="Contexto do incidente e escopo dos testes..."
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                   />
@@ -981,12 +1070,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                   <div className="grid grid-cols-5 gap-2">
                     {(["blocker", "critical", "high", "medium", "low"] as SeverityLevel[]).map((level) => {
                       const isSelected = severity === level;
-                      const levelColors: any = {
+                      const levelColors: Record<string, string> = {
                         blocker: "border-red-600 hover:bg-red-950/20 text-red-500 bg-red-950/10",
                         critical: "border-red-500 hover:bg-red-900/20 text-red-400 bg-red-900/10",
                         high: "border-orange-500 hover:bg-orange-950/10 text-orange-400 bg-orange-950/5",
                         medium: "border-yellow-500 hover:bg-yellow-950/10 text-yellow-400 bg-yellow-950/5",
-                        low: "border-blue-500 hover:bg-blue-950/10 text-blue-400 bg-blue-950/5"
+                        low: "border-blue-500 hover:bg-blue-950/10 text-blue-400 bg-blue-950/5",
                       };
                       return (
                         <button
@@ -994,8 +1083,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                           type="button"
                           onClick={() => setSeverity(level)}
                           className={`py-1.5 text-xs font-mono font-bold uppercase border rounded-md transition cursor-pointer text-center ${
-                            isSelected 
-                              ? `${levelColors[level]} scale-102 border-current shadow-[0_0_10px_rgba(239,68,68,0.1)]` 
+                            isSelected
+                              ? `${levelColors[level]} scale-102 border-current shadow-[0_0_10px_rgba(239,68,68,0.1)]`
                               : "border-slate-800 hover:border-slate-700 bg-transparent text-slate-450"
                           }`}
                         >
@@ -1009,7 +1098,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                 <div className="pt-4 border-t border-white/[0.04] flex justify-end gap-3 font-semibold">
                   <button
                     type="button"
-                    onClick={() => setIsModalOpen(false)}
+                    onClick={() => setIsWarRoomModalOpen(false)}
                     className="px-4 py-2 bg-slate-800/80 hover:bg-slate-750 text-slate-350 rounded-lg cursor-pointer text-center"
                   >
                     Cancelar
@@ -1019,7 +1108,119 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                     disabled={submitting}
                     className="px-5 py-2 bg-red-650 hover:bg-red-650/90 text-white rounded-lg shadow-md transition cursor-pointer text-center"
                   >
-                    {submitting ? "Iniciando Sala..." : "Iniciar Incidente"}
+                    {submitting ? "Criando..." : "Criar War Room"}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal: Novo Board */}
+      <AnimatePresence>
+        {isBoardModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#080b13]/85 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-xl bg-[#0d1220] border border-indigo-500/20 rounded-2xl shadow-2xl p-6 relative"
+            >
+              <div className="flex justify-between items-center border-b border-white/[0.04] pb-4 mb-5">
+                <h3 className="font-display text-xl font-extrabold text-white flex items-center gap-2">
+                  <LayoutGrid className="w-5 h-5 text-indigo-400" /> Novo Board
+                </h3>
+                <button 
+                  onClick={() => setIsBoardModalOpen(false)}
+                  className="p-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded"
+                >
+                  X
+                </button>
+              </div>
+
+              <p className="text-xs text-slate-450 font-mono mb-4">
+                Board permanente para acompanhamento contínuo de um projeto ou sistema.
+              </p>
+
+              {formError && (
+                <div className="p-3 bg-red-900/20 border border-red-500/20 text-red-400 text-xs rounded-lg mb-4">
+                  {formError}
+                </div>
+              )}
+
+              <form onSubmit={handleCreateBoardSubmit} className="space-y-4 text-sm text-slate-300">
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-slate-400 font-mono mb-1.5">
+                    Nome do Board *
+                  </label>
+                  <input
+                    required
+                    type="text"
+                    className="w-full bg-[#0f172a] border border-slate-800 focus:border-indigo-500/50 rounded-lg px-3 py-2 text-white placeholder-slate-600 focus:outline-none transition"
+                    placeholder="Ex: Board Checkout Web"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-slate-400 font-mono mb-1.5">
+                      Projeto / Sistema *
+                    </label>
+                    <input
+                      required
+                      type="text"
+                      className="w-full bg-[#0f172a] border border-slate-800 focus:border-indigo-500/50 rounded-lg px-3 py-2 text-white placeholder-slate-600 focus:outline-none transition"
+                      placeholder="Ex: Portal Admin"
+                      value={project}
+                      onChange={(e) => setProject(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-slate-400 font-mono mb-1.5">
+                      Squad Responsável *
+                    </label>
+                    <input
+                      required
+                      type="text"
+                      className="w-full bg-[#0f172a] border border-slate-800 focus:border-indigo-500/50 rounded-lg px-3 py-2 text-white placeholder-slate-600 focus:outline-none transition"
+                      placeholder="Ex: Squad Core"
+                      value={squad}
+                      onChange={(e) => setSquad(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-slate-400 font-mono mb-1.5">
+                    Descrição
+                  </label>
+                  <textarea
+                    rows={3}
+                    className="w-full bg-[#0f172a] border border-slate-800 focus:border-indigo-500/50 rounded-lg px-3 py-2 text-white placeholder-slate-600 focus:outline-none transition"
+                    placeholder="Escopo permanente do board, sistemas cobertos..."
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                  />
+                </div>
+
+                <div className="pt-4 border-t border-white/[0.04] flex justify-end gap-3 font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setIsBoardModalOpen(false)}
+                    className="px-4 py-2 bg-slate-800/80 hover:bg-slate-750 text-slate-350 rounded-lg cursor-pointer text-center"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg shadow-md transition cursor-pointer text-center"
+                  >
+                    {submitting ? "Criando..." : "Criar Board"}
                   </button>
                 </div>
               </form>
