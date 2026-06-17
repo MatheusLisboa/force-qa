@@ -1,4 +1,5 @@
 import type { AIProvider } from "../types";
+import { envVar } from "../env";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -13,14 +14,16 @@ export class OpenRouterProvider implements AIProvider {
   }
 
   async generateReport(systemPrompt: string, userPrompt: string): Promise<string> {
+    const vercelUrl = envVar("VERCEL_URL");
+    const appUrl =
+      envVar("APP_URL") || (vercelUrl ? `https://${vercelUrl}` : "https://force-qa.vercel.app");
+
     const response = await fetch(OPENROUTER_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${this.apiKey}`,
-        "HTTP-Referer":
-          process.env.APP_URL ||
-          (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000"),
+        "HTTP-Referer": appUrl,
         "X-Title": "ForceQA AI Report",
       },
       body: JSON.stringify({

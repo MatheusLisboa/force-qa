@@ -2,13 +2,7 @@
   "buildCommand": "npm run build:vercel",
   "outputDirectory": "dist",
   "framework": null,
-  "functions": {
-    "api/ai/*.ts": {
-      "maxDuration": 60
-    }
-  },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }

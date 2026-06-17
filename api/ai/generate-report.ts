@@ -1,9 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { generateExecutiveReport } from "../../server/ai/generateReport";
-
-export const config = {
-  maxDuration: 60,
-};
+import { generateExecutiveReport } from "../_lib/ai/generateReport";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
