@@ -18,7 +18,9 @@ export class OpenRouterProvider implements AIProvider {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${this.apiKey}`,
-        "HTTP-Referer": process.env.APP_URL || "http://localhost:3000",
+        "HTTP-Referer":
+          process.env.APP_URL ||
+          (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000"),
         "X-Title": "ForceQA AI Report",
       },
       body: JSON.stringify({
