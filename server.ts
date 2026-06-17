@@ -4,7 +4,7 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
-import { generateExecutiveReport } from "./api/_lib/ai/generateReport";
+import { generateExecutiveReport } from "./api/ai/generate-report";
 
 dotenv.config();
 
