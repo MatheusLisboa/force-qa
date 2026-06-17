@@ -14,7 +14,7 @@ export const BugTypeTag: React.FC<BugTypeTagProps> = ({ type, size = "sm" }) => 
 
   return (
     <span
-      className={`inline-flex items-center font-medium rounded border shrink-0 ${config.className} ${sizeClass}`}
+      className={`fq-badge font-medium ${config.className} ${sizeClass}`}
     >
       {config.label}
     </span>

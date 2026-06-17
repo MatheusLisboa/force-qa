@@ -120,35 +120,30 @@ export const LoginScreen: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col justify-between bg-[#080b13] relative overflow-hidden room-banner-glow">
-      {/* Decorative futuristic laser lines */}
-      <div className="absolute top-0 left-1/4 w-px h-64 bg-gradient-to-down from-red-500/20 to-transparent pointer-events-none" />
-      <div className="absolute top-0 right-1/4 w-px h-96 bg-gradient-to-down from-blue-500/10 to-transparent pointer-events-none" />
-      <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top,rgba(239,68,68,0.06),transparent_60%)] pointer-events-none" />
-
-      {/* Header element */}
-      <div className="p-6 flex items-center justify-between border-b border-white/[0.03] z-10">
+    <div className="fq-shell relative flex min-h-screen flex-col justify-between overflow-hidden">
+      <div className="fq-header z-10 !relative">
         <div className="flex items-center gap-2.5">
-          <div className="p-1 px-2.5 bg-red-500/15 text-red-500 border border-red-500/20 rounded-md font-mono text-sm font-bold tracking-widest shadow-[0_0_10px_rgba(239,68,68,0.15)]">
-            TASKFORCE
+          <div className="flex h-7 w-7 items-center justify-center rounded-md border text-[11px] font-semibold text-neutral-300"
+            style={{ backgroundColor: "var(--color-fq-elevated)", borderColor: "var(--color-fq-border)" }}
+          >
+            FQ
           </div>
-          <span className="font-display font-black text-lg tracking-tight text-white">
+          <span className="font-display text-lg font-semibold tracking-tight text-white">
             ForceQA
           </span>
         </div>
-        <div className="flex items-center gap-2 text-xs font-mono text-[#475569]">
-          <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+        <div className="flex items-center gap-2 text-xs font-mono text-neutral-500">
+          <span className="h-2 w-2 rounded-full bg-green-500" />
           SYSTEM_ONLINE // DEPLOY_HOT
         </div>
       </div>
 
-      {/* Main hero and login container */}
-      <main className="flex-1 flex items-center justify-center px-4 py-8 z-10">
+      <main className="z-10 flex flex-1 items-center justify-center px-4 py-8">
         <motion.div 
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.4 }}
-          className="w-full max-w-lg bg-[#0d1220]/90 border border-[#1e293b] backdrop-blur-xl rounded-2xl p-8 shadow-[0_20px_50px_rgba(0,0,0,0.5)]"
+          className="fq-auth-card max-w-lg"
         >
           <div className="text-center">
             {!isSupabaseConfigured() && (
@@ -161,41 +156,31 @@ export const LoginScreen: React.FC = () => {
               </div>
             )}
 
-            <div className="inline-flex p-3 bg-red-500/10 text-red-500 rounded-xl border border-red-500/20 mb-4 relative">
-              <ShieldCheck className="w-8 h-8" />
-              <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-              </span>
+            <div className="mb-4 inline-flex rounded-xl border p-3 text-neutral-300"
+              style={{ backgroundColor: "var(--color-fq-elevated)", borderColor: "var(--color-fq-border)" }}
+            >
+              <ShieldCheck className="h-8 w-8" />
             </div>
             
             <h1 className="font-display text-4xl font-extrabold tracking-tight text-white mb-1">
               ForceQA <span className="text-red-500 font-light">StrikeBoard</span>
             </h1>
-            <p className="text-slate-400 text-xs max-w-sm mx-auto mb-6 leading-relaxed">
+            <p className="text-neutral-500 text-xs max-w-sm mx-auto mb-6 leading-relaxed">
               Plataforma de guerra ágil e em tempo real para controle tático de bugs críticos.
             </p>
           </div>
 
           {/* Premium Selector Tabs */}
-          <div className="grid grid-cols-2 bg-[#0a0d16] p-1 rounded-xl border border-slate-800/80 mb-6 font-mono text-[11px] font-bold text-center">
+          <div className="fq-segmented mb-6 grid-cols-2 text-center font-mono text-[11px] font-bold">
             <button
               onClick={() => setActiveTab("email")}
-              className={`py-2 px-1 rounded-lg transition-all duration-150 cursor-pointer ${
-                activeTab === "email"
-                  ? "bg-red-550/15 border border-red-500/20 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.05)]"
-                  : "text-slate-400 hover:text-white hover:bg-slate-900/50"
-              }`}
+              className={`fq-segment ${activeTab === "email" ? "fq-segment--active" : ""}`}
             >
               E-MAIL
             </button>
             <button
               onClick={() => setActiveTab("guest")}
-              className={`py-2 px-1 rounded-lg transition-all duration-150 cursor-pointer ${
-                activeTab === "guest"
-                  ? "bg-red-550/15 border border-red-500/20 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.05)]"
-                  : "text-slate-400 hover:text-white hover:bg-slate-900/50"
-              }`}
+              className={`fq-segment ${activeTab === "guest" ? "fq-segment--active" : ""}`}
             >
               CONVIDADO
             </button>
@@ -212,7 +197,7 @@ export const LoginScreen: React.FC = () => {
                 transition={{ duration: 0.15 }}
               >
                 {emailError && (
-                  <div className="p-3 bg-red-900/20 border border-red-550/30 text-red-400 text-xs rounded-lg mb-4 flex items-start gap-2">
+                  <div className="fq-alert-error mb-4 flex items-start gap-2">
                     <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                     <span>{emailError}</span>
                   </div>
@@ -226,11 +211,11 @@ export const LoginScreen: React.FC = () => {
                       className="space-y-4 overflow-hidden pt-1 pb-2"
                     >
                       <div>
-                        <label className="block text-xs font-mono text-slate-400 mb-1.5Packed">NOME COMPLETO</label>
+                        <label className="fq-label">NOME COMPLETO</label>
                         <input
                           type="text"
                           required={isSignUp}
-                          className="w-full bg-[#0a0d16] border border-slate-800 focus:border-red-500/50 rounded-lg px-4 py-2 text-sm text-white placeholder-slate-600 focus:outline-none transition font-sans"
+                          className="fq-input font-sans"
                           placeholder="Ex: Matheus Lisboa"
                           value={signUpName}
                           onChange={(e) => setSignUpName(e.target.value)}
@@ -239,9 +224,9 @@ export const LoginScreen: React.FC = () => {
 
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-xs font-mono text-slate-400 mb-1.5">TIME / FUNÇÃO</label>
+                          <label className="fq-label">TIME / FUNÇÃO</label>
                           <select
-                            className="w-full bg-[#0a0d16] border border-slate-800 focus:border-red-500/50 rounded-lg px-2 py-2 text-sm text-white focus:outline-none transition font-mono"
+                            className="fq-select font-mono text-sm"
                             value={signUpRole}
                             onChange={(e) => setSignUpRole(e.target.value as any)}
                           >
@@ -254,11 +239,11 @@ export const LoginScreen: React.FC = () => {
                         </div>
 
                         <div>
-                          <label className="block text-xs font-mono text-slate-400 mb-1.5">SQUAD DE ATUAÇÃO</label>
+                          <label className="fq-label">SQUAD DE ATUAÇÃO</label>
                           <input
                             type="text"
                             required={isSignUp}
-                            className="w-full bg-[#0a0d16] border border-slate-800 focus:border-red-500/50 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none transition font-mono"
+                            className="fq-input font-mono"
                             placeholder="Ex: Squad Pix"
                             value={signUpSquad}
                             onChange={(e) => setSignUpSquad(e.target.value)}
@@ -269,26 +254,26 @@ export const LoginScreen: React.FC = () => {
                   )}
 
                   <div>
-                    <label className="block text-xs font-mono text-slate-400 mb-1.5">E-MAIL CORPORATIVO / PESSOAL</label>
+                    <label className="fq-label">E-MAIL CORPORATIVO / PESSOAL</label>
                     <div className="relative">
                       <input
                         type="email"
                         required
-                        className="w-full bg-[#0a0d16] border border-slate-800 focus:border-red-500/50 rounded-lg pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-600 select-none focus:outline-none focus:ring-0 transition"
+                        className="fq-input pl-10"
                         placeholder="Ex: dba@empresa.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                       />
-                      <Mail className="absolute left-3.5 top-3 w-4 h-4 text-slate-550" />
+                      <Mail className="absolute left-3.5 top-3 w-4 h-4 text-neutral-500" />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-mono text-slate-400 mb-1.5">SENHA DE ACESSO</label>
+                    <label className="fq-label">SENHA DE ACESSO</label>
                     <input
                       type="password"
                       required
-                      className="w-full bg-[#0a0d16] border border-slate-800 focus:border-red-500/50 rounded-lg px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none transition"
+                      className="fq-input"
                       placeholder="••••••••"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
@@ -298,7 +283,7 @@ export const LoginScreen: React.FC = () => {
                   <button
                     type="submit"
                     disabled={emailLoading}
-                    className="w-full flex items-center justify-center gap-2.5 bg-red-650 hover:bg-red-600 disabled:bg-slate-800 disabled:text-slate-550 text-white font-semibold py-2.5 px-4 rounded-xl border border-red-500/20 shadow-[0_4px_15px_rgba(239,68,68,0.15)] transition cursor-pointer"
+                    className="fq-btn-primary w-full font-semibold"
                   >
                     {emailLoading ? (
                       <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -348,27 +333,25 @@ export const LoginScreen: React.FC = () => {
 
                 <form onSubmit={handleGuestSubmit} className="space-y-4">
                   <div>
-                    <label className="block text-xs font-mono text-slate-400 mb-1.5">SEU NOME COMPLETO</label>
+                    <label className="fq-label">SEU NOME COMPLETO</label>
                     <input
                       type="text"
                       required
                       placeholder="Ex: Rodrigo Silva, Ana Souza"
-                      className="w-full bg-[#0a0d16] border border-slate-800 focus:border-red-500/50 rounded-lg px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none transition"
+                      className="fq-input"
                       value={guestName}
                       onChange={(e) => setGuestName(e.target.value)}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-mono text-slate-400 mb-2">SUA SQUAD OPERACIONAL</label>
+                    <label className="fq-label !mb-2">SUA SQUAD OPERACIONAL</label>
                     <div className="grid grid-cols-3 gap-2.5 mb-2 font-mono text-xs">
                       <button
                         type="button"
                         onClick={() => setGuestSquad("dev")}
-                        className={`py-2 px-3 border rounded-lg font-bold transition cursor-pointer text-center ${
-                          guestSquad === "dev"
-                            ? "bg-red-500/10 border-red-500/40 text-red-400 font-black"
-                            : "bg-[#0a0d16] border-slate-800 text-slate-400 hover:border-slate-700"
+                        className={`fq-filter-chip w-full justify-center font-mono font-bold cursor-pointer py-2 ${
+                          guestSquad === "dev" ? "!bg-white/[0.08] !border-white/[0.16] text-neutral-100" : ""
                         }`}
                       >
                         DEV
@@ -376,10 +359,8 @@ export const LoginScreen: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => setGuestSquad("dba")}
-                        className={`py-2 px-3 border rounded-lg font-bold transition cursor-pointer text-center ${
-                          guestSquad === "dba"
-                            ? "bg-red-500/10 border-red-500/40 text-red-400 font-black"
-                            : "bg-[#0a0d16] border-slate-800 text-slate-400 hover:border-slate-700"
+                        className={`fq-filter-chip w-full justify-center font-mono font-bold cursor-pointer py-2 ${
+                          guestSquad === "dba" ? "!bg-white/[0.08] !border-white/[0.16] text-neutral-100" : ""
                         }`}
                       >
                         DBA
@@ -387,10 +368,8 @@ export const LoginScreen: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => setGuestSquad("other")}
-                        className={`py-2 px-3 border rounded-lg font-bold transition cursor-pointer text-center ${
-                          guestSquad === "other"
-                            ? "bg-red-500/10 border-red-500/40 text-red-400 font-black"
-                            : "bg-[#0a0d16] border-slate-800 text-slate-400 hover:border-slate-700"
+                        className={`fq-filter-chip w-full justify-center font-mono font-bold cursor-pointer py-2 ${
+                          guestSquad === "other" ? "!bg-white/[0.08] !border-white/[0.16] text-neutral-100" : ""
                         }`}
                       >
                         OUTRA
@@ -407,7 +386,7 @@ export const LoginScreen: React.FC = () => {
                           type="text"
                           required
                           placeholder="Informe sua Squad (ex: squad de faturamento)"
-                          className="w-full bg-[#0a0d16] border border-slate-800 focus:border-red-500/50 rounded-lg px-4 py-2 text-xs text-white placeholder-slate-600 focus:outline-none transition"
+                          className="fq-input text-xs"
                           value={customSquad}
                           onChange={(e) => setCustomSquad(e.target.value)}
                         />
@@ -416,7 +395,7 @@ export const LoginScreen: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-mono text-slate-400 mb-1.5 flex items-center justify-between">
+                    <label className="fq-label fq-label--inline justify-between w-full">
                       <span>ID DA WAR ROOM</span>
                       <span className="text-[10px] text-red-400">[PRÉ-CRIADA POR ADMIN]</span>
                     </label>
@@ -424,7 +403,7 @@ export const LoginScreen: React.FC = () => {
                       type="text"
                       required
                       placeholder="Ex: ab709841-a010-41da-a7a2-dfb8a6e7c2eb"
-                      className="w-full bg-[#0a0d16] border border-slate-800 focus:border-red-500/50 rounded-lg px-4 py-2.5 text-sm text-white placeholder-slate-650 focus:outline-none transition"
+                      className="fq-input"
                       value={warRoomName}
                       onChange={(e) => setWarRoomName(e.target.value)}
                     />
@@ -433,7 +412,7 @@ export const LoginScreen: React.FC = () => {
                   <button
                     type="submit"
                     disabled={guestLoading}
-                    className="w-full flex items-center justify-center gap-2 bg-red-650 hover:bg-red-600 disabled:bg-slate-800 disabled:text-slate-550 text-white font-semibold py-2.5 px-4 rounded-xl border border-red-500/20 shadow-[0_4px_15px_rgba(239,68,68,0.15)] transition cursor-pointer"
+                    className="fq-btn-primary w-full font-semibold"
                   >
                     {guestLoading ? (
                       <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -452,7 +431,7 @@ export const LoginScreen: React.FC = () => {
       </main>
 
       {/* Footer system names credits */}
-      <footer className="p-6 flex flex-wrap items-center justify-between border-t border-white/[0.02] text-[#475569] text-[11px] font-mono gap-4">
+      <footer className="fq-footer z-10 flex flex-wrap items-center justify-between gap-4">
         <div>
           AUTONOMIC CRITICAL METRICS BOARD v2.5.0
         </div>

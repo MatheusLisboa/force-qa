@@ -4,6 +4,8 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
+import { createAIProvider } from "./server/ai/providerFactory";
+import { REPORT_SYSTEM_PROMPT, buildReportUserPrompt } from "./server/ai/reportPrompt";
 
 dotenv.config();
 
@@ -223,7 +225,35 @@ Evaluate the similarity and return whether this represents a duplicate issue.`;
 });
 
 // -------------------------
-// 3. API: Generate War Room Summary Report
+// 3. API: Generate Executive QA Report (aggregated metrics)
+// -------------------------
+app.post("/api/ai/generate-report", async (req, res) => {
+  try {
+    const { metrics } = req.body;
+    if (!metrics || typeof metrics !== "object") {
+      res.status(400).json({ error: "Métricas agregadas são obrigatórias." });
+      return;
+    }
+
+    const provider = createAIProvider();
+    const metricsJson = JSON.stringify(metrics, null, 2);
+    const userPrompt = buildReportUserPrompt(metricsJson);
+    const markdown = await provider.generateReport(REPORT_SYSTEM_PROMPT, userPrompt);
+
+    res.json({
+      markdown,
+      generatedAt: new Date().toISOString(),
+      provider: provider.name,
+      model: provider.model,
+    });
+  } catch (error: any) {
+    console.error("AI generate report error:", error);
+    res.status(500).json({ error: error.message || "Falha ao gerar relatório executivo." });
+  }
+});
+
+// -------------------------
+// 4. API: Generate War Room Summary Report (legacy)
 // -------------------------
 app.post("/api/ai/summarize-warroom", async (req, res) => {
   try {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { LoginScreen } from "./components/LoginScreen";
 import { Onboarding } from "./components/Onboarding";
@@ -6,6 +6,7 @@ import { Dashboard } from "./components/Dashboard";
 import { WarRoomDetail } from "./components/WarRoomDetail";
 import { Radio, ShieldAlert, LogOut, Terminal, Layers, Lock, User, Mail } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { useModalA11y } from "./hooks/useModalA11y";
 
 function AppContent() {
   const { user, profile, loading, updateProfile, changePassword, logout } = useAuth();
@@ -19,6 +20,17 @@ function AppContent() {
   const [profileSuccess, setProfileSuccess] = useState("");
   const [profileError, setProfileError] = useState("");
   const [profileSaving, setProfileSaving] = useState(false);
+  const profileDialogRef = useRef<HTMLDivElement>(null);
+
+  const closeProfileModal = useCallback(() => {
+    setIsProfileModalOpen(false);
+    setProfileError("");
+    setProfileSuccess("");
+    setNewPassword("");
+    setConfirmPassword("");
+  }, []);
+
+  useModalA11y(isProfileModalOpen, closeProfileModal, profileDialogRef);
 
   useEffect(() => {
     if (profile) {
@@ -90,9 +102,9 @@ function AppContent() {
   // 1. Loading core state
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#080b13] flex flex-col justify-center items-center">
-        <div className="w-10 h-10 border-3 border-red-500 border-t-transparent rounded-full animate-spin mb-4" />
-        <p className="text-slate-450 font-mono text-sm tracking-wide">
+      <div className="fq-loading">
+        <div className="fq-spinner mb-4" />
+        <p className="font-mono text-sm tracking-wide text-neutral-500">
           CONECTANDO AO SISTEMA DE OPERAÇÕES FORCE_QA...
         </p>
       </div>
@@ -111,34 +123,35 @@ function AppContent() {
 
   // 4. Main operation dashboards
   return (
-    <div className="min-h-screen bg-[#080b13] text-slate-100 flex flex-col">
-      {/* Dynamic top military toolbar panel header */}
-      <header className="bg-[#0b0f19]/90 border-b border-slate-900/60 sticky top-0 z-30 backdrop-blur-md px-6 py-4 flex items-center justify-between">
+    <div className="fq-shell flex flex-col">
+      <header className="fq-header">
         <div 
           onClick={handleBackToDashboard}
-          className="flex items-center gap-3 cursor-pointer group"
+          className="flex items-center gap-2.5 cursor-pointer group"
         >
-          <div className="p-1 px-2 bg-red-650/15 border border-red-500/25 rounded font-mono text-xs font-black tracking-widest text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.15)] group-hover:scale-102 transition">
-            WAR ROOM QA
+          <div className="flex h-7 w-7 items-center justify-center rounded-md border text-[11px] font-semibold text-neutral-300 transition group-hover:bg-white/[0.06]"
+            style={{ backgroundColor: "var(--color-fq-elevated)", borderColor: "var(--color-fq-border)" }}
+          >
+            FQ
           </div>
-          <span className="font-display font-black text-white text-base tracking-tight group-hover:text-red-400 transition">
+          <span className="font-display text-[15px] font-semibold tracking-tight text-neutral-100 transition group-hover:text-white">
             ForceQA
           </span>
         </div>
 
-        {/* User context action toolbar */}
-        <div className="flex items-center gap-4 text-xs font-mono">
+        <div className="flex items-center gap-2 text-[13px]">
           <div 
             onClick={() => setIsProfileModalOpen(true)}
-            className="flex items-center gap-2.5 bg-[#0d1220]/85 hover:bg-slate-950 border border-slate-900 px-3 py-1.5 rounded-lg cursor-pointer transition select-none group"
+            className="flex cursor-pointer select-none items-center gap-2 rounded-md border px-2.5 py-1.5 transition hover:bg-white/[0.05]"
+            style={{ borderColor: "var(--color-fq-border)", backgroundColor: "rgba(255,255,255,0.03)" }}
             title="Clique para editar seu perfil ou alterar senha"
           >
-            <div className="w-6.5 h-6.5 rounded bg-red-950/45 text-red-400 flex items-center justify-center font-bold border border-red-900/30 text-[10px] group-hover:bg-red-500/20 group-hover:text-white transition">
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-white/[0.08] text-[10px] font-medium text-neutral-300">
               {profile.name.substring(0, 2).toUpperCase()}
             </div>
             <div className="hidden sm:flex flex-col text-left">
-              <span className="text-slate-100 font-bold group-hover:text-red-400 transition leading-none text-xs">{profile.name}</span>
-              <span className="text-[9px] text-slate-450 uppercase leading-none mt-1">
+              <span className="text-[13px] font-medium leading-none text-neutral-100">{profile.name}</span>
+              <span className="text-[11px] leading-none mt-0.5 text-neutral-500">
                 {profile.role === "admin" ? "ADMIN" : profile.role === "developer" ? "DEV" : profile.role.toUpperCase()} • {profile.squad}
               </span>
             </div>
@@ -146,7 +159,7 @@ function AppContent() {
 
           <button
             onClick={() => logout()}
-            className="p-2 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg border border-slate-800 cursor-pointer flex items-center gap-1.5 transition text-xs font-mono font-bold"
+            className="fq-btn-ghost !min-h-0 !px-2 !py-2"
             title="Sair (Logout)"
           >
             <LogOut className="w-4 h-4" />
@@ -156,7 +169,7 @@ function AppContent() {
       </header>
 
       {/* Primary viewport switch container */}
-      <main className="flex-1">
+      <main className="flex min-h-0 flex-1 flex-col">
         {selectedRoomId ? (
           <WarRoomDetail 
             roomId={selectedRoomId} 
@@ -172,113 +185,113 @@ function AppContent() {
       {/* Interactive Profile & Password Update Modal Overlay */}
       <AnimatePresence>
         {isProfileModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#080b13]/85 backdrop-blur-sm animate-fade-in">
+          <div className="fq-modal-overlay animate-fade-in">
             <motion.div 
+              ref={profileDialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="profile-modal-title"
+              tabIndex={-1}
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-md bg-[#0d1220] border border-[#1e293b] rounded-2xl shadow-2xl p-6 relative"
+              className="fq-modal fq-modal--sm"
             >
-              <div className="flex justify-between items-center border-b border-white/[0.04] pb-4 mb-4">
-                <h3 className="font-display text-lg font-extrabold text-white flex items-center gap-2">
-                  <User className="w-4 h-4 text-red-500" /> Configurações de Perfil
+              <div className="fq-modal-header !mb-4">
+                <h3 id="profile-modal-title" className="fq-modal-title">
+                  <User className="w-4 h-4 text-neutral-400" /> Configurações de Perfil
                 </h3>
                 <button 
-                  onClick={() => {
-                    setIsProfileModalOpen(false);
-                    setProfileError("");
-                    setProfileSuccess("");
-                    setNewPassword("");
-                    setConfirmPassword("");
-                  }}
-                  className="p-1 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-350 hover:text-white rounded text-[10px] font-mono font-bold transition cursor-pointer"
+                  onClick={closeProfileModal}
+                  className="fq-btn-icon"
+                  aria-label="Fechar"
                 >
                   X
                 </button>
               </div>
 
               {profileError && (
-                <div className="p-3 bg-red-900/20 border border-red-550/20 text-red-400 text-xs rounded-lg mb-4 font-mono">
+                <div className="fq-alert-error mb-4 font-mono">
                   ❌ {profileError}
                 </div>
               )}
 
               {profileSuccess && (
-                <div className="p-3 bg-green-950/20 border border-green-500/20 text-green-400 text-xs rounded-lg mb-4 font-mono">
+                <div className="fq-alert-success mb-4 font-mono">
                   ✅ {profileSuccess}
                 </div>
               )}
 
               <form onSubmit={handleUpdateProfileSubmit} className="space-y-4 text-sm">
                 <div>
-                  <label className="block text-[10px] font-mono font-bold text-slate-400 uppercase mb-1.5Packed">
+                  <label className="fq-label fq-label--xs">
                     Seu Nome Completo
                   </label>
                   <div className="relative">
                     <input
                       required
                       type="text"
-                      className="w-full bg-[#05070a] border border-slate-800 focus:border-red-500/50 rounded-lg pl-9 pr-3 py-2 text-xs font-mono text-white placeholder-slate-600 focus:outline-none transition"
+                      className="fq-input pl-9 font-mono text-xs"
                       placeholder="Seu nome"
                       value={profileNameInput}
                       onChange={(e) => setProfileNameInput(e.target.value)}
                     />
-                    <User className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-550" />
+                    <User className="absolute left-3 top-2.5 w-3.5 h-3.5 text-neutral-500" />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-mono font-bold text-slate-400 uppercase mb-1.5">
+                  <label className="fq-label fq-label--xs">
                     Sua Squad Operacional
                   </label>
                   <div className="relative">
                     <input
                       required
                       type="text"
-                      className="w-full bg-[#05070a] border border-slate-800 focus:border-red-500/50 rounded-lg pl-9 pr-3 py-2 text-xs font-mono text-white placeholder-slate-600 focus:outline-none transition"
+                      className="fq-input pl-9 font-mono text-xs"
                       placeholder="Ex: Squad Core, Squad Pix"
                       value={profileSquadInput}
                       onChange={(e) => setProfileSquadInput(e.target.value)}
                     />
-                    <Layers className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-550" />
+                    <Layers className="absolute left-3 top-2.5 w-3.5 h-3.5 text-neutral-500" />
                   </div>
                 </div>
 
-                <div className="border-t border-white/[0.04] pt-4 mt-2">
+                <div className="border-t border-white/[0.06] pt-4 mt-2">
                   <h4 className="font-mono text-[10px] font-bold text-indigo-400 uppercase mb-3">
                     🔐 ALTERAR SENHA DE ACESSO (OPCIONAL)
                   </h4>
                   
                   <div className="space-y-3.5">
                     <div>
-                      <label className="block text-[9px] font-mono text-slate-450 uppercase mb-1.5">
+                      <label className="fq-label fq-label--xs !text-[9px]">
                         Nova Senha
                       </label>
                       <div className="relative">
                         <input
                           type="password"
-                          className="w-full bg-[#05070a] border border-slate-800 focus:border-red-500/50 rounded-lg pl-9 pr-3 py-2 text-xs font-mono text-white placeholder-slate-650 focus:outline-none transition"
+                          className="fq-input pl-9 font-mono text-xs"
                           placeholder="Mínimo de 6 caracteres"
                           value={newPassword}
                           onChange={(e) => setNewPassword(e.target.value)}
                         />
-                        <Lock className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-550" />
+                        <Lock className="absolute left-3 top-2.5 w-3.5 h-3.5 text-neutral-500" />
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-[9px] font-mono text-slate-450 uppercase mb-1.5">
+                      <label className="fq-label fq-label--xs !text-[9px]">
                         Confirmar Nova Senha
                       </label>
                       <div className="relative">
                         <input
                           type="password"
-                          className="w-full bg-[#05070a] border border-slate-800 focus:border-red-500/50 rounded-lg pl-9 pr-3 py-2 text-xs font-mono text-white placeholder-slate-655 focus:outline-none transition"
+                          className="fq-input pl-9 font-mono text-xs"
                           placeholder="Digite novamente"
                           value={confirmPassword}
                           onChange={(e) => setConfirmPassword(e.target.value)}
                         />
-                        <Lock className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-550" />
+                        <Lock className="absolute left-3 top-2.5 w-3.5 h-3.5 text-neutral-500" />
                       </div>
                     </div>
                   </div>
@@ -287,25 +300,19 @@ function AppContent() {
                 <div className="pt-3 flex justify-end gap-2.5">
                   <button
                     type="button"
-                    onClick={() => {
-                      setIsProfileModalOpen(false);
-                      setProfileError("");
-                      setProfileSuccess("");
-                      setNewPassword("");
-                      setConfirmPassword("");
-                    }}
-                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-750 text-slate-350 text-xs font-mono font-bold rounded-lg cursor-pointer transition"
+                    onClick={closeProfileModal}
+                    className="fq-btn-ghost text-xs font-mono font-bold"
                   >
                     FECHAR
                   </button>
                   <button
                     type="submit"
                     disabled={profileSaving}
-                    className="px-4 py-1.5 bg-red-650 hover:bg-red-500 hover:shadow-[0_0_10px_rgba(239,68,68,0.2)] text-white text-xs font-mono font-bold rounded-lg cursor-pointer transition flex items-center gap-1.5"
+                    className="fq-btn-primary text-xs font-mono font-bold"
                   >
                     {profileSaving ? (
                       <>
-                        <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <span className="fq-spinner !h-3 !w-3 !border-white !border-t-transparent" />
                         SALVANDO...
                       </>
                     ) : (
@@ -320,13 +327,13 @@ function AppContent() {
       </AnimatePresence>
 
       {/* Tactical logs footer status bar */}
-      <footer className="bg-[#0b0f19] border-t border-slate-950 p-4 flex flex-col sm:flex-row items-center justify-between gap-4 text-[10px] font-mono text-slate-550">
+      <footer className="fq-footer flex flex-col sm:flex-row items-center justify-between gap-4 font-mono">
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+          <span className="fq-status-dot" />
           <span>ESTADO: COMUNICAÇÃO SEGUIDA FIELMENTE NO SUPABASE</span>
         </div>
         <div>
-          DATABASE_REF: <span className="text-slate-450">forceqa-supabase</span>
+          DATABASE_REF: <span className="text-neutral-500">forceqa-supabase</span>
         </div>
       </footer>
     </div>

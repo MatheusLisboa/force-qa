@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS public.war_rooms (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   created_by UUID NOT NULL REFERENCES auth.users(id),
   created_by_name TEXT,
-  guest_access_disabled BOOLEAN NOT NULL DEFAULT false
+  guest_access_disabled BOOLEAN NOT NULL DEFAULT false,
+  kanban_columns JSONB
 );
 
 CREATE TABLE IF NOT EXISTS public.bugs (
@@ -39,6 +40,7 @@ CREATE TABLE IF NOT EXISTS public.bugs (
   description TEXT NOT NULL DEFAULT '',
   criticism TEXT NOT NULL CHECK (criticism IN ('blocker', 'critical', 'high', 'medium', 'low')),
   status TEXT NOT NULL CHECK (status IN ('new', 'under_analysis', 'in_progress', 'ready_for_qa', 'validated', 'reopened')),
+  kanban_column_id TEXT,
   evidence_url TEXT,
   prototype_url TEXT,
   owner_id UUID,

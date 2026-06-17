@@ -15,6 +15,8 @@ import {
   AIWarRoomSummary,
   UserProfile,
 } from "../types";
+import type { BoardReportMetrics, AIExecutiveReport } from "./aiReport/types";
+import { DEFAULT_KANBAN_COLUMNS } from "./kanbanColumns";
 
 function cleanUndefined<T extends object>(obj: T): T {
   const result = { ...obj } as Record<string, unknown>;
@@ -43,6 +45,7 @@ function warRoomToRow(data: Omit<WarRoom, "id" | "createdAt">, customId: string)
     created_by: data.createdBy,
     created_by_name: data.createdByName,
     guest_access_disabled: data.guestAccessDisabled ?? false,
+    kanban_columns: data.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS,
   });
 }
 
@@ -91,12 +94,13 @@ export async function updateWarRoomStatus(
 
 export async function updateWarRoom(
   roomId: string,
-  fields: Partial<Pick<WarRoom, "status" | "guestAccessDisabled">>
+  fields: Partial<Pick<WarRoom, "status" | "guestAccessDisabled" | "kanbanColumns">>
 ): Promise<void> {
   const payload: Record<string, unknown> = {};
   if (fields.status !== undefined) payload.status = fields.status;
   if (fields.guestAccessDisabled !== undefined)
     payload.guest_access_disabled = fields.guestAccessDisabled;
+  if (fields.kanbanColumns !== undefined) payload.kanban_columns = fields.kanbanColumns;
 
   const { error } = await supabase
     .from("war_rooms")
@@ -129,6 +133,7 @@ export async function createBug(
       description: data.description,
       criticism: data.criticism,
       status: data.status,
+      kanban_column_id: data.kanbanColumnId ?? data.status,
       evidence_url: data.evidenceUrl,
       prototype_url: data.prototypeUrl,
       owner_id: data.ownerId,
@@ -182,6 +187,7 @@ export async function updateBugField(
     payload.status = fields.status;
     if (fields.status === "validated") payload.resolved_at = now;
   }
+  if (fields.kanbanColumnId !== undefined) payload.kanban_column_id = fields.kanbanColumnId;
   if (fields.evidenceUrl !== undefined) payload.evidence_url = fields.evidenceUrl;
   if (fields.prototypeUrl !== undefined) payload.prototype_url = fields.prototypeUrl;
   if (fields.ownerId !== undefined) payload.owner_id = fields.ownerId;
@@ -321,6 +327,21 @@ export async function fetchAIDuplicateCheck(
   if (!response.ok) {
     const errData = await response.json().catch(() => ({}));
     throw new Error(errData.error || "Failed to fetch Duplication checks.");
+  }
+  return response.json();
+}
+
+export async function fetchAIExecutiveReport(
+  metrics: BoardReportMetrics
+): Promise<AIExecutiveReport> {
+  const response = await fetch("/api/ai/generate-report", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ metrics }),
+  });
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(errData.error || "Falha ao gerar relatório executivo.");
   }
   return response.json();
 }

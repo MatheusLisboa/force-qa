@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { createWarRoom, createBoard, updateUserProfile, deleteUserProfile } from "../lib/services";
 import { subscribeWarRooms, subscribeAllBugs, subscribeUsers, findWarRoomByIdOrName } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
@@ -28,6 +28,9 @@ import {
   LayoutGrid
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { RoleBadge, RoomStatusBadge, RoomTypeBadge } from "./BugBadges";
+import { SeverityPicker } from "./SeverityPicker";
+import { useModalA11y } from "../hooks/useModalA11y";
 
 interface DashboardProps {
   onSelectRoom: (roomId: string) => void;
@@ -65,6 +68,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
   const [editingName, setEditingName] = useState("");
   const [editingRole, setEditingRole] = useState<any>("developer");
   const [editingSquad, setEditingSquad] = useState("");
+
+  const warRoomDialogRef = useRef<HTMLDivElement>(null);
+  const boardDialogRef = useRef<HTMLDivElement>(null);
+  const adminDialogRef = useRef<HTMLDivElement>(null);
+
+  const closeWarRoomModal = useCallback(() => setIsWarRoomModalOpen(false), []);
+  const closeBoardModal = useCallback(() => setIsBoardModalOpen(false), []);
+  const closeAdminUsersModal = useCallback(() => {
+    setIsAdminUsersModalOpen(false);
+    setUserCreationError("");
+    setUserCreationSuccess("");
+  }, []);
+
+  useModalA11y(isWarRoomModalOpen, closeWarRoomModal, warRoomDialogRef);
+  useModalA11y(isBoardModalOpen, closeBoardModal, boardDialogRef);
+  useModalA11y(isAdminUsersModalOpen, closeAdminUsersModal, adminDialogRef);
 
   // Live real-time stream subscription for System Users
   useEffect(() => {
@@ -309,63 +328,51 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
       <div
         key={room.id}
         onClick={() => onSelectRoom(room.id)}
-        className="group bg-[#0d1220]/75 hover:bg-[#111827]/90 hover:border-red-500/30 border border-slate-800 transition-all duration-150 rounded-xl p-5 shadow-lg relative cursor-pointer flex flex-col justify-between min-h-[195px]"
+        className="group fq-card-interactive"
       >
         <div>
-          <div className="flex justify-between items-start gap-2">
+          <div className="flex justify-between items-start gap-3">
             <h4
-              className="font-display font-extrabold text-white group-hover:text-red-400 text-lg transition tracking-tight truncate max-w-[180px]"
+              className="text-[15px] font-semibold text-neutral-100 tracking-tight truncate max-w-[200px]"
               title={room.name}
             >
               {room.name}
             </h4>
             {isBoard ? (
-              <span className="p-1 px-2 text-[10px] font-mono tracking-wider uppercase font-extrabold rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                BOARD
-              </span>
+              <RoomTypeBadge type="board" />
             ) : (
-              <span
-                className={`p-1 px-2 text-[10px] font-mono tracking-wider uppercase font-extrabold rounded ${
-                  room.status === "active"
-                    ? "bg-green-500/10 text-green-400 border border-green-500/20"
-                    : room.status === "paused"
-                      ? "bg-yellow-500/10 text-yellow-500 border border-yellow-500/20"
-                      : "bg-slate-800 text-slate-400 border border-slate-700"
-                }`}
-              >
-                {room.status === "active" ? "ATIVO" : room.status === "paused" ? "PAUSADO" : "ENCERRADO"}
-              </span>
+              <RoomStatusBadge status={room.status} />
             )}
           </div>
 
-          <div className="mt-1 text-[10px] font-mono text-slate-500 flex items-center gap-1">
+          <div className="mt-2 text-[11px] text-neutral-500 flex items-center gap-1.5 font-mono">
             <span>CHAVE:</span>
-            <span className="font-bold text-slate-300 font-mono select-all bg-slate-900 px-1 py-0.5 rounded border border-slate-800">
+            <span className="text-neutral-400 select-all bg-white/[0.04] px-1.5 py-0.5 rounded border border-white/[0.06] text-[10px]">
               {room.id}
             </span>
           </div>
 
-          <div className="flex items-center gap-2 mt-2 text-xs text-slate-450 font-mono">
+          <div className="flex items-center gap-2 mt-2.5 text-[12px] text-neutral-500 font-mono">
             <span>
-              PROJECT: <span className="text-slate-300 font-semibold">{room.project}</span>
+              PROJECT: <span className="text-neutral-300 font-medium">{room.project}</span>
             </span>
             <span>•</span>
             <span>
-              SQUAD: <span className="text-slate-300 font-semibold">{room.squad}</span>
+              SQUAD: <span className="text-neutral-300 font-medium">{room.squad}</span>
             </span>
           </div>
 
           {!isBoard && room.date && (
-            <div className="mt-1.5 text-[10px] font-mono text-slate-500">
+            <div className="mt-1.5 text-[11px] font-mono text-neutral-500">
               PERÍODO:{" "}
-              <span className="text-slate-350">
+              <span className="text-neutral-400">
                 {room.date}
                 {room.periodEnd ? ` → ${room.periodEnd}` : ""}
               </span>
             </div>
           )}
 
-          <p className="text-xs text-slate-400 mt-3 line-clamp-2 leading-relaxed" title={room.description}>
+          <p className="text-[13px] text-neutral-500 mt-3 line-clamp-2 leading-relaxed" title={room.description}>
             {room.description ||
               (isBoard
                 ? "Board permanente de acompanhamento de qualidade."
@@ -373,43 +380,43 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
           </p>
         </div>
 
-        <div className="mt-5 pt-4 border-t border-slate-850 flex justify-between items-center">
-          <div className="flex gap-4">
-            <div className="text-center">
-              <span className="block text-[10px] font-mono uppercase text-slate-450">Abertos</span>
-              <span className={`text-sm font-black ${roomTotalOpen > 0 ? "text-white" : "text-slate-500"}`}>
+        <div className="mt-4 pt-3.5 border-t border-white/[0.06] flex justify-between items-center">
+          <div className="flex gap-5">
+            <div>
+              <span className="block text-[11px] font-mono uppercase text-neutral-500">Abertos</span>
+              <span className={`text-[15px] font-semibold tabular-nums ${roomTotalOpen > 0 ? "text-neutral-100" : "text-neutral-600"}`}>
                 {roomTotalOpen}
               </span>
             </div>
-            <div className="text-center">
-              <span className="block text-[10px] font-mono uppercase text-slate-450">Falta QA</span>
+            <div>
+              <span className="block text-[11px] font-mono uppercase text-neutral-500">Falta QA</span>
               <span
-                className={`text-sm font-black ${
+                className={`text-[15px] font-semibold tabular-nums ${
                   activeRoomBugs.filter((b) => b.status === "ready_for_qa").length > 0
-                    ? "text-yellow-400"
-                    : "text-slate-500"
+                    ? "text-amber-400"
+                    : "text-neutral-600"
                 }`}
               >
                 {activeRoomBugs.filter((b) => b.status === "ready_for_qa").length}
               </span>
             </div>
             {roomBlocker > 0 && (
-              <div className="text-center">
-                <span className="block text-[10px] font-mono uppercase text-[#e11d48]">BLOCKER</span>
-                <span className="text-sm font-black text-[#e11d48] animate-pulse">{roomBlocker}</span>
+              <div>
+                <span className="block text-[11px] font-mono uppercase text-red-400/80">BLOCKER</span>
+                <span className="text-[15px] font-semibold text-red-400 tabular-nums">{roomBlocker}</span>
               </div>
             )}
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-1.5 items-center">
             <button
               onClick={(e) => copyShareLink(room.id, e)}
-              className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-705 cursor-pointer"
+              className="fq-btn-icon !p-1.5"
               title="Compartilhar Link"
             >
               <Share2 className="w-3.5 h-3.5" />
             </button>
-            <span className="p-1 px-2 text-[10px] font-mono text-slate-450 flex items-center gap-1 group-hover:text-red-400 transition">
+            <span className="text-[11px] font-mono text-neutral-500 group-hover:text-neutral-300 transition flex items-center gap-1">
               ENTRAR <ExternalLink className="w-3 h-3" />
             </span>
           </div>
@@ -604,26 +611,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
   };
 
   return (
-    <div className="space-y-8 p-6 lg:p-8 max-w-[2100px] w-full mx-auto">
-      {/* Upper header section */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-white/[0.04] pb-6">
+    <div className="fq-page fq-page--operational">
+      <div className="fq-page-header">
         <div>
-          <span className="font-mono text-xs tracking-wider text-red-500 uppercase font-semibold flex items-center gap-1.5">
-            <Radio className="w-3.5 h-3.5 animate-pulse" /> OPERATIONAL COMMAND STATUS
-          </span>
-          <h1 className="font-display text-3xl font-extrabold text-white mt-1">
+          <p className="fq-page-eyebrow font-mono uppercase tracking-wider flex items-center gap-1.5">
+            <Radio className="w-3.5 h-3.5 text-neutral-500" /> OPERATIONAL COMMAND STATUS
+          </p>
+          <h1 className="fq-page-title mt-1">
             Painel Central de QA
           </h1>
-          <p className="text-slate-400 text-sm mt-0.5">
+          <p className="text-neutral-500 text-[13px] mt-1">
             War Rooms por período e Boards permanentes de projetos e sistemas.
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2.5">
+        <div className="flex flex-wrap gap-2">
           {profile?.role === "admin" && (
             <button
               onClick={() => setIsAdminUsersModalOpen(true)}
-              className="flex items-center gap-2 bg-indigo-650 hover:bg-indigo-500 hover:shadow-[0_0_15px_rgba(99,102,241,0.25)] text-white font-medium px-4 py-2.5 rounded-lg transition cursor-pointer text-xs font-mono border border-indigo-500/20"
+              className="fq-btn-secondary text-xs font-mono"
             >
               <UserPlus className="w-4 h-4" />
               GERENCIAR USUÁRIOS
@@ -637,7 +643,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                   setFormError("");
                   setIsWarRoomModalOpen(true);
                 }}
-                className="flex items-center gap-2 bg-red-600 hover:bg-red-500 hover:shadow-[0_0_15px_rgba(239,68,68,0.25)] text-white font-medium px-4 py-2.5 rounded-lg transition cursor-pointer text-xs font-mono border border-red-500/20"
+                className="fq-btn-primary text-xs font-mono"
               >
                 <Clock className="w-4 h-4" />
                 NOVA WAR ROOM
@@ -647,7 +653,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                   setFormError("");
                   setIsBoardModalOpen(true);
                 }}
-                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 hover:shadow-[0_0_15px_rgba(99,102,241,0.25)] text-white font-medium px-4 py-2.5 rounded-lg transition cursor-pointer text-xs font-mono border border-indigo-500/20"
+                className="fq-btn-secondary text-xs font-mono"
               >
                 <LayoutGrid className="w-4 h-4" />
                 NOVO BOARD
@@ -659,21 +665,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
 
       {/* Filter Selection for Admin Panel */}
       {profile?.role === "admin" && (
-        <div className="bg-[#0f172a]/40 border border-slate-800/80 p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="fq-panel flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h3 className="font-display text-sm font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-              <Activity className="w-4 h-4 text-red-500 animate-pulse" />
+            <h3 className="fq-section-title !mb-1">
+              <Activity className="w-4 h-4 text-neutral-500" />
               CONTROLE DE FILTRO CENTRALIZADO
             </h3>
-            <p className="text-slate-400 text-xs mt-0.5">
+            <p className="text-neutral-500 text-xs">
               Visualize indicadores estratégicos de maneira consolidada (Geral) ou selecione um escopo individual por Sala de Guerra.
             </p>
           </div>
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 min-w-[320px] md:min-w-[480px]">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 min-w-[320px] md:min-w-[440px]">
             <select
               value={selectedDashboardRoomId}
               onChange={(e) => setSelectedDashboardRoomId(e.target.value)}
-              className="flex-1 bg-[#111827] border border-slate-800 rounded-lg px-4 py-2.5 text-xs text-white font-mono focus:border-red-500/50 focus:outline-none transition"
+              className="fq-select flex-1 text-xs font-mono"
             >
               <option value="all">📊 TODOS OS INCIDENTES (Consolidado Geral)</option>
               {warRooms.map((room) => (
@@ -684,10 +690,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
             </select>
             <button
               onClick={handleExportCSV}
-              className="flex items-center justify-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-mono text-[11px] font-bold px-4 py-2.5 rounded-lg border border-slate-700 transition cursor-pointer whitespace-nowrap"
+              className="fq-btn-ghost justify-center whitespace-nowrap text-[11px] font-mono font-bold"
               title="Exportar dados selecionados para formato CSV"
             >
-              <Download className="w-3.5 h-3.5 text-red-400" />
+              <Download className="w-3.5 h-3.5" />
               EXPORTAR RELATÓRIO
             </button>
           </div>
@@ -696,55 +702,51 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
 
       {/* Grid counters */}
       {profile?.role === "admin" && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Metric 1 */}
-          <div className="bg-[#0f172a]/60 border border-slate-800/80 p-5 rounded-xl flex items-center gap-4 relative overflow-hidden">
-            <div className="p-3 bg-red-500/10 text-red-500 rounded-lg">
-              <ShieldAlert className="w-6 h-6" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="fq-metric-card">
+            <div className="fq-metric-icon bg-red-500/10 text-red-400">
+              <ShieldAlert className="w-5 h-5" />
             </div>
             <div>
-              <span className="text-xs font-mono text-slate-400">Blockers & Críticos</span>
-              <h2 className="text-2xl font-black text-white mt-0.5">
+              <span className="text-[12px] text-neutral-500 font-mono">Blockers & Críticos</span>
+              <h2 className="text-xl font-semibold text-neutral-100 tabular-nums mt-0.5">
                 {bugsCrit.blocker + bugsCrit.critical}
               </h2>
             </div>
             {bugsCrit.blocker > 0 && (
-              <div className="absolute top-2 right-2 bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold animate-pulse">
+              <div className="absolute top-2 right-2 bg-red-500/15 text-red-400 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium">
                 ALERTA
               </div>
             )}
           </div>
 
-          {/* Metric 2 */}
-          <div className="bg-[#0f172a]/60 border border-slate-800/80 p-5 rounded-xl flex items-center gap-4">
-            <div className="p-3 bg-blue-500/10 text-blue-400 rounded-lg">
-              <Layers className="w-6 h-6" />
+          <div className="fq-metric-card">
+            <div className="fq-metric-icon bg-blue-500/10 text-blue-400">
+              <Layers className="w-5 h-5" />
             </div>
             <div>
-              <span className="text-xs font-mono text-slate-400">Total Bugs Abertos</span>
-              <h2 className="text-2xl font-black text-white mt-0.5">{bugsStatus.open}</h2>
+              <span className="text-[12px] text-neutral-500 font-mono">Total Bugs Abertos</span>
+              <h2 className="text-xl font-semibold text-neutral-100 tabular-nums mt-0.5">{bugsStatus.open}</h2>
             </div>
           </div>
 
-          {/* Metric 3 */}
-          <div className="bg-[#0f172a]/60 border border-slate-800/80 p-5 rounded-xl flex items-center gap-4">
-            <div className="p-3 bg-green-500/10 text-green-400 rounded-lg">
-              <CheckCircle className="w-6 h-6" />
+          <div className="fq-metric-card">
+            <div className="fq-metric-icon bg-emerald-500/10 text-emerald-400">
+              <CheckCircle className="w-5 h-5" />
             </div>
             <div>
-              <span className="text-xs font-mono text-slate-400">Tempo Médio Resolução</span>
-              <h2 className="text-2xl font-black text-white mt-0.5">{averageResolutionTimeStr}</h2>
+              <span className="text-[12px] text-neutral-500 font-mono">Tempo Médio Resolução</span>
+              <h2 className="text-xl font-semibold text-neutral-100 mt-0.5">{averageResolutionTimeStr}</h2>
             </div>
           </div>
 
-          {/* Metric 4 */}
-          <div className="bg-[#0f172a]/60 border border-slate-800/80 p-5 rounded-xl flex items-center gap-4">
-            <div className="p-3 bg-indigo-500/10 text-indigo-400 rounded-lg">
-              <User className="w-6 h-6" />
+          <div className="fq-metric-card">
+            <div className="fq-metric-icon bg-violet-500/10 text-violet-400">
+              <User className="w-5 h-5" />
             </div>
-            <div>
-              <span className="text-xs font-mono text-slate-400">Dev Mais Sobrecarregado</span>
-              <h2 className="text-lg font-bold text-white mt-1 truncate max-w-[130px]" title={topDevName}>
+            <div className="min-w-0">
+              <span className="text-[12px] text-neutral-500 font-mono">Dev Mais Sobrecarregado</span>
+              <h2 className="text-[15px] font-semibold text-neutral-100 mt-0.5 truncate" title={topDevName}>
                 {topDevName === "Nenhum" ? "--" : `${topDevName} (${topDevCount})`}
               </h2>
             </div>
@@ -754,66 +756,65 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
 
       {/* Mid Visual Graph Analytics Panel (Custom high-end SVG bars) */}
       {profile?.role === "admin" && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Severity chart */}
-          <div className="lg:col-span-2 bg-[#0f172a]/40 border border-white/[0.04] p-6 rounded-2xl">
-            <h3 className="font-display text-base font-bold text-white flex items-center gap-2 mb-6">
-              <Activity className="w-4 h-4 text-red-500" />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="lg:col-span-2 fq-panel p-5">
+            <h3 className="fq-section-title">
+              <Activity className="w-4 h-4 text-neutral-500" />
               Vulnerabilidades por Severidade Geral (Sem Validar)
             </h3>
             
             <div className="space-y-4">
               {/* Blocker bar */}
               <div>
-                <div className="flex justify-between text-xs text-slate-400 font-mono mb-1.5">
+                <div className="flex justify-between text-xs text-neutral-500 font-mono mb-1.5">
                   <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-600 shadow-[0_0_8px_rgba(220,38,38,0.8)]" /> BLOCKERS</span>
-                  <span className="font-bold text-slate-350">{bugsCrit.blocker} bugs</span>
+                  <span className="font-bold text-neutral-500">{bugsCrit.blocker} bugs</span>
                 </div>
-                <div className="h-2.5 w-full bg-[#111827] rounded-full overflow-hidden">
-                  <div className="h-full bg-red-650 rounded-full transition-all duration-500" style={{ width: `${Math.min(100, Math.max(2, (bugsCrit.blocker / (bugsStatus.open || 1)) * 100))}%` }} />
+                <div className="fq-progress-track">
+                  <div className="h-full bg-red-600 rounded-full transition-all duration-500" style={{ width: `${Math.min(100, Math.max(2, (bugsCrit.blocker / (bugsStatus.open || 1)) * 100))}%` }} />
                 </div>
               </div>
 
               {/* Critical bar */}
               <div>
-                <div className="flex justify-between text-xs text-slate-400 font-mono mb-1.5">
+                <div className="flex justify-between text-xs text-neutral-500 font-mono mb-1.5">
                   <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-500" /> CRÍTICOS</span>
-                  <span className="font-bold text-slate-350">{bugsCrit.critical} bugs</span>
+                  <span className="font-bold text-neutral-500">{bugsCrit.critical} bugs</span>
                 </div>
-                <div className="h-2.5 w-full bg-[#111827] rounded-full overflow-hidden">
+                <div className="fq-progress-track">
                   <div className="h-full bg-red-500 rounded-full transition-all duration-500" style={{ width: `${Math.min(100, Math.max(2, (bugsCrit.critical / (bugsStatus.open || 1)) * 100))}%` }} />
                 </div>
               </div>
 
               {/* High bar */}
               <div>
-                <div className="flex justify-between text-xs text-slate-405 font-mono mb-1.5">
+                <div className="flex justify-between text-xs text-neutral-500 font-mono mb-1.5">
                   <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-orange-500" /> ALTOS</span>
-                  <span className="font-bold text-slate-350">{bugsCrit.high} bugs</span>
+                  <span className="font-bold text-neutral-500">{bugsCrit.high} bugs</span>
                 </div>
-                <div className="h-2.5 w-full bg-[#111827] rounded-full overflow-hidden">
+                <div className="fq-progress-track">
                   <div className="h-full bg-orange-500 rounded-full transition-all duration-500" style={{ width: `${Math.min(100, Math.max(2, (bugsCrit.high / (bugsStatus.open || 1)) * 100))}%` }} />
                 </div>
               </div>
 
               {/* Medium bar */}
               <div>
-                <div className="flex justify-between text-xs text-slate-400 font-mono mb-1.5">
+                <div className="flex justify-between text-xs text-neutral-500 font-mono mb-1.5">
                   <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-yellow-500" /> MÉDIOS</span>
-                  <span className="font-bold text-slate-350">{bugsCrit.medium} bugs</span>
+                  <span className="font-bold text-neutral-500">{bugsCrit.medium} bugs</span>
                 </div>
-                <div className="h-2.5 w-full bg-[#111827] rounded-full overflow-hidden">
+                <div className="fq-progress-track">
                   <div className="h-full bg-yellow-500 rounded-full transition-all duration-500" style={{ width: `${Math.min(100, Math.max(2, (bugsCrit.medium / (bugsStatus.open || 1)) * 100))}%` }} />
                 </div>
               </div>
 
               {/* Low bar */}
               <div>
-                <div className="flex justify-between text-xs text-slate-400 font-mono mb-1.5">
+                <div className="flex justify-between text-xs text-neutral-500 font-mono mb-1.5">
                   <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-blue-400" /> BAIXOS</span>
-                  <span className="font-bold text-slate-350">{bugsCrit.low} bugs</span>
+                  <span className="font-bold text-neutral-500">{bugsCrit.low} bugs</span>
                 </div>
-                <div className="h-2.5 w-full bg-[#111827] rounded-full overflow-hidden">
+                <div className="fq-progress-track">
                   <div className="h-full bg-blue-400 rounded-full transition-all duration-500" style={{ width: `${Math.min(100, Math.max(2, (bugsCrit.low / (bugsStatus.open || 1)) * 100))}%` }} />
                 </div>
               </div>
@@ -821,13 +822,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
           </div>
 
           {/* Status ring or breakdown */}
-          <div className="bg-[#0f172a]/40 border border-white/[0.04] p-6 rounded-2xl flex flex-col justify-between">
+          <div className="fq-panel p-5 flex flex-col justify-between">
             <div>
-              <h3 className="font-display text-base font-bold text-white flex items-center gap-2 mb-4">
-                <TrendingUp className="w-4 h-4 text-emerald-550" />
+              <h3 className="fq-section-title !mb-4">
+                <TrendingUp className="w-4 h-4 text-emerald-400" />
                 {selectedDashboardRoomId === "all" ? "Taxa de Resolução Global" : "Taxa de Resolução da Sala"}
               </h3>
-              <p className="text-xs text-slate-450 leading-relaxed mb-6">
+              <p className="text-xs text-neutral-500 leading-relaxed mb-6">
                 Razão de eficácia de bugs validados e finalizados em relação ao total de relatos nesta seleção.
               </p>
             </div>
@@ -846,12 +847,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                   <span className="text-2xl font-black text-white">
                     {Math.round((bugsStatus.resolved / (filteredBugs.length || 1)) * 100)}%
                   </span>
-                  <span className="text-[10px] uppercase font-mono text-slate-450">Resolvidos</span>
+                  <span className="text-[10px] uppercase font-mono text-neutral-500">Resolvidos</span>
                 </div>
               </div>
             </div>
 
-            <div className="flex justify-between items-center text-xs font-mono text-[#94a3b8] mt-4 border-t border-white/[0.04] pt-4">
+            <div className="flex justify-between items-center text-xs font-mono text-neutral-500 mt-4 border-t border-white/[0.04] pt-4">
               <div>
                 <span className="text-[#22c55e] font-bold">{bugsStatus.resolved}</span> validados
               </div>
@@ -869,78 +870,76 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
       {/* Active War Rooms Grid List */}
       <div>
         {/* Code to enter a War Room by ID */}
-        <div className="bg-[#0a0f1d]/80 border border-slate-805 p-4 rounded-xl mb-6 shadow-md">
-          <h4 className="text-xs font-mono font-bold text-slate-450 mb-2 uppercase tracking-wider flex items-center gap-1.5">
-            <Key className="w-3.5 h-3.5 text-red-500" /> Acessar War Room ou Board via ID
+        <div className="fq-panel mb-5">
+          <h4 className="text-[13px] font-medium text-neutral-400 mb-2.5 flex items-center gap-1.5 font-mono uppercase tracking-wider">
+            <Key className="w-3.5 h-3.5 text-neutral-500" /> Acessar War Room ou Board via ID
           </h4>
-          <form onSubmit={handleEnterRoomById} className="flex gap-3">
+          <form onSubmit={handleEnterRoomById} className="flex gap-2">
             <input
               type="text"
               required
               placeholder="Digite o ID (Ex: room-XXXXXX ou board-XXXXXX)"
-              className="flex-1 bg-black/40 border border-slate-800 focus:border-red-500/50 rounded-lg px-3.5 py-2 text-sm text-white placeholder-slate-650 focus:outline-none transition font-mono"
+              className="fq-input flex-1 font-mono text-[13px]"
               value={enterRoomIdInput}
               onChange={(e) => setEnterRoomIdInput(e.target.value)}
             />
             <button
               type="submit"
               disabled={enteringRoomLoading}
-              className="bg-red-650 hover:bg-red-600 border border-red-500/20 text-white px-5 py-2 rounded-lg text-sm font-semibold transition cursor-pointer flex items-center gap-1.5 font-mono"
+              className="fq-btn-primary font-mono"
             >
               {enteringRoomLoading ? (
-                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span className="fq-spinner !h-4 !w-4 !border-neutral-900 !border-t-transparent" />
               ) : (
                 "LIBERAR ACESSO"
               )}
             </button>
           </form>
           {enterRoomError && (
-            <p className="text-red-400 text-xs mt-2 font-mono">{enterRoomError}</p>
+            <p className="text-red-400 text-[12px] mt-2 font-mono">{enterRoomError}</p>
           )}
           {enterRoomSuccess && (
-            <p className="text-green-400 text-xs mt-2 font-mono">{enterRoomSuccess}</p>
+            <p className="text-emerald-400 text-[12px] mt-2 font-mono">{enterRoomSuccess}</p>
           )}
         </div>
 
-        {/* War Rooms por período */}
-        <h3 className="font-display text-lg font-bold text-white flex items-center gap-1.5 mb-5 uppercase tracking-wide">
-          <Clock className="w-4 h-4 text-red-500" /> War Rooms por Período ({displayedWarRooms.length})
+        <h3 className="fq-section-title uppercase tracking-wide font-mono">
+          <Clock className="w-4 h-4 text-neutral-500" /> War Rooms por Período ({displayedWarRooms.length})
         </h3>
 
         {loading ? (
-          <div className="text-center py-12 bg-[#0d1220]/50 border border-slate-800 rounded-xl mb-10">
-            <div className="w-6 h-6 border-2 border-red-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-            <p className="text-slate-400 text-sm font-mono">Sincronizando Banco de Dados...</p>
+          <div className="fq-empty-state mb-8">
+            <div className="fq-spinner mx-auto mb-2" />
+            <p className="text-neutral-500 text-[13px] font-mono">Sincronizando Banco de Dados...</p>
           </div>
         ) : displayedWarRooms.length === 0 ? (
-          <div className="text-center py-12 bg-[#000000]/25 border border-slate-800 rounded-xl mb-10">
-            <AlertOctagon className="w-10 h-10 text-slate-650 mx-auto mb-3" />
-            <h4 className="text-slate-200 font-bold font-display text-base">Nenhuma War Room ativa</h4>
-            <p className="text-slate-550 text-xs mt-1 max-w-sm mx-auto">
+          <div className="fq-empty-state mb-8">
+            <AlertOctagon className="w-8 h-8 text-neutral-600 mx-auto mb-3" />
+            <h4 className="text-neutral-200 font-medium text-[15px]">Nenhuma War Room ativa</h4>
+            <p className="text-neutral-500 text-xs mt-1 max-w-sm mx-auto">
               War Rooms concentram operações de QA por período específico. Crie uma nova ou entre via ID acima.
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
             {displayedWarRooms.map(renderSpaceCard)}
           </div>
         )}
 
-        {/* Boards permanentes */}
-        <h3 className="font-display text-lg font-bold text-white flex items-center gap-1.5 mb-5 uppercase tracking-wide">
-          <LayoutGrid className="w-4 h-4 text-indigo-400" /> Boards Permanentes ({displayedBoards.length})
+        <h3 className="fq-section-title uppercase tracking-wide font-mono">
+          <LayoutGrid className="w-4 h-4 text-neutral-500" /> Boards Permanentes ({displayedBoards.length})
         </h3>
 
         {loading ? null : displayedBoards.length === 0 ? (
-          <div className="text-center py-12 bg-[#000000]/25 border border-slate-800 rounded-xl">
-            <LayoutGrid className="w-10 h-10 text-slate-650 mx-auto mb-3" />
-            <h4 className="text-slate-200 font-bold font-display text-base">Nenhum board permanente</h4>
-            <p className="text-slate-550 text-xs mt-1 max-w-sm mx-auto">
+          <div className="fq-empty-state">
+            <LayoutGrid className="w-8 h-8 text-neutral-600 mx-auto mb-3" />
+            <h4 className="text-neutral-200 font-medium text-[15px]">Nenhum board permanente</h4>
+            <p className="text-neutral-500 text-xs mt-1 max-w-sm mx-auto">
               Boards são quadros permanentes para projetos e sistemas específicos. Use o botão &quot;NOVO BOARD&quot; para criar.
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {displayedBoards.map(renderSpaceCard)}
           </div>
         )}
@@ -949,45 +948,51 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
       {/* Modal: Nova War Room */}
       <AnimatePresence>
         {isWarRoomModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#080b13]/85 backdrop-blur-sm">
+          <div className="fq-modal-overlay">
             <motion.div 
+              ref={warRoomDialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="war-room-modal-title"
+              tabIndex={-1}
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-xl bg-[#0d1220] border border-[#1e293b] rounded-2xl shadow-2xl p-6 relative"
+              className="fq-modal fq-modal--md"
             >
-              <div className="flex justify-between items-center border-b border-white/[0.04] pb-4 mb-5">
-                <h3 className="font-display text-xl font-extrabold text-white flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-red-500" /> Nova War Room
+              <div className="fq-modal-header">
+                <h3 id="war-room-modal-title" className="fq-modal-title">
+                  <Clock className="w-5 h-5 text-neutral-400" /> Nova War Room
                 </h3>
                 <button 
-                  onClick={() => setIsWarRoomModalOpen(false)}
-                  className="p-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded"
+                  onClick={closeWarRoomModal}
+                  className="fq-btn-icon"
+                  aria-label="Fechar"
                 >
                   X
                 </button>
               </div>
 
-              <p className="text-xs text-slate-450 font-mono mb-4">
+              <p className="text-xs text-neutral-500 font-mono mb-4">
                 Operação concentrada por período específico (release, hotfix, incidente).
               </p>
 
               {formError && (
-                <div className="p-3 bg-red-900/20 border border-red-500/20 text-red-400 text-xs rounded-lg mb-4">
+                <div className="fq-alert-error mb-4">
                   {formError}
                 </div>
               )}
 
-              <form onSubmit={handleCreateWarRoom} className="space-y-4 text-sm text-slate-300">
+              <form onSubmit={handleCreateWarRoom} className="space-y-4 text-sm text-neutral-300">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold uppercase text-slate-400 font-mono mb-1.5">
+                    <label className="fq-label">
                       Nome da War Room *
                     </label>
                     <input
                       required
                       type="text"
-                      className="w-full bg-[#0f172a] border border-slate-800 focus:border-red-500/50 rounded-lg px-3 py-2 text-white placeholder-slate-600 focus:outline-none transition"
+                      className="fq-input"
                       placeholder="Ex: WarRoom Release v2.4"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
@@ -995,13 +1000,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold uppercase text-slate-400 font-mono mb-1.5">
+                    <label className="fq-label">
                       Projeto / Sistema *
                     </label>
                     <input
                       required
                       type="text"
-                      className="w-full bg-[#0f172a] border border-slate-800 focus:border-red-500/50 rounded-lg px-3 py-2 text-white placeholder-slate-600 focus:outline-none transition"
+                      className="fq-input"
                       placeholder="Ex: App Android Checkout"
                       value={project}
                       onChange={(e) => setProject(e.target.value)}
@@ -1011,13 +1016,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold uppercase text-slate-400 font-mono mb-1.5">
+                    <label className="fq-label">
                       Squad Principal *
                     </label>
                     <input
                       required
                       type="text"
-                      className="w-full bg-[#0f172a] border border-slate-800 focus:border-red-500/50 rounded-lg px-3 py-2 text-white placeholder-slate-600 focus:outline-none transition"
+                      className="fq-input"
                       placeholder="Ex: Squad Core-Payments"
                       value={squad}
                       onChange={(e) => setSquad(e.target.value)}
@@ -1025,13 +1030,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold uppercase text-slate-400 font-mono mb-1.5">
+                    <label className="fq-label">
                       Data de Início *
                     </label>
                     <input
                       required
                       type="date"
-                      className="w-full bg-[#0f172a] border border-slate-800 focus:border-red-500/50 rounded-lg px-3 py-2 text-white focus:outline-none transition"
+                      className="fq-input"
                       value={date}
                       onChange={(e) => setDate(e.target.value)}
                     />
@@ -1039,24 +1044,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-400 font-mono mb-1.5">
+                  <label className="fq-label">
                     Data de Término (opcional)
                   </label>
                   <input
                     type="date"
-                    className="w-full bg-[#0f172a] border border-slate-800 focus:border-red-500/50 rounded-lg px-3 py-2 text-white focus:outline-none transition"
+                    className="fq-input"
                     value={periodEnd}
                     onChange={(e) => setPeriodEnd(e.target.value)}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-400 font-mono mb-1.5">
+                  <label className="fq-label">
                     Descrição do Escopo
                   </label>
                   <textarea
                     rows={3}
-                    className="w-full bg-[#0f172a] border border-slate-800 focus:border-red-500/50 rounded-lg px-3 py-2 text-white placeholder-slate-600 focus:outline-none transition"
+                    className="fq-textarea"
                     placeholder="Contexto do incidente e escopo dos testes..."
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
@@ -1064,49 +1069,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-400 font-mono mb-1.5">
+                  <label className="fq-label">
                     Severidade Geral Prevista
                   </label>
-                  <div className="grid grid-cols-5 gap-2">
-                    {(["blocker", "critical", "high", "medium", "low"] as SeverityLevel[]).map((level) => {
-                      const isSelected = severity === level;
-                      const levelColors: Record<string, string> = {
-                        blocker: "border-red-600 hover:bg-red-950/20 text-red-500 bg-red-950/10",
-                        critical: "border-red-500 hover:bg-red-900/20 text-red-400 bg-red-900/10",
-                        high: "border-orange-500 hover:bg-orange-950/10 text-orange-400 bg-orange-950/5",
-                        medium: "border-yellow-500 hover:bg-yellow-950/10 text-yellow-400 bg-yellow-950/5",
-                        low: "border-blue-500 hover:bg-blue-950/10 text-blue-400 bg-blue-950/5",
-                      };
-                      return (
-                        <button
-                          key={level}
-                          type="button"
-                          onClick={() => setSeverity(level)}
-                          className={`py-1.5 text-xs font-mono font-bold uppercase border rounded-md transition cursor-pointer text-center ${
-                            isSelected
-                              ? `${levelColors[level]} scale-102 border-current shadow-[0_0_10px_rgba(239,68,68,0.1)]`
-                              : "border-slate-800 hover:border-slate-700 bg-transparent text-slate-450"
-                          }`}
-                        >
-                          {level}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <SeverityPicker value={severity} onChange={setSeverity} />
                 </div>
 
-                <div className="pt-4 border-t border-white/[0.04] flex justify-end gap-3 font-semibold">
+                <div className="pt-4 border-t border-white/[0.06] flex justify-end gap-3 font-semibold">
                   <button
                     type="button"
                     onClick={() => setIsWarRoomModalOpen(false)}
-                    className="px-4 py-2 bg-slate-800/80 hover:bg-slate-750 text-slate-350 rounded-lg cursor-pointer text-center"
+                    className="fq-btn-ghost"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
                     disabled={submitting}
-                    className="px-5 py-2 bg-red-650 hover:bg-red-650/90 text-white rounded-lg shadow-md transition cursor-pointer text-center"
+                    className="fq-btn-primary"
                   >
                     {submitting ? "Criando..." : "Criar War Room"}
                   </button>
@@ -1120,44 +1100,50 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
       {/* Modal: Novo Board */}
       <AnimatePresence>
         {isBoardModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#080b13]/85 backdrop-blur-sm">
+          <div className="fq-modal-overlay">
             <motion.div 
+              ref={boardDialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="board-modal-title"
+              tabIndex={-1}
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-xl bg-[#0d1220] border border-indigo-500/20 rounded-2xl shadow-2xl p-6 relative"
+              className="fq-modal fq-modal--md"
             >
-              <div className="flex justify-between items-center border-b border-white/[0.04] pb-4 mb-5">
-                <h3 className="font-display text-xl font-extrabold text-white flex items-center gap-2">
-                  <LayoutGrid className="w-5 h-5 text-indigo-400" /> Novo Board
+              <div className="fq-modal-header">
+                <h3 id="board-modal-title" className="fq-modal-title">
+                  <LayoutGrid className="w-5 h-5 text-neutral-400" /> Novo Board
                 </h3>
                 <button 
-                  onClick={() => setIsBoardModalOpen(false)}
-                  className="p-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded"
+                  onClick={closeBoardModal}
+                  className="fq-btn-icon"
+                  aria-label="Fechar"
                 >
                   X
                 </button>
               </div>
 
-              <p className="text-xs text-slate-450 font-mono mb-4">
+              <p className="text-xs text-neutral-500 font-mono mb-4">
                 Board permanente para acompanhamento contínuo de um projeto ou sistema.
               </p>
 
               {formError && (
-                <div className="p-3 bg-red-900/20 border border-red-500/20 text-red-400 text-xs rounded-lg mb-4">
+                <div className="fq-alert-error mb-4">
                   {formError}
                 </div>
               )}
 
-              <form onSubmit={handleCreateBoardSubmit} className="space-y-4 text-sm text-slate-300">
+              <form onSubmit={handleCreateBoardSubmit} className="space-y-4 text-sm text-neutral-300">
                 <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-400 font-mono mb-1.5">
+                  <label className="fq-label">
                     Nome do Board *
                   </label>
                   <input
                     required
                     type="text"
-                    className="w-full bg-[#0f172a] border border-slate-800 focus:border-indigo-500/50 rounded-lg px-3 py-2 text-white placeholder-slate-600 focus:outline-none transition"
+                    className="fq-input"
                     placeholder="Ex: Board Checkout Web"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
@@ -1166,13 +1152,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold uppercase text-slate-400 font-mono mb-1.5">
+                    <label className="fq-label">
                       Projeto / Sistema *
                     </label>
                     <input
                       required
                       type="text"
-                      className="w-full bg-[#0f172a] border border-slate-800 focus:border-indigo-500/50 rounded-lg px-3 py-2 text-white placeholder-slate-600 focus:outline-none transition"
+                      className="fq-input"
                       placeholder="Ex: Portal Admin"
                       value={project}
                       onChange={(e) => setProject(e.target.value)}
@@ -1180,13 +1166,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold uppercase text-slate-400 font-mono mb-1.5">
+                    <label className="fq-label">
                       Squad Responsável *
                     </label>
                     <input
                       required
                       type="text"
-                      className="w-full bg-[#0f172a] border border-slate-800 focus:border-indigo-500/50 rounded-lg px-3 py-2 text-white placeholder-slate-600 focus:outline-none transition"
+                      className="fq-input"
                       placeholder="Ex: Squad Core"
                       value={squad}
                       onChange={(e) => setSquad(e.target.value)}
@@ -1195,30 +1181,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-400 font-mono mb-1.5">
+                  <label className="fq-label">
                     Descrição
                   </label>
                   <textarea
                     rows={3}
-                    className="w-full bg-[#0f172a] border border-slate-800 focus:border-indigo-500/50 rounded-lg px-3 py-2 text-white placeholder-slate-600 focus:outline-none transition"
-                    placeholder="Escopo permanente do board, sistemas cobertos..."
+                    className="fq-textarea"
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                   />
                 </div>
 
-                <div className="pt-4 border-t border-white/[0.04] flex justify-end gap-3 font-semibold">
+                <div className="pt-4 border-t border-white/[0.06] flex justify-end gap-3 font-semibold">
                   <button
                     type="button"
                     onClick={() => setIsBoardModalOpen(false)}
-                    className="px-4 py-2 bg-slate-800/80 hover:bg-slate-750 text-slate-350 rounded-lg cursor-pointer text-center"
+                    className="fq-btn-ghost"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
                     disabled={submitting}
-                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg shadow-md transition cursor-pointer text-center"
+                    className="fq-btn-primary"
                   >
                     {submitting ? "Criando..." : "Criar Board"}
                   </button>
@@ -1232,62 +1217,64 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
       {/* Admin User Management Modal Overview */}
       <AnimatePresence>
         {isAdminUsersModalOpen && profile?.role === "admin" && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#080b13]/85 backdrop-blur-sm">
+          <div className="fq-modal-overlay">
             <motion.div 
+              ref={adminDialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="admin-users-modal-title"
+              tabIndex={-1}
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-4xl bg-[#0d1220]/95 border border-[#1e293b] rounded-2xl shadow-2xl p-6 relative max-h-[90vh] overflow-y-auto"
+              className="fq-modal fq-modal--lg max-w-4xl max-h-[90vh] overflow-y-auto"
             >
-              <div className="flex justify-between items-center border-b border-white/[0.04] pb-4 mb-5">
-                <h3 className="font-display text-xl font-extrabold text-white flex items-center gap-2">
-                  <UserPlus className="w-5 h-5 text-indigo-500" /> Painel de Registro & Controle de Usuários
+              <div className="fq-modal-header">
+                <h3 id="admin-users-modal-title" className="fq-modal-title">
+                  <UserPlus className="w-5 h-5 text-neutral-400" /> Painel de Registro & Controle de Usuários
                 </h3>
                 <button 
-                  onClick={() => {
-                    setIsAdminUsersModalOpen(false);
-                    setUserCreationError("");
-                    setUserCreationSuccess("");
-                  }}
-                  className="p-1.5 px-3 bg-slate-800 hover:bg-slate-700 text-slate-350 hover:text-white rounded text-xs font-mono font-bold transition cursor-pointer"
+                  onClick={closeAdminUsersModal}
+                  className="fq-btn-ghost text-xs font-mono font-bold"
+                  aria-label="Fechar"
                 >
                   FECHAR (ESC)
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-sm text-slate-350">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-sm text-neutral-500">
                 {/* Panel 1: Creation form */}
                 <div className="space-y-4">
                   <div className="border-b border-white/[0.03] pb-2">
                     <h4 className="font-mono text-xs font-bold uppercase text-indigo-400 tracking-wider">
                       ➕ ADICIONAR NOVO INTEGRANTE AO OPERATIVO
                     </h4>
-                    <p className="text-slate-400 text-[11px] mt-0.5 leading-relaxed">
+                    <p className="text-neutral-500 text-[11px] mt-0.5 leading-relaxed">
                       Registre credenciais de acesso locais para agentes da mesa de comando da ForceQA.
                     </p>
                   </div>
 
                   {userCreationError && (
-                    <div className="p-3 bg-red-900/20 border border-red-550/20 text-red-100 text-xs rounded-lg font-mono">
+                    <div className="fq-alert-error text-xs font-mono">
                       ❌ {userCreationError}
                     </div>
                   )}
 
                   {userCreationSuccess && (
-                    <div className="p-3 bg-green-950/25 border border-green-500/20 text-green-350 text-xs rounded-lg font-mono">
+                    <div className="fq-alert-success text-xs font-mono">
                       ✅ {userCreationSuccess}
                     </div>
                   )}
 
                   <form onSubmit={handleAdminCreateUserSubmit} className="space-y-4">
                     <div>
-                      <label className="block text-[10px] font-mono font-bold text-slate-400 uppercase mb-1.5">
+                      <label className="fq-label fq-label--xs">
                         Nome Completo
                       </label>
                       <input
                         required
                         type="text"
-                        className="w-full bg-[#05070a] border border-slate-800 focus:border-indigo-500/50 rounded-lg px-3 py-2 text-white placeholder-slate-600 focus:outline-none transition text-xs font-mono"
+                        className="fq-input text-xs font-mono"
                         placeholder="Ex: Matheus Lisboa"
                         value={newUserName}
                         onChange={(e) => setNewUserName(e.target.value)}
@@ -1295,13 +1282,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-mono font-bold text-slate-400 uppercase mb-1.5">
+                      <label className="fq-label fq-label--xs">
                         Endereço de E-mail (Acesso)
                       </label>
                       <input
                         required
                         type="email"
-                        className="w-full bg-[#05070a] border border-slate-800 focus:border-indigo-500/50 rounded-lg px-3 py-2 text-white placeholder-slate-600 focus:outline-none transition text-xs font-mono"
+                        className="fq-input text-xs font-mono"
                         placeholder="Ex: matheus@forceqa.com"
                         value={newUserEmail}
                         onChange={(e) => setNewUserEmail(e.target.value)}
@@ -1309,13 +1296,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-mono font-bold text-slate-400 uppercase mb-1.5">
+                      <label className="fq-label fq-label--xs">
                         Senha Inicial (Mínimo de 6 caracteres)
                       </label>
                       <input
                         required
                         type="password"
-                        className="w-full bg-[#05070a] border border-slate-800 focus:border-indigo-500/50 rounded-lg px-3 py-2 text-white placeholder-slate-600 focus:outline-none transition text-xs font-mono"
+                        className="fq-input text-xs font-mono"
                         placeholder="Ex: senhatemporaria"
                         value={newUserPassword}
                         onChange={(e) => setNewUserPassword(e.target.value)}
@@ -1324,11 +1311,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
 
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-[10px] font-mono font-bold text-slate-400 uppercase mb-1.5">
+                        <label className="fq-label fq-label--xs">
                           Função Operacional
                         </label>
                         <select
-                          className="w-full bg-[#05070a] border border-slate-800 focus:border-indigo-500/50 rounded-lg px-2 py-2 text-white focus:outline-none transition text-xs font-mono"
+                          className="fq-select text-xs font-mono"
                           value={newUserRole}
                           onChange={(e) => setNewUserRole(e.target.value as any)}
                         >
@@ -1341,13 +1328,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                       </div>
 
                       <div>
-                        <label className="block text-[10px] font-mono font-bold text-slate-400 uppercase mb-1.5">
+                        <label className="fq-label fq-label--xs">
                           Squad de Atuação
                         </label>
                         <input
                           required
                           type="text"
-                          className="w-full bg-[#05070a] border border-slate-800 focus:border-indigo-500/50 rounded-lg px-3 py-2 text-white placeholder-slate-600 focus:outline-none transition text-xs font-mono"
+                          className="fq-input text-xs font-mono"
                           placeholder="Ex: Squad Pix"
                           value={newUserSquad}
                           onChange={(e) => setNewUserSquad(e.target.value)}
@@ -1359,7 +1346,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                       <button
                         type="submit"
                         disabled={isCreatingUser}
-                        className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-indigo-600 hover:bg-indigo-500 hover:shadow-[0_0_10px_rgba(99,102,241,0.25)] text-white text-xs font-bold uppercase font-mono tracking-wider rounded-lg transition disabled:bg-slate-800 disabled:text-slate-500 cursor-pointer text-center"
+                        className="fq-btn-primary w-full text-xs font-bold uppercase font-mono tracking-wider"
                       >
                         {isCreatingUser ? (
                           <>
@@ -1380,56 +1367,63 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                 {/* Panel 2: Live Registered Members List */}
                 <div className="space-y-4 flex flex-col justify-start">
                   <div className="border-b border-white/[0.03] pb-2">
-                    <h4 className="font-mono text-xs font-bold uppercase text-slate-400 tracking-wider flex items-center justify-between">
+                    <h4 className="font-mono text-xs font-bold uppercase text-neutral-500 tracking-wider flex items-center justify-between">
                       <span>👥 AGENTES OPERATIVOS ATIVOS ({usersList.length})</span>
                       <span className="text-[9px] text-green-500 uppercase font-black tracking-widest">[SINCRONIZADO]</span>
                     </h4>
-                    <p className="text-slate-450 text-[11px] mt-0.5 leading-relaxed">
+                    <p className="text-neutral-500 text-[11px] mt-0.5 leading-relaxed">
                       Todos os usuários cadastrados e habilitados na mesa tática da ForceQA.
                     </p>
                   </div>
 
-                  <div className="overflow-y-auto pr-1 space-y-2 max-h-[350px]">
+                  <div className="overflow-y-auto pr-1 max-h-[350px]">
                     {usersList.length === 0 ? (
-                      <div className="text-center py-10 bg-slate-950/40 border border-slate-900 rounded-xl">
-                        <span className="text-xs text-slate-500 font-mono">Buscando lista de agentes...</span>
+                      <div className="fq-empty-state py-10">
+                        <span className="text-xs text-neutral-500 font-mono">Buscando lista de agentes...</span>
                       </div>
                     ) : (
-                      usersList.map((usr: any) => {
+                      <>
+                        <div className="fq-table-header mb-2">
+                          <span>Agente</span>
+                          <span>Squad</span>
+                          <span className="text-right">Ações</span>
+                        </div>
+                        <div className="space-y-2">
+                      {usersList.map((usr: any) => {
                         const isEditing = editingUserId === usr.id;
 
                         if (isEditing) {
                           return (
-                            <div key={usr.id} className="p-3 bg-indigo-950/20 border border-indigo-500/30 rounded-xl space-y-3 font-mono">
+                            <div key={usr.id} className="fq-table-row--editing font-mono">
                               <div className="grid grid-cols-2 gap-2">
                                 <div>
-                                  <label className="block text-[9px] uppercase text-slate-400 mb-1">Nome</label>
+                                  <label className="fq-label fq-label--xs !text-[9px] !mb-1">Nome</label>
                                   <input
                                     type="text"
                                     value={editingName}
                                     onChange={(e) => setEditingName(e.target.value)}
-                                    className="w-full bg-black border border-slate-800 rounded px-2.5 py-1 text-xs text-white focus:outline-none focus:border-indigo-500"
+                                    className="fq-input text-xs py-1.5"
                                     placeholder="Nome"
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-[9px] uppercase text-slate-400 mb-1">Squad</label>
+                                  <label className="fq-label fq-label--xs !text-[9px] !mb-1">Squad</label>
                                   <input
                                     type="text"
                                     value={editingSquad}
                                     onChange={(e) => setEditingSquad(e.target.value)}
-                                    className="w-full bg-black border border-slate-800 rounded px-2.5 py-1 text-xs text-white focus:outline-none focus:border-indigo-500"
+                                    className="fq-input text-xs py-1.5"
                                     placeholder="Squad"
                                   />
                                 </div>
                               </div>
                               <div className="flex justify-between items-end gap-2">
                                 <div className="flex-1">
-                                  <label className="block text-[9px] uppercase text-slate-400 mb-1">Função</label>
+                                  <label className="fq-label fq-label--xs !text-[9px] !mb-1">Função</label>
                                   <select
                                     value={editingRole}
                                     onChange={(e) => setEditingRole(e.target.value as any)}
-                                    className="w-full bg-black border border-slate-800 rounded px-2 py-1 text-xs text-white focus:outline-none"
+                                    className="fq-select text-xs py-1.5"
                                   >
                                     <option value="developer">DEV</option>
                                     <option value="qa">QA</option>
@@ -1443,14 +1437,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                                 <div className="flex gap-1.5 pb-[2px]">
                                   <button
                                     onClick={() => handleSaveEdit(usr.id)}
-                                    className="p-1.5 bg-green-700 hover:bg-green-600 rounded text-white cursor-pointer transition"
+                                    className="fq-btn-primary text-xs py-1.5 px-2"
                                     title="Confirmar Alteração"
                                   >
                                     <Check className="w-3.5 h-3.5" />
                                   </button>
                                   <button
                                     onClick={handleCancelEdit}
-                                    className="p-1.5 bg-slate-800 hover:bg-slate-750 rounded text-white cursor-pointer transition"
+                                    className="fq-btn-ghost text-xs py-1.5 px-2"
                                     title="Cancelar"
                                   >
                                     <X className="w-3.5 h-3.5" />
@@ -1461,64 +1455,31 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                           );
                         }
 
-                        const roleColor = usr.role === "admin" 
-                          ? "text-red-450 bg-red-950/20 border-red-900/30" 
-                          : usr.role === "dba" 
-                            ? "text-cyan-400 bg-cyan-950/20 border-cyan-900/30" 
-                            : usr.role === "qa"
-                              ? "text-green-400 bg-green-950/20 border-green-900/30"
-                              : usr.role === "developer"
-                                ? "text-orange-400 bg-orange-950/20 border-orange-900/30"
-                                : usr.role === "devops"
-                                  ? "text-purple-400 bg-purple-950/25 border-purple-900/25"
-                                  : usr.role === "scrum_master"
-                                    ? "text-yellow-450 bg-yellow-950/15 border-yellow-900/25"
-                                    : "text-slate-400 bg-slate-800/40 border-slate-700/30";
-
-                        const roleLabel = usr.role === "admin" 
-                          ? "ADMIN" 
-                          : usr.role === "dba" 
-                            ? "DBA" 
-                            : usr.role === "qa" 
-                              ? "QA" 
-                              : usr.role === "developer" 
-                                ? "DEV" 
-                                : usr.role === "devops"
-                                  ? "DEVOPS"
-                                  : usr.role === "scrum_master"
-                                    ? "SCRUM"
-                                    : "OBS/VIEWER";
-
                         return (
-                          <div 
-                            key={usr.id} 
-                            className="p-3 bg-[#05070a]/60 border border-slate-900 rounded-xl flex items-center justify-between hover:bg-slate-950/90 transition group"
-                          >
-                            <div className="space-y-0.5">
-                              <div className="flex items-center gap-2">
-                                <span className="font-bold text-white text-xs">{usr.name}</span>
-                                <span className={`px-1.5 py-0.5 text-[8.5px] font-black tracking-wide font-mono rounded border uppercase ${roleColor}`}>
-                                  {roleLabel}
-                                </span>
+                          <div key={usr.id} className="fq-table-row group">
+                            <div className="min-w-0 space-y-0.5">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-semibold text-neutral-100 text-xs truncate">{usr.name}</span>
+                                <RoleBadge role={usr.role} />
                               </div>
-                              <div className="text-[10px] font-mono text-slate-500 leading-none">
+                              <div className="text-[10px] font-mono text-neutral-500 leading-none truncate">
                                 {usr.email}
                               </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <div className="text-right font-mono text-[9px] uppercase text-slate-400 bg-[#0a0d16] border border-slate-900 py-0.5 px-2 rounded-md">
-                                {usr.squad || "Sem Squad"}
-                              </div>
+                            <div className="text-right font-mono text-[9px] uppercase text-neutral-400 fq-badge bg-white/[0.03] border-white/[0.06] py-0.5 px-2">
+                              {usr.squad || "Sem Squad"}
+                            </div>
+                            <div className="flex items-center justify-end gap-1">
                               <button
                                 onClick={() => handleStartEdit(usr)}
-                                className="p-1 hover:bg-slate-800 text-slate-400 hover:text-white rounded transition cursor-pointer"
+                                className="fq-btn-icon !p-1"
                                 title="Editar membro"
                               >
                                 <Edit2 className="w-3.5 h-3.5" />
                               </button>
                               <button
                                 onClick={() => handleDeleteUser(usr.id)}
-                                className="p-1 hover:bg-red-950/45 text-slate-400 hover:text-red-400 rounded transition cursor-pointer"
+                                className="fq-btn-icon !p-1 hover:text-red-400 hover:bg-red-500/10"
                                 title="Excluir membro"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -1526,7 +1487,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                             </div>
                           </div>
                         );
-                      })
+                      })}
+                        </div>
+                      </>
                     )}
                   </div>
                 </div>

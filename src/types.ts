@@ -24,6 +24,14 @@ export type BugType = "bug" | "improvement" | "ui_adjustment" | "performance" | 
 
 export type RoomType = "war_room" | "board";
 
+export interface KanbanColumn {
+  id: string;
+  label: string;
+  color: string;
+  status: BugStatus;
+  builtin?: boolean;
+}
+
 export interface WarRoom {
   id: string;
   name: string;
@@ -35,6 +43,7 @@ export interface WarRoom {
   severity: SeverityLevel;
   status: "active" | "ended" | "paused";
   roomType: RoomType;
+  kanbanColumns?: KanbanColumn[];
   createdAt: any;
   createdBy: string;
   createdByName?: string;
@@ -48,6 +57,7 @@ export interface Bug {
   description: string;
   criticism: SeverityLevel;
   status: BugStatus;
+  kanbanColumnId?: string;
   evidenceUrl?: string; // Base64 data URL, image URL, or external link
   prototypeUrl?: string; // Optional figma/prototype screenshot
   ownerId: string | null;

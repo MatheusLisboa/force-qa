@@ -1,12 +1,22 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { subscribeWarRoom, subscribeBugsByRoom } from "../lib/supabase";
-import { createBug, updateBugField, fetchAISuggestions, fetchAIDuplicateCheck, fetchAIWarRoomSummary, updateWarRoom, deleteWarRoom } from "../lib/services";
+import { createBug, updateBugField, fetchAISuggestions, fetchAIDuplicateCheck, updateWarRoom, deleteWarRoom } from "../lib/services";
 import { useAuth } from "../context/AuthContext";
-import { WarRoom, Bug, SeverityLevel, BugStatus, BugPriority, BugType, AISuggestion, AIDuplicateCheck, AIWarRoomSummary } from "../types";
+import { WarRoom, Bug, SeverityLevel, BugStatus, BugPriority, BugType, AISuggestion, AIDuplicateCheck } from "../types";
 import { BugDetailModal } from "./BugDetailModal";
+import { AIReportModal } from "./AIReportModal";
+import { aggregateBoardMetrics } from "../lib/aiReport/aggregateMetrics";
 import { BugTypeTag } from "./BugTypeTag";
 import { evidenceLabel } from "../lib/evidence";
-import { getBugTypeLabel } from "../lib/bugLabels";
+import { getBugTypeLabel, getStatusLabel } from "../lib/bugLabels";
+import {
+  resolveKanbanColumns,
+  groupBugsByColumn,
+  createCustomKanbanColumn,
+  resolveBugColumnId,
+} from "../lib/kanbanColumns";
+import { SeverityBadge, RoomTypeBadge } from "./BugBadges";
+import { useModalA11y } from "../hooks/useModalA11y";
 import { 
   ArrowLeft, 
   Terminal, 
@@ -27,17 +37,10 @@ import {
   CheckCircle,
   FileText,
   Clock,
-  Copy
+  Copy,
+  X
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-
-const severityLabels: { [key in SeverityLevel]: string } = {
-  blocker: "BLOCKER",
-  critical: "CRÍTICO",
-  high: "ALTO",
-  medium: "MÉDIO",
-  low: "BAIXO",
-};
 
 interface WarRoomDetailProps {
   roomId: string;
@@ -56,6 +59,9 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
   
   // Modal toggle states
   const [isBugModalOpen, setIsBugModalOpen] = useState(false);
+  const bugCreateDialogRef = useRef<HTMLDivElement>(null);
+  const closeBugCreateModal = useCallback(() => setIsBugModalOpen(false), []);
+  useModalA11y(isBugModalOpen, closeBugCreateModal, bugCreateDialogRef);
   const [selectedBug, setSelectedBug] = useState<Bug | null>(null);
 
   // Filters state
@@ -64,6 +70,8 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
   const [severityFilter, setSeverityFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [newColumnLabel, setNewColumnLabel] = useState("");
+  const [isSavingColumns, setIsSavingColumns] = useState(false);
 
   // Create Bug Form states
   const [bugTitle, setBugTitle] = useState("");
@@ -85,9 +93,9 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
   const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
   const [duplicateAlert, setDuplicateAlert] = useState<AIDuplicateCheck | null>(null);
 
-  // AI executive reports
-  const [isSummaryLoading, setIsSummaryLoading] = useState(false);
-  const [compiledReport, setCompiledReport] = useState<AIWarRoomSummary | null>(null);
+  // AI Report modal
+  const [isAiReportModalOpen, setIsAiReportModalOpen] = useState(false);
+  const [aiReportAutoGenerate, setAiReportAutoGenerate] = useState(false);
 
   // Form submit state
   const [formSubmitting, setFormSubmitting] = useState(false);
@@ -115,35 +123,30 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
     e.preventDefault();
   };
 
-  const handleDrop = async (e: React.DragEvent, targetStatus: BugStatus) => {
+  const handleDrop = async (e: React.DragEvent, columnId: string) => {
     e.preventDefault();
     const bugId = e.dataTransfer.getData("text/plain");
-    if (!bugId || !profile) return;
+    if (!bugId || !profile || !warRoom) return;
     if (profile.role === "viewer") {
       alert("Acesso negado: Visualizadores não podem movimentar o kanban.");
       return;
     }
 
-    const targetBug = bugs.find(b => b.id === bugId);
+    const columns = resolveKanbanColumns(warRoom.kanbanColumns);
+    const column = columns.find((c) => c.id === columnId);
+    if (!column) return;
+
+    const targetBug = bugs.find((b) => b.id === bugId);
     if (!targetBug) return;
-    if (targetBug.status === targetStatus) return; // Unchanged state
+    if (resolveBugColumnId(targetBug, columns) === columnId) return;
 
-    const statusLabels: any = {
-      new: "Novo",
-      under_analysis: "Em Análise",
-      in_progress: "Em Correção",
-      ready_for_qa: "Pronto para QA",
-      validated: "Validado",
-      reopened: "Reaberto"
-    };
+    const logMessage = `Moveu card para a coluna "${column.label}"`;
 
-    const logMessage = `Alterou status via Drag & Drop de "${statusLabels[targetBug.status]}" para "${statusLabels[targetStatus]}"`;
-    
     try {
       await updateBugField(
         bugId,
         roomId,
-        { status: targetStatus },
+        { status: column.status, kanbanColumnId: column.id },
         profile.id,
         profile.name,
         logMessage
@@ -246,22 +249,6 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
     }
   };
 
-  // AI compile report of the whole War Room Operation
-  const triggerAiSummaryCompile = async () => {
-    if (!warRoom) return;
-
-    setIsSummaryLoading(true);
-    setCompiledReport(null);
-    try {
-      const summary = await fetchAIWarRoomSummary(warRoom, bugs);
-      setCompiledReport(summary);
-    } catch (err: any) {
-      alert("Falha operacional ao consolidar relatório estratégico: " + err.message);
-    } finally {
-      setIsSummaryLoading(false);
-    }
-  };
-
   // Reporting/Creating a bug
   const handleReportBug = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -288,6 +275,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
         description: bugDesc.trim(),
         criticism: bugCrit,
         status: "new",
+        kanbanColumnId: "new",
         evidenceUrl: evidenceValue,
         prototypeUrl: bugPrototype || undefined,
         ownerId: null,
@@ -376,29 +364,17 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
 
   // Calculate stats for current War Room bugs listings
   const totalBugsLength = filteredBugs.length;
-  const statusCounts = {
-    new: filteredBugs.filter(b => b.status === "new"),
-    under_analysis: filteredBugs.filter(b => b.status === "under_analysis"),
-    in_progress: filteredBugs.filter(b => b.status === "in_progress"),
-    ready_for_qa: filteredBugs.filter(b => b.status === "ready_for_qa"),
-    validated: filteredBugs.filter(b => b.status === "validated"),
-  };
 
-  const getSeverityBadgeColors = (sev: SeverityLevel) => {
-    switch(sev) {
-      case "blocker": return "bg-red-950/40 text-red-500 border border-red-550/30 animate-pulse";
-      case "critical": return "bg-red-950/20 text-red-400 border border-red-500/20";
-      case "high": return "bg-orange-950/20 text-orange-400 border border-orange-500/20";
-      case "medium": return "bg-yellow-950/20 text-yellow-400 border border-yellow-500/20";
-      case "low": return "bg-blue-950/10 text-blue-400 border border-blue-500/20";
-    }
-  };
+  const reportMetrics = useMemo(
+    () => (warRoom ? aggregateBoardMetrics(warRoom, bugs) : null),
+    [warRoom, bugs]
+  );
 
   if (!warRoom) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh]">
-        <div className="w-8 h-8 border-3 border-red-500 border-t-transparent rounded-full animate-spin mb-3" />
-        <p className="text-slate-400 font-mono text-sm leading-relaxed">Localizando canal no Supabase...</p>
+      <div className="fq-loading min-h-[60vh]">
+        <div className="fq-spinner mb-3" />
+        <p className="text-neutral-500 font-mono text-sm leading-relaxed">Localizando canal no Supabase...</p>
       </div>
     );
   }
@@ -410,37 +386,74 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
     return { id, name: matchingBug?.ownerName || "Unknown Dev" };
   });
 
+  const kanbanColumns = resolveKanbanColumns(warRoom.kanbanColumns);
+  const bugsByColumn = groupBugsByColumn(filteredBugs, kanbanColumns);
+
+  const openAiReport = (autoGenerate = false) => {
+    setAiReportAutoGenerate(autoGenerate);
+    setIsAiReportModalOpen(true);
+  };
+
+  const handleAddKanbanColumn = async () => {
+    const label = newColumnLabel.trim();
+    if (!label || isSavingColumns) return;
+
+    const next = [...kanbanColumns, createCustomKanbanColumn(label, kanbanColumns)];
+    setIsSavingColumns(true);
+    try {
+      await updateWarRoom(roomId, { kanbanColumns: next });
+      setNewColumnLabel("");
+    } catch (err) {
+      console.error("Erro ao adicionar coluna:", err);
+      alert("Não foi possível adicionar a coluna. Verifique se a migração do banco foi aplicada.");
+    } finally {
+      setIsSavingColumns(false);
+    }
+  };
+
+  const handleRemoveKanbanColumn = async (columnId: string) => {
+    const column = kanbanColumns.find((c) => c.id === columnId);
+    if (!column || column.builtin || isSavingColumns) return;
+    if (!window.confirm(`Remover a coluna "${column.label}"? Cards nela voltarão para a coluna padrão do status.`)) {
+      return;
+    }
+
+    const next = kanbanColumns.filter((c) => c.id !== columnId);
+    setIsSavingColumns(true);
+    try {
+      await updateWarRoom(roomId, { kanbanColumns: next });
+    } catch (err) {
+      console.error("Erro ao remover coluna:", err);
+      alert("Não foi possível remover a coluna.");
+    } finally {
+      setIsSavingColumns(false);
+    }
+  };
+
   return (
-    <div className="space-y-6 p-6 lg:p-8 max-w-[2100px] w-full mx-auto room-banner-glow">
-      {/* Top context header */}
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-white/[0.04] pb-6">
+    <div className="fq-page fq-page--operational space-y-5">
+      <div className="fq-page-header shrink-0">
         <div className="space-y-1">
           <button
             onClick={onBack}
-            className="flex items-center gap-1.5 text-xs font-mono text-slate-450 hover:text-red-400 transition mb-2"
+            className="flex items-center gap-1.5 text-[12px] font-mono text-neutral-500 hover:text-neutral-300 transition mb-2"
           >
             <ArrowLeft className="w-3.5 h-3.5" /> VOLTAR AO COMANDO CENTRAL
           </button>
           
-          <div className="flex flex-wrap items-center gap-3">
-            <h2 className="font-display text-2xl font-black text-white tracking-tight">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="fq-page-title">
               {warRoom.name}
             </h2>
             {warRoom.roomType === "board" ? (
-              <span className="p-1 px-2.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/25 rounded font-mono text-[10px] font-extrabold uppercase">
-                BOARD PERMANENTE
-              </span>
+              <RoomTypeBadge type="board" permanent />
             ) : (
-              <span className="p-1 px-2.5 bg-red-500/10 text-red-500 border border-red-500/25 rounded font-mono text-[10px] font-extrabold uppercase">
-                WAR ROOM
-              </span>
+              <RoomTypeBadge type="war_room" />
             )}
-            <span className="p-1 px-2.5 bg-red-500/10 text-red-500 border border-red-500/25 rounded font-mono text-[10px] font-extrabold uppercase">
-              SEVERITY: {warRoom.severity}
-            </span>
-            <div className="flex items-center gap-1.5 bg-[#171e30] border border-slate-800 px-2 py-0.5 rounded text-xs font-mono">
-              <span className="text-slate-450 uppercase text-[9px] font-bold">ID:</span>
-              <span className="text-red-400 font-bold select-all">{roomId}</span>
+            <SeverityBadge severity={warRoom.severity} size="md" />
+            <div className="flex items-center gap-1.5 fq-filter-chip font-mono">
+              <span className="text-neutral-500 uppercase text-[9px] font-bold">ID:</span>
+              <span className="text-neutral-300 font-bold select-all">{roomId}</span>
               <button
                 type="button"
                 onClick={() => {
@@ -448,25 +461,25 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                   setCopied(true);
                   setTimeout(() => setCopied(false), 2000);
                 }}
-                className="ml-1 p-0.5 hover:bg-slate-805 text-slate-400 hover:text-white rounded transition cursor-pointer"
+                className="fq-btn-icon !p-0.5"
                 title="Copiar ID da Sala"
               >
-                {copied ? <CheckCircle className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3 h-3" />}
+                {copied ? <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3 h-3" />}
               </button>
-              {copied && <span className="text-[9px] text-green-400 font-bold uppercase">Copiado!</span>}
+              {copied && <span className="text-[9px] text-emerald-400 font-bold uppercase">Copiado!</span>}
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-4 text-xs font-mono text-slate-450">
-            <span>SQUAD: <span className="text-slate-300 font-bold">{warRoom.squad}</span></span>
+          <div className="flex flex-wrap items-center gap-3 text-[12px] font-mono text-neutral-500">
+            <span>SQUAD: <span className="text-neutral-300 font-medium">{warRoom.squad}</span></span>
             <span>•</span>
-            <span>SYSTEM: <span className="text-slate-300 font-bold">{warRoom.project}</span></span>
+            <span>SYSTEM: <span className="text-neutral-300 font-medium">{warRoom.project}</span></span>
             {warRoom.roomType !== "board" && warRoom.date && (
               <>
                 <span>•</span>
                 <span>
                   PERÍODO:{" "}
-                  <span className="text-slate-300 font-bold">
+                  <span className="text-neutral-300 font-medium">
                     {warRoom.date}
                     {warRoom.periodEnd ? ` → ${warRoom.periodEnd}` : ""}
                   </span>
@@ -476,38 +489,25 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
           </div>
         </div>
 
-        {/* Tab switcher action rails */}
-        <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-          <div className="bg-[#111827] border border-slate-800 p-0.5 rounded-lg flex">
+        <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+          <div className="fq-tab-group">
             <button
               onClick={() => setActiveTab("kanban")}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-md transition cursor-pointer ${
-                activeTab === "kanban" 
-                  ? "bg-slate-800 text-white shadow" 
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
+              className={`fq-segment flex items-center gap-1.5 !text-xs ${activeTab === "kanban" ? "fq-segment--active" : ""}`}
             >
               <Kanban className="w-3.5 h-3.5" />
               Kanban
             </button>
             <button
               onClick={() => setActiveTab("analytics")}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-md transition cursor-pointer ${
-                activeTab === "analytics" 
-                  ? "bg-slate-800 text-white shadow" 
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
+              className={`fq-segment flex items-center gap-1.5 !text-xs ${activeTab === "analytics" ? "fq-segment--active" : ""}`}
             >
               <TrendingUp className="w-3.5 h-3.5" />
               Relatórios
             </button>
             <button
               onClick={() => setActiveTab("ai_report")}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-md transition cursor-pointer ${
-                activeTab === "ai_report" 
-                  ? "bg-slate-850 text-red-400 border border-red-550/15 shadow-[0_0_15px_rgba(239,68,68,0.1)]" 
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
+              className={`fq-segment flex items-center gap-1.5 !text-xs ${activeTab === "ai_report" ? "fq-segment--active" : ""}`}
             >
               <Brain className="w-3.5 h-3.5" />
               IA Report
@@ -517,7 +517,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
           {profile?.role !== "viewer" && (
             <button
               onClick={() => setIsBugModalOpen(true)}
-              className="flex items-center gap-1.5 bg-red-650 hover:bg-red-600 hover:shadow-[0_0_15px_rgba(239,68,68,0.3)] text-white font-semibold text-xs px-4 py-2.5 rounded-lg transition"
+              className="fq-btn-primary text-xs"
             >
               <Plus className="w-4 h-4" />
               Relatar Bug Instante
@@ -528,14 +528,14 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
 
       {/* Admin Panel for room creator or admin */}
       {(profile?.role === "admin" || warRoom.createdBy === profile?.id) && (
-        <div className="bg-[#0f1220]/75 border border-slate-800 p-4 rounded-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-lg">
+        <div className="fq-admin-bar shrink-0">
           <div className="flex items-center gap-3">
-            <Sliders className="w-5 h-5 text-indigo-400" />
+            <Sliders className="w-5 h-5 text-neutral-400" />
             <div>
-              <h4 className="text-xs font-mono font-bold text-white uppercase tracking-wider">
+              <h4 className="text-xs font-mono font-bold text-neutral-100 uppercase tracking-wider">
                 Painel Administrativo {warRoom.roomType === "board" ? "do Board" : "da War Room"}
               </h4>
-              <p className="text-[11px] text-slate-400 font-mono">
+              <p className="text-[11px] text-neutral-500 font-mono">
                 {profile?.role === "admin"
                   ? "Admin: controle total sobre status, acesso e exclusão."
                   : "Gerencie status, acesso de convidados e comandos de controle."}
@@ -543,10 +543,10 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-4">
+          <div className="flex flex-wrap items-center gap-3">
             {warRoom.roomType !== "board" && (
-              <div className="flex items-center gap-2 bg-[#171e30] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs font-mono">
-                <span className="text-slate-450 font-bold">STATUS:</span>
+              <div className="fq-filter-chip">
+                <span className="text-[10px] font-mono text-neutral-500 font-bold">STATUS:</span>
                 <select
                   value={warRoom.status}
                   onChange={async (e) => {
@@ -556,17 +556,16 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                       console.error("Erro ao atualizar status da sala:", err);
                     }
                   }}
-                  className="bg-transparent text-white focus:outline-none border-none text-xs font-semibold cursor-pointer"
+                  className="bg-transparent text-neutral-100 focus:outline-none border-none text-xs font-semibold cursor-pointer"
                 >
-                  <option value="active" className="bg-[#0f172a]">ATIVO</option>
-                  <option value="paused" className="bg-[#0f172a]">PAUSADO</option>
-                  <option value="ended" className="bg-[#0f172a]">ENCERRADO</option>
+                  <option value="active">ATIVO</option>
+                  <option value="paused">PAUSADO</option>
+                  <option value="ended">ENCERRADO</option>
                 </select>
               </div>
             )}
 
-            {/* Guest Access Switch */}
-            <label className="flex items-center gap-2.5 bg-[#171e30] border border-slate-800 px-3 py-1.5 rounded-lg text-xs font-mono font-semibold text-slate-305 cursor-pointer select-none">
+            <label className="fq-filter-chip cursor-pointer select-none font-mono font-semibold text-neutral-300">
               <input
                 type="checkbox"
                 checked={!!warRoom.guestAccessDisabled}
@@ -577,12 +576,11 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                     console.error("Erro ao alterar acesso convidado:", err);
                   }
                 }}
-                className="rounded border-slate-800 text-red-650 bg-black focus:ring-0 cursor-pointer"
+                className="rounded border-neutral-700 text-neutral-300 bg-transparent focus:ring-0 cursor-pointer"
               />
               Bloquear Acesso Convidado (Guest)
             </label>
 
-            {/* Permanent Delete Button */}
             <button
               onClick={async () => {
                 if (!window.confirm("ATENÇÃO: Deseja realmente EXCLUIR DEFINITIVAMENTE esta Sala de Guerra? Todos os bugs e logs serão removidos e esta ação é irreversível!")) {
@@ -596,35 +594,86 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                   alert("Erro ao excluir a sala de guerra. Permissão inválida.");
                 }
               }}
-              className="bg-red-950/40 hover:bg-red-900/40 border border-red-500/30 text-red-400 font-mono text-xs font-bold px-3.5 py-1.5 rounded-lg transition"
+              className="fq-btn-danger text-xs py-1.5"
             >
               Excluir {warRoom.roomType === "board" ? "Board" : "War Room"}
             </button>
           </div>
+
+          {profile?.role === "admin" && warRoom.roomType === "board" && (
+            <div className="w-full basis-full pt-3 mt-1 border-t border-white/[0.06]">
+              <p className="text-[10px] font-mono font-bold text-neutral-500 uppercase tracking-wider mb-2">
+                Colunas do Kanban
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                {kanbanColumns.map((col) => (
+                  <span key={col.id} className="fq-filter-chip gap-1.5">
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${col.color}`} />
+                    <span className="text-xs font-mono text-neutral-200">{col.label}</span>
+                    {!col.builtin && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveKanbanColumn(col.id)}
+                        disabled={isSavingColumns}
+                        className="fq-btn-icon !p-0 text-neutral-500 hover:text-red-400"
+                        title={`Remover coluna ${col.label}`}
+                        aria-label={`Remover coluna ${col.label}`}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </span>
+                ))}
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={newColumnLabel}
+                    onChange={(e) => setNewColumnLabel(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAddKanbanColumn();
+                      }
+                    }}
+                    placeholder="Nome da nova coluna"
+                    className="fq-input !py-1 !px-2 text-xs w-44"
+                    maxLength={40}
+                    disabled={isSavingColumns}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddKanbanColumn}
+                    disabled={!newColumnLabel.trim() || isSavingColumns}
+                    className="fq-btn-secondary text-xs py-1.5 gap-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Coluna
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* FILTER SEARCH PANEL BAR */}
-      <div className="bg-[#0f172a]/20 border border-white/[0.03] p-4 rounded-xl flex flex-col md:flex-row gap-4 items-center">
+      <div className="fq-filter-bar fq-kanban-toolbar">
         <div className="flex-1 w-full relative">
           <input
             type="text"
-            className="w-full bg-[#111827] border border-slate-850 focus:border-red-500/30 rounded-lg pl-3 pr-4 py-2 text-xs text-white placeholder-slate-650 focus:outline-none"
+            className="fq-input text-xs"
             placeholder="Pesquisar por ID, título, tags, responsável..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
 
-        {/* Granular drop toggles */}
-        <div className="flex flex-wrap gap-2.5 items-center w-full md:w-auto">
-          {/* Env */}
-          <div className="flex items-center gap-1.5 bg-[#111827] border border-slate-850 rounded-lg px-2.5 py-1 text-xs">
-            <span className="text-[10px] font-mono text-slate-500">ENV:</span>
+        <div className="flex flex-wrap gap-2 items-center w-full md:w-auto">
+          <div className="fq-filter-chip">
+            <span className="text-[10px] font-mono text-neutral-500">ENV:</span>
             <select
               value={envFilter}
               onChange={(e) => setEnvFilter(e.target.value)}
-              className="bg-transparent text-white focus:outline-none border-none text-xs font-semibold cursor-pointer"
+              className="bg-transparent text-neutral-200 focus:outline-none border-none text-xs font-medium cursor-pointer"
             >
               <option value="all">TODOS</option>
               <option value="production">PROD</option>
@@ -633,13 +682,12 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
             </select>
           </div>
 
-          {/* Type */}
-          <div className="flex items-center gap-1.5 bg-[#111827] border border-slate-850 rounded-lg px-2.5 py-1 text-xs">
-            <span className="text-[10px] font-mono text-slate-500">TIPO:</span>
+          <div className="fq-filter-chip">
+            <span className="text-[10px] font-mono text-neutral-500">TIPO:</span>
             <select
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
-              className="bg-transparent text-white focus:outline-none border-none text-xs font-semibold cursor-pointer"
+              className="bg-transparent text-neutral-200 focus:outline-none border-none text-xs font-medium cursor-pointer"
             >
               <option value="all">TODOS</option>
               <option value="bug">BUG</option>
@@ -650,13 +698,12 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
             </select>
           </div>
 
-          {/* Severity */}
-          <div className="flex items-center gap-1.5 bg-[#111827] border border-slate-850 rounded-lg px-2.5 py-1 text-xs">
-            <span className="text-[10px] font-mono text-slate-500">SEV:</span>
+          <div className="fq-filter-chip">
+            <span className="text-[10px] font-mono text-neutral-500">SEV:</span>
             <select
               value={severityFilter}
               onChange={(e) => setSeverityFilter(e.target.value)}
-              className="bg-transparent text-white focus:outline-none border-none text-xs font-semibold cursor-pointer"
+              className="bg-transparent text-neutral-200 focus:outline-none border-none text-xs font-medium cursor-pointer"
             >
               <option value="all">TODAS</option>
               <option value="blocker">BLOCKER</option>
@@ -667,13 +714,12 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
             </select>
           </div>
 
-          {/* Owner */}
-          <div className="flex items-center gap-1.5 bg-[#111827] border border-slate-850 rounded-lg px-2.5 py-1 text-xs">
-            <span className="text-[10px] font-mono text-slate-500">CORREÇÃO:</span>
+          <div className="fq-filter-chip">
+            <span className="text-[10px] font-mono text-neutral-500">CORREÇÃO:</span>
             <select
               value={ownerFilter}
               onChange={(e) => setOwnerFilter(e.target.value)}
-              className="bg-transparent text-white focus:outline-none border-none text-xs font-semibold cursor-pointer"
+              className="bg-transparent text-neutral-200 focus:outline-none border-none text-xs font-medium cursor-pointer"
             >
               <option value="all">TODOS</option>
               <option value="unassigned">SEM RESPONSÁVEL</option>
@@ -689,66 +735,61 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
 
       {/* TAB 1: KANBAN BOARD VIEW */}
       {activeTab === "kanban" && (
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-5 items-start overflow-x-auto min-h-[60vh] pb-8">
-          {/* Columns iteration */}
-          {([
-            { id: "new", label: "NOVO INCIDENTE", color: "bg-blue-500", list: statusCounts.new },
-            { id: "under_analysis", label: "EM ANÁLISE", color: "bg-purple-500", list: statusCounts.under_analysis },
-            { id: "in_progress", label: "EM CORREÇÃO", color: "bg-orange-500", list: statusCounts.in_progress },
-            { id: "ready_for_qa", label: "PRONTO PARA QA", color: "bg-yellow-500", list: statusCounts.ready_for_qa },
-            { id: "validated", label: "VALIDADO", color: "bg-green-500", list: statusCounts.validated }
-          ] as { id: BugStatus; label: string; color: string; list: Bug[] }[]).map((column) => (
-            <div 
+        <div className="fq-kanban-board">
+          {kanbanColumns.map((column) => {
+            const list = bugsByColumn[column.id] ?? [];
+
+            return (
+            <div
               key={column.id}
-              className="flex-1 min-w-[220px]"
+              className="fq-kanban-column"
               onDragOver={handleDragOver}
               onDrop={(e) => handleDrop(e, column.id)}
             >
-              {/* Column title header */}
-              <div className="flex justify-between items-center bg-[#0d1220]/45 p-3.5 border border-slate-800 rounded-t-xl">
-                <span className="font-mono text-xs font-bold text-slate-350 tracking-wide flex items-center gap-1.5">
-                  <span className={`w-2 h-2 rounded-full ${column.color}`} />
+              <div className="fq-kanban-column-header">
+                <span className="text-[12px] font-medium text-neutral-400 font-mono flex items-center gap-1.5">
+                  <span className={`w-1.5 h-1.5 rounded-full ${column.color}`} />
                   {column.label}
                 </span>
-                <span className="bg-slate-850 px-2 py-0.5 rounded font-mono text-[10px] font-bold text-slate-400">
-                  {column.list.length}
+                <span className="bg-white/[0.06] px-1.5 py-0.5 rounded text-[11px] font-medium text-neutral-500 tabular-nums font-mono">
+                  {list.length}
                 </span>
               </div>
 
-              {/* Column list workspace container */}
-              <div className="bg-[#0f172a]/10 border-x border-b border-white/[0.02] rounded-b-xl min-h-[460px] p-3 space-y-3">
-                {column.list.length === 0 ? (
-                  <div className="text-center py-12 text-slate-600 text-[10px] font-mono border border-dashed border-slate-850 rounded-lg">
+              <div
+                className={`fq-kanban-column-body${
+                  list.length > 5 ? " fq-kanban-column-body--scroll" : ""
+                }`}
+              >
+                {list.length === 0 ? (
+                  <div className="text-center py-10 text-neutral-600 text-[11px] font-mono border border-dashed border-white/[0.06] rounded-md">
                     ARRASTAR OU ABRIR TAREFA
                   </div>
                 ) : (
-                  column.list.map((bug) => (
+                  list.map((bug) => (
                     <div
                       key={bug.id}
                       draggable={profile?.role !== "viewer"}
                       onDragStart={(e) => handleDragStart(e, bug.id)}
                       onClick={() => setSelectedBug(bug)}
-                      className="group bg-[#0d1220] border border-slate-800/80 p-4 rounded-xl shadow cursor-grab active:cursor-grabbing hover:border-red-500/20 hover:bg-[#111827] transition flex flex-col justify-between space-y-3 relative overflow-hidden"
+                      className="group fq-kanban-card"
                     >
-                      {/* Animated blocker bar decoration */}
                       {bug.criticism === "blocker" && (
-                        <div className="absolute top-0 left-0 w-full h-0.5 bg-red-650 animate-pulse" />
+                        <div className="absolute top-0 left-0 w-full h-0.5 bg-red-500" />
                       )}
 
                       <div>
                         <div className="flex justify-between items-start gap-1.5 mb-2">
                           <div className="flex flex-wrap items-center gap-1">
                             <BugTypeTag type={bug.type} />
-                            <span className={`text-[9px] font-mono font-bold py-0.5 px-1.5 rounded border ${getSeverityBadgeColors(bug.criticism)}`}>
-                              {severityLabels[bug.criticism]}
-                            </span>
+                            <SeverityBadge severity={bug.criticism} />
                           </div>
-                          <span className="text-[9px] font-mono text-slate-500 truncate max-w-[72px]" title={bug.id}>
+                          <span className="fq-kanban-card-meta max-w-[100px] shrink-0" title={bug.id}>
                             {bug.id}
                           </span>
                         </div>
 
-                        <h4 className="font-semibold text-white group-hover:text-red-400 text-xs transition duration-150 leading-relaxed" title={bug.title}>
+                        <h4 className="fq-kanban-card-title" title={bug.title}>
                           {bug.title}
                         </h4>
 
@@ -767,24 +808,23 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                           )}
 
                           {bug.evidenceUrl && (
-                            <span className="text-[9px] bg-indigo-950/20 border border-indigo-500/10 text-indigo-400 font-mono py-0.5 px-1.5 rounded">
+                            <span className="fq-badge bg-white/[0.04] text-neutral-400 border-white/[0.06] text-[9px] font-mono py-0.5 px-1.5">
                               {evidenceLabel(bug.evidenceUrl) === "image" ? "📸" : "🔗"}
                             </span>
                           )}
                         </div>
                       </div>
 
-                      {/* Card meta footer */}
-                      <div className="pt-2 border-t border-slate-850 flex justify-between items-center text-[10px] font-mono text-slate-450">
+                      <div className="pt-2 border-t border-white/[0.06] flex justify-between items-center text-[11px] font-mono text-neutral-500">
                         <div className="flex items-center gap-1">
-                          <User className="w-3 h-3 text-slate-500" />
-                          <span className="truncate max-w-[90px]" title={bug.ownerName || "Unassigned"}>
+                          <User className="w-3 h-3 text-neutral-500" />
+                          <span className="fq-kanban-card-meta" title={bug.ownerName || "Unassigned"}>
                             {bug.ownerName || "Sem Dev"}
                           </span>
                         </div>
 
                         {/* Relative Elapsed Open time since logged */}
-                        <span className="flex items-center gap-0.5 text-[9px] text-slate-500">
+                        <span className="flex items-center gap-0.5 text-[9px] text-neutral-500">
                           <Clock className="w-2.5 h-2.5" />
                           {Math.max(1, Math.round((new Date().getTime() - new Date(bug.createdAt).getTime()) / 60000))}m aberto
                         </span>
@@ -794,49 +834,48 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                 )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
       {/* TAB 2: DETAILED ANALYTICAL METRICS AND EXPORTS REPORTS */}
       {activeTab === "analytics" && (
         <div className="space-y-6">
-          <div className="bg-[#0f172a]/65 border border-slate-800 p-6 rounded-2xl">
-            <div className="flex justify-between items-center border-b border-slate-850 pb-4 mb-6">
+          <div className="fq-analytics-panel">
+            <div className="flex justify-between items-center border-b border-white/[0.06] pb-4 mb-6">
               <div>
-                <h3 className="font-display text-lg font-bold text-white flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-red-500" /> Consolidados da Operação War Room
+                <h3 className="fq-section-title !mb-0">
+                  <TrendingUp className="w-5 h-5 text-neutral-400" /> Consolidados da Operação War Room
                 </h3>
-                <p className="text-xs text-slate-450 mt-0.5">Métricas de performance, triagem por ambiente e taxa de reaberturas.</p>
+                <p className="text-xs text-neutral-500 mt-0.5">Métricas de performance, triagem por ambiente e taxa de reaberturas.</p>
               </div>
 
               <button
                 onClick={triggerCsvDownload}
-                className="flex items-center gap-2 bg-[#111827] border border-slate-750 hover:bg-slate-805 text-white font-mono text-xs px-4 py-2.5 rounded-lg cursor-pointer transition"
+                className="fq-btn-secondary text-xs"
               >
-                <FileSpreadsheet className="w-4 h-4 text-emerald-555" /> Exportar Planilha CSV
+                <FileSpreadsheet className="w-4 h-4 text-emerald-400" /> Exportar Planilha CSV
               </button>
             </div>
 
-            {/* Metric charts breakdown row */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Counter 1: Environ */}
-              <div className="bg-slate-900/40 p-4 border border-slate-850 rounded-xl space-y-3.5">
-                <h4 className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider">Erros Por Ambiente</h4>
+              <div className="fq-analytics-metric">
+                <h4 className="text-xs font-mono font-bold text-neutral-500 uppercase tracking-wider">Erros Por Ambiente</h4>
                 <div className="space-y-2 text-xs">
                   {["production", "homologation", "dev"].map(env => {
                     const count = filteredBugs.filter(b => b.environment === env).length;
                     const percent = count > 0 ? (count / (filteredBugs.length || 1)) * 100 : 0;
                     return (
                       <div key={env}>
-                        <div className="flex justify-between text-[11px] font-mono text-slate-400 mb-1">
+                        <div className="flex justify-between text-[11px] font-mono text-neutral-500 mb-1">
                           <span className="uppercase font-semibold">
                             {env === "homologation" ? "HMG" : env === "production" ? "PROD" : "DEV"}
                           </span>
                           <span>{count} ocorrências</span>
                         </div>
-                        <div className="h-2 bg-slate-950 rounded-full overflow-hidden">
-                          <div className="h-full bg-red-500 rounded" style={{ width: `${percent}%` }} />
+                        <div className="fq-progress-track">
+                          <div className="h-full rounded-full bg-neutral-400" style={{ width: `${percent}%` }} />
                         </div>
                       </div>
                     );
@@ -844,31 +883,29 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                 </div>
               </div>
 
-              {/* Counter 2: Categories Types */}
-              <div className="bg-slate-900/40 p-4 border border-slate-850 rounded-xl space-y-3.5">
-                <h4 className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider">Erros Por Divisão</h4>
+              <div className="fq-analytics-metric">
+                <h4 className="text-xs font-mono font-bold text-neutral-500 uppercase tracking-wider">Erros Por Divisão</h4>
                 <div className="space-y-1.5 text-xs">
                   {["bug", "improvement", "ui_adjustment", "performance", "security"].map(type => {
                     const count = filteredBugs.filter(b => b.type === type).length;
                     return (
-                      <div key={type} className="flex justify-between text-[11px] font-mono py-1 border-b border-white/[0.02]">
-                        <span className="text-slate-350">{getBugTypeLabel(type as BugType)}</span>
-                        <span className="font-bold text-white">{count}</span>
+                      <div key={type} className="flex justify-between text-[11px] font-mono py-1 border-b border-white/[0.04]">
+                        <span className="text-neutral-400">{getBugTypeLabel(type as BugType)}</span>
+                        <span className="font-bold text-neutral-100">{count}</span>
                       </div>
                     );
                   })}
                 </div>
               </div>
 
-              {/* Counter 3: Performance metrics */}
-              <div className="bg-slate-900/40 p-4 border border-slate-850 rounded-xl space-y-3">
-                <h4 className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider">Fatores de Qualidade</h4>
+              <div className="fq-analytics-metric">
+                <h4 className="text-xs font-mono font-bold text-neutral-500 uppercase tracking-wider">Fatores de Qualidade</h4>
                 
                 <div className="space-y-4 pt-1">
                   <div className="flex justify-between items-center">
                     <div>
-                      <span className="text-xs text-slate-350 font-bold block">Taxa de Reabertura (Reopens)</span>
-                      <span className="text-[10px] text-slate-450 leading-none">Bugs validados reabertos posteriormente</span>
+                      <span className="text-xs text-neutral-300 font-bold block">Taxa de Reabertura (Reopens)</span>
+                      <span className="text-[10px] text-neutral-500 leading-none">Bugs validados reabertos posteriormente</span>
                     </div>
                     <span className="text-xl font-mono font-black text-red-400">
                       {filteredBugs.reduce((acc, b) => acc + (b.reopenCount || 0), 0)}
@@ -877,8 +914,8 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
 
                   <div className="flex justify-between items-center">
                     <div>
-                      <span className="text-xs text-slate-350 font-bold block">Resolução sem Responsável</span>
-                      <span className="text-[10px] text-slate-450 leading-none block">Bugs novos pendentes de desenvolvedores</span>
+                      <span className="text-xs text-neutral-300 font-bold block">Resolução sem Responsável</span>
+                      <span className="text-[10px] text-neutral-500 leading-none block">Bugs novos pendentes de desenvolvedores</span>
                     </div>
                     <span className="text-xl font-mono font-black text-yellow-400">
                       {filteredBugs.filter(b => !b.ownerId && b.status !== "validated").length}
@@ -891,109 +928,112 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
         </div>
       )}
 
-      {/* TAB 3: EXECUTIVE WAR ROOM REPORT GENERATED AUTOMATICALLY BY AI */}
+      {/* TAB 3: AI REPORT */}
       {activeTab === "ai_report" && (
         <div className="space-y-5">
-          <div className="bg-[#0f172a]/65 border border-slate-800 p-6 rounded-2xl relative overflow-hidden">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-850 pb-4 mb-6">
+          <div className="fq-analytics-panel">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-white/[0.06] pb-4 mb-6">
               <div>
-                <h3 className="font-display text-lg font-bold text-white flex items-center gap-2">
-                  <Brain className="w-5 h-5 text-red-500 animate-pulse" /> Compilador Tático de IA ForceQA
+                <h3 className="fq-section-title !mb-0">
+                  <Brain className="w-5 h-5 text-neutral-400" /> AI Report Executivo
                 </h3>
-                <p className="text-xs text-slate-450 mt-0.5">Analisa os dados deste incidente consolidando conclusões executivas com IA.</p>
+                <p className="text-xs text-neutral-500 mt-0.5">
+                  Relatório de QA para gestores com base em métricas agregadas — sem envio da lista completa de bugs.
+                </p>
               </div>
 
               <button
-                maxLength={40}
-                onClick={triggerAiSummaryCompile}
-                disabled={isSummaryLoading}
-                className="flex items-center gap-2 bg-red-650 hover:bg-red-600 disabled:bg-slate-850 text-white font-semibold text-xs px-5 py-2.5 rounded-lg shadow-md cursor-pointer transition border border-red-550/20"
+                type="button"
+                onClick={() => openAiReport(true)}
+                className="fq-btn-primary text-xs"
               >
                 <Sparkles className="w-4 h-4" />
-                {isSummaryLoading ? "Gerando Relatório estratégico..." : "Compilar Relatório Executivo com IA"}
+                Gerar AI Report
               </button>
             </div>
 
-            {isSummaryLoading && (
-              <div className="text-center py-16">
-                <div className="w-8 h-8 border-3 border-red-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                <p className="text-slate-400 text-xs font-mono">Consolidando e-mails, timelines, tags e logs no Gemini AI...</p>
-                <p className="text-[10px] text-slate-550 font-mono mt-1">Este processo de IA leva cerca de 5-10 segundos.</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+              <div className="fq-metric-card flex-col items-start !gap-1">
+                <span className="text-[10px] font-mono text-neutral-500 uppercase">Total</span>
+                <span className="text-2xl font-mono font-bold text-neutral-100">{reportMetrics?.totals.bugs ?? 0}</span>
               </div>
-            )}
-
-            {!isSummaryLoading && !compiledReport && (
-              <div className="text-center py-20 border border-dashed border-slate-850 rounded-xl bg-slate-950/20">
-                <Brain className="w-12 h-12 text-slate-700 mx-auto mb-3" />
-                <h4 className="text-slate-350 font-bold text-base">Relatório não gerado</h4>
-                <p className="text-slate-500 text-xs max-w-sm mx-auto mt-1 leading-relaxed">
-                  Clique no botão acima para submeter a relação de incidentes operacionais a nossa rede neural de QA e automatizar conclusões estratégicas.
-                </p>
+              <div className="fq-metric-card flex-col items-start !gap-1">
+                <span className="text-[10px] font-mono text-neutral-500 uppercase">Abertos</span>
+                <span className="text-2xl font-mono font-bold text-orange-400">{reportMetrics?.totals.open ?? 0}</span>
               </div>
-            )}
+              <div className="fq-metric-card flex-col items-start !gap-1">
+                <span className="text-[10px] font-mono text-neutral-500 uppercase">Validados</span>
+                <span className="text-2xl font-mono font-bold text-emerald-400">{reportMetrics?.totals.validated ?? 0}</span>
+              </div>
+              <div className="fq-metric-card flex-col items-start !gap-1">
+                <span className="text-[10px] font-mono text-neutral-500 uppercase">Últimos 7 dias</span>
+                <span className="text-2xl font-mono font-bold text-blue-400">+{reportMetrics?.last7Days.created ?? 0}</span>
+              </div>
+            </div>
 
-            {compiledReport && (
-              <motion.div 
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="space-y-6 prose prose-invert font-sans max-w-none text-slate-250"
+            <div className="fq-empty-state py-12">
+              <Brain className="w-12 h-12 text-neutral-600 mx-auto mb-3" />
+              <h4 className="text-neutral-300 font-semibold">Relatório executivo em Markdown</h4>
+              <p className="text-neutral-500 text-xs max-w-lg mx-auto mt-1 leading-relaxed">
+                O sistema agrega severidade, status, squad, tempo médio de resolução, tendências e
+                categorias antes de enviar à IA. O resultado inclui Resumo Executivo, Gargalos,
+                Tendências e Próximas Ações.
+              </p>
+              <button
+                type="button"
+                onClick={() => openAiReport(true)}
+                className="fq-btn-secondary text-xs mt-4"
               >
-                {/* Visual header compiled info box */}
-                <div className="p-5 bg-red-950/10 border border-red-500/25 rounded-xl">
-                  <h4 className="text-red-400 font-extrabold text-base font-display flex items-center gap-1.5 uppercase m-0 leading-none">
-                    <FileText className="w-4 h-4" /> CONSOLIDAÇÃO EXECUTIVA DE INCIDENTE: {compiledReport.title}
-                  </h4>
-                  <p className="text-xs text-slate-300 mt-2 m-0 bg-transparent py-0 px-0 rounded-none leading-relaxed italic">
-                    "{compiledReport.executiveSummary}"
-                  </p>
-                </div>
-
-                {/* Markdown core output render */}
-                <div className="bg-[#0b0f19]/75 border border-slate-850 p-6 rounded-xl overflow-x-auto text-sm leading-relaxed whitespace-pre-wrap font-mono text-emerald-400">
-                  {compiledReport.markdownReport}
-                </div>
-
-                <div className="border-t border-slate-850 pt-4 flex justify-end gap-3 font-semibold text-xs">
-                  <button
-                    onClick={() => window.print()}
-                    className="px-4 py-2 bg-slate-800 hover:bg-slate-750 text-slate-300 rounded-lg cursor-pointer text-center"
-                  >
-                    Imprimir Relatório (Export PDF)
-                  </button>
-                </div>
-              </motion.div>
-            )}
+                Abrir relatório em modal
+              </button>
+            </div>
           </div>
         </div>
+      )}
+
+      {warRoom && (
+        <AIReportModal
+          isOpen={isAiReportModalOpen}
+          onClose={() => setIsAiReportModalOpen(false)}
+          warRoom={warRoom}
+          bugs={bugs}
+          autoGenerate={aiReportAutoGenerate}
+        />
       )}
 
       {/* RAPID CADASTRO BUG MODAL CREATE */}
       <AnimatePresence>
         {isBugModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#080b13]/85 backdrop-blur-sm">
+          <div className="fq-modal-overlay">
             <motion.div 
+              ref={bugCreateDialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="bug-create-modal-title"
+              tabIndex={-1}
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-3xl h-[88vh] bg-[#0d1220] border border-[#1e293b] rounded-2xl shadow-2xl p-6 relative flex flex-col justify-between overflow-hidden"
+              className="fq-modal fq-modal--lg fq-modal--tall h-[88vh]"
             >
               {/* Header */}
-              <div className="flex justify-between items-center border-b border-slate-850 pb-4">
-                <h3 className="font-display text-xl font-bold text-white flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-red-500" /> Relato Rápido e Inteligente de Incidente
+              <div className="fq-modal-header !mb-0 shrink-0">
+                <h3 id="bug-create-modal-title" className="fq-modal-title">
+                  <Sparkles className="w-5 h-5 text-neutral-400" /> Relato Rápido e Inteligente de Incidente
                 </h3>
                 <button 
-                  onClick={() => setIsBugModalOpen(false)}
-                  className="p-1 bg-slate-850 text-slate-350 hover:bg-slate-800 hover:text-white rounded cursor-pointer"
+                  onClick={closeBugCreateModal}
+                  className="fq-btn-icon"
+                  aria-label="Fechar"
                 >
                   X
                 </button>
               </div>
 
               {/* Form body container with internal scrolling */}
-              <div className="flex-1 overflow-y-auto my-4 pr-1 space-y-4 text-xs text-slate-305">
+              <div className="flex-1 overflow-y-auto my-4 pr-1 space-y-4 text-xs text-neutral-400">
                 {formError && (
-                  <div className="p-3 bg-red-900/20 border border-red-500/20 text-red-400 text-xs rounded-lg">
+                  <div className="fq-alert-error text-xs">
                     {formError}
                   </div>
                 )}
@@ -1002,13 +1042,13 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-[10px] font-mono font-bold text-slate-450 uppercase mb-1.5">
+                      <label className="fq-label fq-label--xs">
                         Título do Incidente *
                       </label>
                       <input
                         required
                         type="text"
-                        className="w-full bg-[#111827] border border-slate-850 focus:border-red-500/40 rounded-lg px-3 py-2 text-white placeholder-slate-650 focus:outline-none"
+                        className="fq-input"
                         placeholder="Ex: Erro 500 ao confirmar transação PIX"
                         value={bugTitle}
                         onChange={(e) => setBugTitle(e.target.value)}
@@ -1016,12 +1056,12 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-mono font-bold text-slate-450 uppercase mb-1.5">
+                      <label className="fq-label fq-label--xs">
                         DESCRIÇÃO
                       </label>
                       <textarea
                         rows={5}
-                        className="w-full bg-[#111827] border border-slate-850 focus:border-red-500/40 rounded-lg px-3 py-2 text-white placeholder-slate-650 focus:outline-none font-sans"
+                        className="fq-textarea font-sans"
                         placeholder="Insira os passos seguidos, logs de erro, comportamento observado de forma direta..."
                         value={bugDesc}
                         onChange={(e) => setBugDesc(e.target.value)}
@@ -1035,7 +1075,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                       <motion.div 
                         initial={{ opacity: 0, y: 5 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="p-3 bg-red-950/10 border border-red-500/25 rounded-md text-[11px] leading-relaxed text-slate-300"
+                        className="p-3 bg-red-950/10 border border-red-500/25 rounded-md text-[11px] leading-relaxed text-neutral-300"
                       >
                         <span className="font-mono font-bold text-red-400 block uppercase mb-1">🎯 Análise Tática IA Inteligente:</span>
                         {aiSuggestions.explanation}
@@ -1062,13 +1102,13 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-[10px] font-mono font-bold text-slate-450 uppercase mb-1.2 font-semibold">
+                        <label className="fq-label fq-label--xs">
                           Criticidade (Severity)
                         </label>
                         <select
                           value={bugCrit}
                           onChange={(e) => setBugCrit(e.target.value as SeverityLevel)}
-                          className="w-full bg-[#111827] border border-slate-850 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-red-500/30 font-bold"
+                          className="fq-input font-bold"
                         >
                           <option value="blocker">🚨 BLOCKER</option>
                           <option value="critical">🔴 CRÍTICO</option>
@@ -1079,13 +1119,13 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                       </div>
 
                       <div>
-                        <label className="block text-[10px] font-mono font-bold text-slate-450 uppercase mb-1.2 font-semibold">
+                        <label className="fq-label fq-label--xs">
                           Ambiente Afetado
                         </label>
                         <select
                           value={bugEnv}
                           onChange={(e) => setBugEnv(e.target.value as any)}
-                          className="w-full bg-[#111827] border border-slate-850 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-red-500/30 font-bold"
+                          className="fq-input font-bold"
                         >
                           <option value="production">PROD</option>
                           <option value="homologation">HMG</option>
@@ -1096,13 +1136,13 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-[10px] font-mono font-bold text-slate-450 uppercase mb-1.2">
+                        <label className="fq-label fq-label--xs">
                           Tipo de Ocorrência
                         </label>
                         <select
                           value={bugType}
                           onChange={(e) => setBugType(e.target.value as BugType)}
-                          className="w-full bg-[#111827] border border-slate-850 rounded-lg px-3 py-2 text-white focus:outline-none"
+                          className="fq-select"
                         >
                           <option value="bug">🐞 BUG</option>
                           <option value="improvement">⚡ MELHORIA</option>
@@ -1113,13 +1153,13 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                       </div>
 
                       <div>
-                        <label className="block text-[10px] font-mono font-bold text-slate-450 uppercase mb-1.2 font-semibold">
+                        <label className="fq-label fq-label--xs">
                           Prioridade Operacional
                         </label>
                         <select
                           value={bugPriority}
                           onChange={(e) => setBugPriority(e.target.value as BugPriority)}
-                          className="w-full bg-[#111827] border border-slate-850 rounded-lg px-3 py-2 text-white focus:outline-none"
+                          className="fq-select"
                         >
                           <option value="immediate">IMEDIATA</option>
                           <option value="high">ALTA</option>
@@ -1130,12 +1170,12 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-mono font-bold text-slate-450 uppercase mb-1.2">
+                      <label className="fq-label fq-label--xs">
                         URL Relacionada
                       </label>
                       <input
                         type="url"
-                        className="w-full bg-[#111827] border border-slate-850 focus:border-red-500/30 rounded-lg px-3 py-2 text-white placeholder-slate-650 focus:outline-none font-mono text-[11px]"
+                        className="fq-input font-mono text-[11px]"
                         placeholder="https://example.com/checkout"
                         value={bugUrl}
                         onChange={(e) => setBugUrl(e.target.value)}
@@ -1144,13 +1184,13 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
 
                     {/* Evidência: upload ou link */}
                     <div>
-                      <label className="block text-[10px] font-mono font-bold text-slate-450 uppercase mb-1.5">
+                      <label className="fq-label fq-label--xs">
                         Evidência do Bug (imagem ou link)
                       </label>
 
                       <input
                         type="url"
-                        className="w-full bg-[#111827] border border-slate-850 focus:border-red-500/30 rounded-lg px-3 py-2 text-white placeholder-slate-650 focus:outline-none font-mono text-[11px] mb-2"
+                        className="fq-input font-mono text-[11px] mb-2"
                         placeholder="https://drive.google.com/... ou link da imagem"
                         value={bugEvidenceLink}
                         onChange={(e) => {
@@ -1159,9 +1199,9 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                         }}
                       />
 
-                      <div className="border border-dashed border-slate-800 hover:border-slate-700 bg-slate-950/40 p-4 rounded-xl text-center space-y-2 relative transition">
-                        <Upload className="w-6 h-6 text-slate-500 mx-auto" />
-                        <span className="block text-[10px] font-semibold text-slate-350">Ou envie imagem (PNG/JPG, máx. 2MB)</span>
+                      <div className="fq-upload-zone space-y-2">
+                        <Upload className="w-6 h-6 text-neutral-500 mx-auto" />
+                        <span className="block text-[10px] font-semibold text-neutral-400">Ou envie imagem (PNG/JPG, máx. 2MB)</span>
                         <input
                           type="file"
                           accept="image/*"
@@ -1171,9 +1211,9 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                       </div>
 
                       {(bugEvidence || bugEvidenceLink.trim()) && (
-                        <div className="flex items-center gap-2 mt-2 bg-[#111827] p-2 border border-slate-850 rounded-lg">
+                        <div className="fq-attachment-chip">
                           <CheckCircle className="w-4 h-4 text-green-500 shrink-0" />
-                          <span className="text-[10px] font-mono text-slate-400 uppercase truncate">
+                          <span className="text-[10px] font-mono text-neutral-400 uppercase truncate">
                             {bugEvidence
                               ? "Imagem anexada"
                               : `Link: ${bugEvidenceLink.trim()}`}
@@ -1194,14 +1234,14 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
 
                     {/* Drag and drop prototype figma uploader file picker block */}
                     <div>
-                      <label className="block text-[10px] font-mono font-bold text-[#4ea8de] uppercase mb-1.5 flex items-center justify-between">
+                      <label className="fq-label fq-label--xs fq-label--inline justify-between">
                         <span>Imagem de Protótipo / Como deveria ser (Opcional)</span>
-                        <span className="text-[8px] tracking-wide text-cyan-400 uppercase">[Figma Matcher]</span>
+                        <span className="text-[8px] tracking-wide text-neutral-500 uppercase">[Figma Matcher]</span>
                       </label>
-                      <div className="border border-dashed border-slate-800 hover:border-slate-700 bg-slate-950/40 p-4 rounded-xl text-center space-y-2 relative transition">
-                        <Upload className="w-6 h-6 text-[#4ea8de] mx-auto opacity-70" />
-                        <span className="block text-[10px] font-semibold text-slate-350">Arraste a referência do protótipo Figma correto</span>
-                        <span className="block text-[9px] text-slate-500 font-mono leading-none">Apenas PNG/JPG com menos de 2MB</span>
+                      <div className="fq-upload-zone space-y-2">
+                        <Upload className="w-6 h-6 text-neutral-500 mx-auto opacity-70" />
+                        <span className="block text-[10px] font-semibold text-neutral-400">Arraste a referência do protótipo Figma correto</span>
+                        <span className="block text-[9px] text-neutral-500 font-mono leading-none">Apenas PNG/JPG com menos de 2MB</span>
                         <input
                           type="file"
                           accept="image/*"
@@ -1211,9 +1251,9 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                       </div>
 
                       {bugPrototype && (
-                        <div className="flex items-center gap-2 mt-2 bg-[#111827] p-2 border border-slate-850 rounded-lg">
+                        <div className="fq-attachment-chip">
                           <CheckCircle className="w-4 h-4 text-green-500" />
-                          <span className="text-[10px] font-mono text-slate-400 uppercase">Protótipo anexado</span>
+                          <span className="text-[10px] font-mono text-neutral-400 uppercase">Protótipo anexado</span>
                           <button
                             type="button"
                             onClick={() => setBugPrototype(null)}
@@ -1229,11 +1269,11 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
               </div>
 
               {/* Submit footer links controls */}
-              <div className="pt-4 border-t border-slate-850 flex justify-end gap-3 font-semibold text-xs">
+              <div className="fq-modal-footer">
                 <button
                   type="button"
-                  onClick={() => setIsBugModalOpen(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-750 text-slate-350 rounded-lg cursor-pointer"
+                  onClick={closeBugCreateModal}
+                  className="fq-btn-ghost text-xs"
                 >
                   Cancelar
                 </button>
@@ -1241,7 +1281,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                   type="submit"
                   onClick={handleReportBug}
                   disabled={formSubmitting || !bugTitle.trim()}
-                  className="px-5 py-2 bg-red-650 hover:bg-red-600 disabled:bg-slate-850 text-white rounded-lg shadow-md cursor-pointer transition text-center"
+                  className="fq-btn-primary"
                 >
                   {formSubmitting ? "Registrando erro..." : "Reportar Incidente"}
                 </button>
