@@ -118,3 +118,31 @@ export interface AIWarRoomSummary {
   executiveSummary: string;
   markdownReport: string;
 }
+
+export interface BoardViewFilters {
+  types?: string[];
+  statuses?: BugStatus[];
+  severity?: SeverityLevel[];
+}
+
+export interface BoardView {
+  id: string;
+  name: string;
+  slug: string;
+  isActive: boolean;
+  orderIndex: number;
+  filters: BoardViewFilters;
+  projectId?: string;
+  createdAt: string;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  slug: string;
+  squad: string;
+  description: string;
+  warRoomId: string;
+  createdAt: string;
+  createdBy: string;
+}

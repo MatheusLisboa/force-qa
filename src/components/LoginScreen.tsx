@@ -4,6 +4,7 @@ import { isSupabaseConfigured } from "../lib/supabase";
 import { getAuthErrorCode, getAuthErrorMessage, isUserAlreadyRegistered } from "../lib/authErrors";
 import { LogIn, Sparkles, AlertTriangle, ShieldCheck, Zap, Mail, UserPlus, HelpCircle } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { SQUAD_PRESETS } from "../lib/squads";
 
 export const LoginScreen: React.FC = () => {
   const { loginWithEmail, signUpUser, loginAsGuest } = useAuth();
@@ -25,7 +26,7 @@ export const LoginScreen: React.FC = () => {
 
   // Guest form state
   const [guestName, setGuestName] = useState("");
-  const [guestSquad, setGuestSquad] = useState("dev"); // default 'dev'
+  const [guestSquad, setGuestSquad] = useState("Requisitos");
   const [customSquad, setCustomSquad] = useState("");
   const [warRoomName, setWarRoomName] = useState("");
   const [guestLoading, setGuestLoading] = useState(false);
@@ -346,25 +347,19 @@ export const LoginScreen: React.FC = () => {
 
                   <div>
                     <label className="fq-label !mb-2">SUA SQUAD OPERACIONAL</label>
-                    <div className="grid grid-cols-3 gap-2.5 mb-2 font-mono text-xs">
-                      <button
-                        type="button"
-                        onClick={() => setGuestSquad("dev")}
-                        className={`fq-filter-chip w-full justify-center font-mono font-bold cursor-pointer py-2 ${
-                          guestSquad === "dev" ? "!bg-white/[0.08] !border-white/[0.16] text-neutral-100" : ""
-                        }`}
-                      >
-                        DEV
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setGuestSquad("dba")}
-                        className={`fq-filter-chip w-full justify-center font-mono font-bold cursor-pointer py-2 ${
-                          guestSquad === "dba" ? "!bg-white/[0.08] !border-white/[0.16] text-neutral-100" : ""
-                        }`}
-                      >
-                        DBA
-                      </button>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mb-2 font-mono text-xs">
+                      {SQUAD_PRESETS.map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setGuestSquad(preset)}
+                          className={`fq-filter-chip w-full justify-center font-mono font-bold cursor-pointer py-2 ${
+                            guestSquad === preset ? "!bg-white/[0.08] !border-white/[0.16] text-neutral-100" : ""
+                          }`}
+                        >
+                          {preset.toUpperCase()}
+                        </button>
+                      ))}
                       <button
                         type="button"
                         onClick={() => setGuestSquad("other")}

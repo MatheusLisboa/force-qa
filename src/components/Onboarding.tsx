@@ -3,6 +3,7 @@ import { useAuth } from "../context/AuthContext";
 import { UserRole } from "../types";
 import { Shield, Sparkles, Terminal, Users, UserCheck } from "lucide-react";
 import { motion } from "motion/react";
+import { SquadSelect } from "./SquadSelect";
 
 export const Onboarding: React.FC = () => {
   const { user, createProfile } = useAuth();
@@ -112,13 +113,10 @@ export const Onboarding: React.FC = () => {
               <label className="fq-label fq-label--md">
                 Squad Principal
               </label>
-              <input
-                type="text"
+              <SquadSelect
                 required
-                className="fq-input"
-                placeholder="Ex: Squad Pix, Squad Checkout"
                 value={squad}
-                onChange={(e) => setSquad(e.target.value)}
+                onChange={setSquad}
               />
             </div>
           </div>

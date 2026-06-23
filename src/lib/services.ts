@@ -16,7 +16,9 @@ import {
   UserProfile,
 } from "../types";
 import type { BoardReportMetrics, AIExecutiveReport } from "./aiReport/types";
+import { BoardView, BoardViewFilters, Project } from "../types";
 import { DEFAULT_KANBAN_COLUMNS } from "./kanbanColumns";
+import { slugifyBoardViewName } from "./boardViews";
 
 function cleanUndefined<T extends object>(obj: T): T {
   const result = { ...obj } as Record<string, unknown>;
@@ -79,6 +81,63 @@ export async function createBoard(
     periodEnd: "",
     severity: data.severity || "medium",
   });
+}
+
+export async function createProject(data: {
+  name: string;
+  squad: string;
+  description: string;
+  createdBy: string;
+  createdByName?: string;
+}): Promise<{ projectId: string; warRoomId: string }> {
+  const name = data.name.trim();
+  const slug = slugifyBoardViewName(name);
+  const warRoomId = await createBoard({
+    name,
+    project: name,
+    squad: data.squad.trim(),
+    description: data.description.trim(),
+    severity: "medium",
+    createdBy: data.createdBy,
+    createdByName: data.createdByName,
+  });
+
+  const { data: row, error } = await supabase
+    .from("projects")
+    .insert({
+      name,
+      slug,
+      squad: data.squad.trim(),
+      description: data.description.trim() || "",
+      war_room_id: warRoomId,
+      created_by: data.createdBy,
+    })
+    .select("id")
+    .single();
+
+  if (error) handleDbError(error, OperationType.CREATE, "projects");
+  return { projectId: row!.id as string, warRoomId };
+}
+
+export async function updateProject(
+  id: string,
+  fields: Partial<Pick<Project, "name" | "squad" | "description">>
+): Promise<void> {
+  const payload: Record<string, unknown> = {};
+  if (fields.name !== undefined) {
+    payload.name = fields.name.trim();
+    payload.slug = slugifyBoardViewName(fields.name);
+  }
+  if (fields.squad !== undefined) payload.squad = fields.squad.trim();
+  if (fields.description !== undefined) payload.description = fields.description.trim();
+
+  const { error } = await supabase.from("projects").update(payload).eq("id", id);
+  if (error) handleDbError(error, OperationType.UPDATE, `projects/${id}`);
+}
+
+export async function deleteProject(id: string): Promise<void> {
+  const { error } = await supabase.from("projects").delete().eq("id", id);
+  if (error) handleDbError(error, OperationType.DELETE, `projects/${id}`);
 }
 
 export async function updateWarRoomStatus(
@@ -360,6 +419,66 @@ export async function fetchAIWarRoomSummary(
     throw new Error(errData.error || "Failed to fetch War Room summary report.");
   }
   return response.json();
+}
+
+// -------------------------
+// Board views (admin)
+// -------------------------
+
+export async function createBoardView(data: {
+  projectId: string;
+  name: string;
+  slug: string;
+  filters?: BoardViewFilters;
+  orderIndex?: number;
+  isActive?: boolean;
+}): Promise<string> {
+  const { data: row, error } = await supabase
+    .from("board_views")
+    .insert({
+      project_id: data.projectId,
+      name: data.name.trim(),
+      slug: data.slug.trim(),
+      filters: data.filters ?? {},
+      order_index: data.orderIndex ?? 0,
+      is_active: data.isActive ?? true,
+    })
+    .select("id")
+    .single();
+  if (error) handleDbError(error, OperationType.CREATE, "board_views");
+  return row!.id as string;
+}
+
+export async function updateBoardView(
+  id: string,
+  fields: Partial<{
+    name: string;
+    slug: string;
+    filters: BoardViewFilters;
+    orderIndex: number;
+    isActive: boolean;
+  }>
+): Promise<void> {
+  const payload: Record<string, unknown> = {};
+  if (fields.name !== undefined) payload.name = fields.name;
+  if (fields.slug !== undefined) payload.slug = fields.slug;
+  if (fields.filters !== undefined) payload.filters = fields.filters;
+  if (fields.orderIndex !== undefined) payload.order_index = fields.orderIndex;
+  if (fields.isActive !== undefined) payload.is_active = fields.isActive;
+
+  const { error } = await supabase.from("board_views").update(payload).eq("id", id);
+  if (error) handleDbError(error, OperationType.UPDATE, `board_views/${id}`);
+}
+
+export async function deleteBoardView(id: string): Promise<void> {
+  const { error } = await supabase.from("board_views").delete().eq("id", id);
+  if (error) handleDbError(error, OperationType.DELETE, `board_views/${id}`);
+}
+
+export async function reorderBoardViews(orderedIds: string[]): Promise<void> {
+  await Promise.all(
+    orderedIds.map((id, index) => updateBoardView(id, { orderIndex: index }))
+  );
 }
 
 // Re-export for convenience

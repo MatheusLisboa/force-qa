@@ -1,10 +1,16 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
-import { subscribeWarRoom, subscribeBugsByRoom } from "../lib/supabase";
+import { subscribeWarRoom, subscribeBugsByRoom, subscribeBoardViews, subscribeProjectByWarRoomId } from "../lib/supabase";
 import { createBug, updateBugField, fetchAISuggestions, fetchAIDuplicateCheck, updateWarRoom, deleteWarRoom } from "../lib/services";
 import { useAuth } from "../context/AuthContext";
-import { WarRoom, Bug, SeverityLevel, BugStatus, BugPriority, BugType, AISuggestion, AIDuplicateCheck } from "../types";
+import { WarRoom, Bug, SeverityLevel, BugStatus, BugPriority, BugType, AISuggestion, AIDuplicateCheck, BoardView, Project } from "../types";
 import { BugDetailModal } from "./BugDetailModal";
 import { AIReportModal } from "./AIReportModal";
+import { BoardViewSwitcher } from "./BoardViewSwitcher";
+import {
+  filterItemsByView,
+  readStoredBoardViewId,
+  writeStoredBoardViewId,
+} from "../lib/boardViews";
 import { aggregateBoardMetrics } from "../lib/aiReport/aggregateMetrics";
 import { BugTypeTag } from "./BugTypeTag";
 import { evidenceLabel } from "../lib/evidence";
@@ -73,6 +79,11 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
   const [newColumnLabel, setNewColumnLabel] = useState("");
   const [isSavingColumns, setIsSavingColumns] = useState(false);
 
+  const [boardViews, setBoardViews] = useState<BoardView[]>([]);
+  const [boardViewsLoading, setBoardViewsLoading] = useState(true);
+  const [project, setProject] = useState<Project | null>(null);
+  const [activeBoardViewId, setActiveBoardViewId] = useState<string | null>(null);
+
   // Create Bug Form states
   const [bugTitle, setBugTitle] = useState("");
   const [bugDesc, setBugDesc] = useState("");
@@ -113,6 +124,46 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
       unsubscribeBugs();
     };
   }, [roomId]);
+
+  useEffect(() => {
+    const unsub = subscribeProjectByWarRoomId(roomId, (row) => {
+      setProject(row);
+      setActiveBoardViewId(row ? readStoredBoardViewId(row.id) : null);
+    });
+    return unsub;
+  }, [roomId]);
+
+  useEffect(() => {
+    if (!project) {
+      setBoardViews([]);
+      setBoardViewsLoading(false);
+      return;
+    }
+
+    setBoardViewsLoading(true);
+    const unsub = subscribeBoardViews(project.id, (views) => {
+      setBoardViews(views);
+      setBoardViewsLoading(false);
+    });
+    return unsub;
+  }, [project?.id]);
+
+  useEffect(() => {
+    if (!project || boardViewsLoading) return;
+    if (!activeBoardViewId) return;
+    if (!boardViews.some((v) => v.id === activeBoardViewId)) {
+      setActiveBoardViewId(null);
+      writeStoredBoardViewId(project.id, null);
+    }
+  }, [boardViews, boardViewsLoading, activeBoardViewId, project]);
+
+  const handleBoardViewSelect = useCallback(
+    (viewId: string | null) => {
+      setActiveBoardViewId(viewId);
+      if (project) writeStoredBoardViewId(project.id, viewId);
+    },
+    [project]
+  );
 
   // Handle Drag & Drop HTML5 mechanics
   const handleDragStart = (e: React.DragEvent, bugId: string) => {
@@ -362,6 +413,16 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
     return matchEnv && matchType && matchSeverity && matchOwner && matchSearch;
   });
 
+  const activeBoardView = useMemo(
+    () => (activeBoardViewId ? boardViews.find((v) => v.id === activeBoardViewId) ?? null : null),
+    [activeBoardViewId, boardViews]
+  );
+
+  const visibleKanbanBugs = useMemo(
+    () => (activeBoardView ? filterItemsByView(filteredBugs, activeBoardView) : filteredBugs),
+    [filteredBugs, activeBoardView]
+  );
+
   // Calculate stats for current War Room bugs listings
   const totalBugsLength = filteredBugs.length;
 
@@ -387,7 +448,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
   });
 
   const kanbanColumns = resolveKanbanColumns(warRoom.kanbanColumns);
-  const bugsByColumn = groupBugsByColumn(filteredBugs, kanbanColumns);
+  const bugsByColumn = groupBugsByColumn(visibleKanbanBugs, kanbanColumns);
 
   const openAiReport = (autoGenerate = false) => {
     setAiReportAutoGenerate(autoGenerate);
@@ -449,6 +510,11 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
               <RoomTypeBadge type="board" permanent />
             ) : (
               <RoomTypeBadge type="war_room" />
+            )}
+            {project && (
+              <span className="fq-badge text-[10px] bg-indigo-500/10 text-indigo-300 font-mono">
+                PROJETO
+              </span>
             )}
             <SeverityBadge severity={warRoom.severity} size="md" />
             <div className="flex items-center gap-1.5 fq-filter-chip font-mono">
@@ -653,6 +719,17 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {activeTab === "kanban" && project && (
+        <div className="fq-panel py-2.5 px-3 shrink-0">
+          <BoardViewSwitcher
+            views={boardViews}
+            activeViewId={activeBoardViewId}
+            onSelect={handleBoardViewSelect}
+            loading={boardViewsLoading}
+          />
         </div>
       )}
 

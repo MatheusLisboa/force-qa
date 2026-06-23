@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
-import { createWarRoom, createBoard, updateUserProfile, deleteUserProfile } from "../lib/services";
-import { subscribeWarRooms, subscribeAllBugs, subscribeUsers, findWarRoomByIdOrName } from "../lib/supabase";
+import { createWarRoom, createProject, updateUserProfile, deleteUserProfile } from "../lib/services";
+import { subscribeWarRooms, subscribeAllBugs, subscribeUsers, subscribeProjects, subscribeAllBoardViews, findWarRoomByIdOrName } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
-import { WarRoom, Bug, SeverityLevel } from "../types";
+import { WarRoom, Bug, SeverityLevel, Project, BoardView } from "../types";
+import { SquadSelect } from "./SquadSelect";
 import { 
   Radio, 
   Activity, 
@@ -34,15 +35,18 @@ import { useModalA11y } from "../hooks/useModalA11y";
 
 interface DashboardProps {
   onSelectRoom: (roomId: string) => void;
+  onOpenAdminPage?: (path: "/admin/board-views", projectId?: string) => void;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminPage }) => {
   const { profile, adminCreateUser } = useAuth();
   const [warRooms, setWarRooms] = useState<WarRoom[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [allBoardViews, setAllBoardViews] = useState<BoardView[]>([]);
   const [allBugs, setAllBugs] = useState<Bug[]>([]);
   const [selectedDashboardRoomId, setSelectedDashboardRoomId] = useState<string>("all");
   const [isWarRoomModalOpen, setIsWarRoomModalOpen] = useState(false);
-  const [isBoardModalOpen, setIsBoardModalOpen] = useState(false);
+  const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // Search by ID State
@@ -70,11 +74,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
   const [editingSquad, setEditingSquad] = useState("");
 
   const warRoomDialogRef = useRef<HTMLDivElement>(null);
-  const boardDialogRef = useRef<HTMLDivElement>(null);
+  const projectDialogRef = useRef<HTMLDivElement>(null);
   const adminDialogRef = useRef<HTMLDivElement>(null);
 
   const closeWarRoomModal = useCallback(() => setIsWarRoomModalOpen(false), []);
-  const closeBoardModal = useCallback(() => setIsBoardModalOpen(false), []);
+  const closeProjectModal = useCallback(() => setIsProjectModalOpen(false), []);
   const closeAdminUsersModal = useCallback(() => {
     setIsAdminUsersModalOpen(false);
     setUserCreationError("");
@@ -82,7 +86,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
   }, []);
 
   useModalA11y(isWarRoomModalOpen, closeWarRoomModal, warRoomDialogRef);
-  useModalA11y(isBoardModalOpen, closeBoardModal, boardDialogRef);
+  useModalA11y(isProjectModalOpen, closeProjectModal, projectDialogRef);
   useModalA11y(isAdminUsersModalOpen, closeAdminUsersModal, adminDialogRef);
 
   // Live real-time stream subscription for System Users
@@ -224,10 +228,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
       setWarRooms(rooms);
       setLoading(false);
     });
+    const unsubscribeProjects = subscribeProjects(setProjects);
     const unsubscribeBugs = subscribeAllBugs(setAllBugs);
+    const unsubscribeViews = subscribeAllBoardViews(null, setAllBoardViews);
     return () => {
       unsubscribeRooms();
+      unsubscribeProjects();
       unsubscribeBugs();
+      unsubscribeViews();
     };
   }, []);
 
@@ -302,7 +310,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
   const displayedWarRooms = displayedRooms.filter(
     (r) => (r.roomType || "war_room") === "war_room"
   );
-  const displayedBoards = displayedRooms.filter((r) => r.roomType === "board");
+
+  const displayedProjects = projects.filter((proj) => {
+    if (profile?.role === "admin") return true;
+    if (proj.createdBy === profile?.id) return true;
+    if (accessedRoomIds.includes(proj.warRoomId)) return true;
+    return false;
+  });
+
+  const viewCountByProject = allBoardViews.reduce<Record<string, number>>((acc, view) => {
+    if (view.projectId && view.isActive) {
+      acc[view.projectId] = (acc[view.projectId] || 0) + 1;
+    }
+    return acc;
+  }, {});
 
   const canManageSpaces =
     profile?.role === "admin" ||
@@ -418,6 +439,98 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
             </button>
             <span className="text-[11px] font-mono text-neutral-500 group-hover:text-neutral-300 transition flex items-center gap-1">
               ENTRAR <ExternalLink className="w-3 h-3" />
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderProjectCard = (proj: Project) => {
+    const activeRoomBugs = allBugs.filter((b) => b.warRoomId === proj.warRoomId);
+    const roomBlocker = activeRoomBugs.filter(
+      (b) => b.criticism === "blocker" && b.status !== "validated"
+    ).length;
+    const roomTotalOpen = activeRoomBugs.filter((b) => b.status !== "validated").length;
+    const viewCount = viewCountByProject[proj.id] || 0;
+
+    return (
+      <div
+        key={proj.id}
+        onClick={() => onSelectRoom(proj.warRoomId)}
+        className="group fq-card-interactive"
+      >
+        <div>
+          <div className="flex justify-between items-start gap-3">
+            <h4
+              className="text-[15px] font-semibold text-neutral-100 tracking-tight truncate max-w-[200px]"
+              title={proj.name}
+            >
+              {proj.name}
+            </h4>
+            <RoomTypeBadge type="board" permanent />
+          </div>
+
+          <div className="mt-2 text-[11px] text-neutral-500 flex items-center gap-1.5 font-mono">
+            <span>CHAVE:</span>
+            <span className="text-neutral-400 select-all bg-white/[0.04] px-1.5 py-0.5 rounded border border-white/[0.06] text-[10px]">
+              {proj.warRoomId}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 mt-2.5 text-[12px] text-neutral-500 font-mono">
+            <span>
+              SQUAD: <span className="text-neutral-300 font-medium">{proj.squad}</span>
+            </span>
+            <span>•</span>
+            <span>
+              VIEWS: <span className="text-neutral-300 font-medium">{viewCount}</span>
+            </span>
+          </div>
+
+          <p className="text-[13px] text-neutral-500 mt-3 line-clamp-2 leading-relaxed" title={proj.description}>
+            {proj.description || "Projeto com Kanban e visualizações configuráveis."}
+          </p>
+        </div>
+
+        <div className="mt-4 pt-3.5 border-t border-white/[0.06] flex justify-between items-center">
+          <div className="flex gap-5">
+            <div>
+              <span className="block text-[11px] font-mono uppercase text-neutral-500">Abertos</span>
+              <span className={`text-[15px] font-semibold tabular-nums ${roomTotalOpen > 0 ? "text-neutral-100" : "text-neutral-600"}`}>
+                {roomTotalOpen}
+              </span>
+            </div>
+            {roomBlocker > 0 && (
+              <div>
+                <span className="block text-[11px] font-mono uppercase text-red-400/80">BLOCKER</span>
+                <span className="text-[15px] font-semibold text-red-400 tabular-nums">{roomBlocker}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-1.5 items-center">
+            {profile?.role === "admin" && onOpenAdminPage && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenAdminPage("/admin/board-views", proj.id);
+                }}
+                className="fq-btn-secondary !text-[10px] !py-1 !px-2 font-mono"
+                title="Gerenciar views do projeto"
+              >
+                VIEWS
+              </button>
+            )}
+            <button
+              onClick={(e) => copyShareLink(proj.warRoomId, e)}
+              className="fq-btn-icon !p-1.5"
+              title="Compartilhar Link"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+            </button>
+            <span className="text-[11px] font-mono text-neutral-500 group-hover:text-neutral-300 transition flex items-center gap-1">
+              ABRIR <ExternalLink className="w-3 h-3" />
             </span>
           </div>
         </div>
@@ -571,15 +684,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
     }
   };
 
-  const handleCreateBoardSubmit = async (e: React.FormEvent) => {
+  const handleCreateProjectSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!canManageSpaces) {
-      setFormError("Permissão negada. Apenas administradores, QAs e Scrum Masters podem criar Boards.");
+      setFormError("Permissão negada. Apenas administradores, QAs e Scrum Masters podem criar projetos.");
       return;
     }
 
-    if (!name.trim() || !project.trim() || !squad.trim()) {
+    if (!name.trim() || !squad.trim()) {
       setFormError("Por favor, preencha todos os campos obrigatórios.");
       return;
     }
@@ -587,24 +700,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
     setSubmitting(true);
     setFormError("");
     try {
-      const boardId = await createBoard({
+      const { warRoomId } = await createProject({
         name: name.trim(),
-        project: project.trim(),
         squad: squad.trim(),
         description: description.trim(),
-        severity: "medium",
         createdBy: profile?.id || "unknown",
         createdByName: profile?.name || "Anonymous Hunter",
       });
 
       setName("");
-      setProject("");
       setSquad("");
       setDescription("");
-      setIsBoardModalOpen(false);
-      onSelectRoom(boardId);
+      setIsProjectModalOpen(false);
+      onSelectRoom(warRoomId);
     } catch (err: any) {
-      setFormError("Erro ao criar Board: " + err.message);
+      setFormError("Erro ao criar projeto: " + err.message);
     } finally {
       setSubmitting(false);
     }
@@ -621,19 +731,30 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
             Painel Central de QA
           </h1>
           <p className="text-neutral-500 text-[13px] mt-1">
-            War Rooms por período e Boards permanentes de projetos e sistemas.
+            War Rooms por período e projetos com visualizações de board.
           </p>
         </div>
 
         <div className="flex flex-wrap gap-2">
           {profile?.role === "admin" && (
-            <button
-              onClick={() => setIsAdminUsersModalOpen(true)}
-              className="fq-btn-secondary text-xs font-mono"
-            >
-              <UserPlus className="w-4 h-4" />
-              GERENCIAR USUÁRIOS
-            </button>
+            <>
+              <button
+                onClick={() => setIsAdminUsersModalOpen(true)}
+                className="fq-btn-secondary text-xs font-mono"
+              >
+                <UserPlus className="w-4 h-4" />
+                GERENCIAR USUÁRIOS
+              </button>
+              {onOpenAdminPage && (
+                <button
+                  onClick={() => onOpenAdminPage("/admin/board-views")}
+                  className="fq-btn-secondary text-xs font-mono"
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                  BOARD VIEWS (ADMIN)
+                </button>
+              )}
+            </>
           )}
 
           {canManageSpaces && (
@@ -651,12 +772,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
               <button
                 onClick={() => {
                   setFormError("");
-                  setIsBoardModalOpen(true);
+                  setIsProjectModalOpen(true);
                 }}
                 className="fq-btn-secondary text-xs font-mono"
               >
                 <LayoutGrid className="w-4 h-4" />
-                NOVO BOARD
+                NOVO PROJETO
               </button>
             </>
           )}
@@ -927,20 +1048,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
         )}
 
         <h3 className="fq-section-title uppercase tracking-wide font-mono">
-          <LayoutGrid className="w-4 h-4 text-neutral-500" /> Boards Permanentes ({displayedBoards.length})
+          <LayoutGrid className="w-4 h-4 text-neutral-500" /> Projetos ({displayedProjects.length})
         </h3>
 
-        {loading ? null : displayedBoards.length === 0 ? (
+        {loading ? null : displayedProjects.length === 0 ? (
           <div className="fq-empty-state">
             <LayoutGrid className="w-8 h-8 text-neutral-600 mx-auto mb-3" />
-            <h4 className="text-neutral-200 font-medium text-[15px]">Nenhum board permanente</h4>
+            <h4 className="text-neutral-200 font-medium text-[15px]">Nenhum projeto cadastrado</h4>
             <p className="text-neutral-500 text-xs mt-1 max-w-sm mx-auto">
-              Boards são quadros permanentes para projetos e sistemas específicos. Use o botão &quot;NOVO BOARD&quot; para criar.
+              Projetos agrupam o Kanban e as visualizações de board. Use &quot;NOVO PROJETO&quot; para criar.
             </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {displayedBoards.map(renderSpaceCard)}
+            {displayedProjects.map(renderProjectCard)}
           </div>
         )}
       </div>
@@ -1019,13 +1140,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                     <label className="fq-label">
                       Squad Principal *
                     </label>
-                    <input
+                    <SquadSelect
                       required
-                      type="text"
-                      className="fq-input"
-                      placeholder="Ex: Squad Core-Payments"
                       value={squad}
-                      onChange={(e) => setSquad(e.target.value)}
+                      onChange={setSquad}
                     />
                   </div>
 
@@ -1097,15 +1215,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
         )}
       </AnimatePresence>
 
-      {/* Modal: Novo Board */}
+      {/* Modal: Novo Projeto */}
       <AnimatePresence>
-        {isBoardModalOpen && (
+        {isProjectModalOpen && (
           <div className="fq-modal-overlay">
             <motion.div 
-              ref={boardDialogRef}
+              ref={projectDialogRef}
               role="dialog"
               aria-modal="true"
-              aria-labelledby="board-modal-title"
+              aria-labelledby="project-modal-title"
               tabIndex={-1}
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -1113,11 +1231,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
               className="fq-modal fq-modal--md"
             >
               <div className="fq-modal-header">
-                <h3 id="board-modal-title" className="fq-modal-title">
-                  <LayoutGrid className="w-5 h-5 text-neutral-400" /> Novo Board
+                <h3 id="project-modal-title" className="fq-modal-title">
+                  <LayoutGrid className="w-5 h-5 text-neutral-400" /> Novo Projeto
                 </h3>
                 <button 
-                  onClick={closeBoardModal}
+                  onClick={closeProjectModal}
                   className="fq-btn-icon"
                   aria-label="Fechar"
                 >
@@ -1126,7 +1244,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
               </div>
 
               <p className="text-xs text-neutral-500 font-mono mb-4">
-                Board permanente para acompanhamento contínuo de um projeto ou sistema.
+                Crie um projeto e, em seguida, configure as visualizações de board em Admin → Board Views.
               </p>
 
               {formError && (
@@ -1135,49 +1253,30 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                 </div>
               )}
 
-              <form onSubmit={handleCreateBoardSubmit} className="space-y-4 text-sm text-neutral-300">
+              <form onSubmit={handleCreateProjectSubmit} className="space-y-4 text-sm text-neutral-300">
                 <div>
                   <label className="fq-label">
-                    Nome do Board *
+                    Nome do Projeto *
                   </label>
                   <input
                     required
                     type="text"
                     className="fq-input"
-                    placeholder="Ex: Board Checkout Web"
+                    placeholder="Ex: Portal Admin"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                   />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="fq-label">
-                      Projeto / Sistema *
-                    </label>
-                    <input
-                      required
-                      type="text"
-                      className="fq-input"
-                      placeholder="Ex: Portal Admin"
-                      value={project}
-                      onChange={(e) => setProject(e.target.value)}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="fq-label">
-                      Squad Responsável *
-                    </label>
-                    <input
-                      required
-                      type="text"
-                      className="fq-input"
-                      placeholder="Ex: Squad Core"
-                      value={squad}
-                      onChange={(e) => setSquad(e.target.value)}
-                    />
-                  </div>
+                <div>
+                  <label className="fq-label">
+                    Squad Responsável *
+                  </label>
+                  <SquadSelect
+                    required
+                    value={squad}
+                    onChange={setSquad}
+                  />
                 </div>
 
                 <div>
@@ -1195,7 +1294,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                 <div className="pt-4 border-t border-white/[0.06] flex justify-end gap-3 font-semibold">
                   <button
                     type="button"
-                    onClick={() => setIsBoardModalOpen(false)}
+                    onClick={() => setIsProjectModalOpen(false)}
                     className="fq-btn-ghost"
                   >
                     Cancelar
@@ -1205,7 +1304,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom }) => {
                     disabled={submitting}
                     className="fq-btn-primary"
                   >
-                    {submitting ? "Criando..." : "Criar Board"}
+                    {submitting ? "Criando..." : "Criar Projeto"}
                   </button>
                 </div>
               </form>

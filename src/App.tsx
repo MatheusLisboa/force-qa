@@ -4,6 +4,7 @@ import { LoginScreen } from "./components/LoginScreen";
 import { Onboarding } from "./components/Onboarding";
 import { Dashboard } from "./components/Dashboard";
 import { WarRoomDetail } from "./components/WarRoomDetail";
+import { AdminBoardViews } from "./components/AdminBoardViews";
 import { Radio, ShieldAlert, LogOut, Terminal, Layers, Lock, User, Mail } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useModalA11y } from "./hooks/useModalA11y";
@@ -11,6 +12,20 @@ import { useModalA11y } from "./hooks/useModalA11y";
 function AppContent() {
   const { user, profile, loading, updateProfile, changePassword, logout } = useAuth();
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+  const [adminPage, setAdminPage] = useState<"board-views" | null>(null);
+  const [adminProjectId, setAdminProjectId] = useState<string | null>(null);
+
+  const syncRouteFromLocation = useCallback(() => {
+    const path = window.location.pathname.replace(/\/$/, "") || "/";
+    if (path === "/admin/board-views") {
+      setAdminPage("board-views");
+      const params = new URLSearchParams(window.location.search);
+      setAdminProjectId(params.get("project"));
+      return;
+    }
+    setAdminPage(null);
+    setAdminProjectId(null);
+  }, []);
 
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [profileNameInput, setProfileNameInput] = useState("");
@@ -78,6 +93,13 @@ function AppContent() {
 
   // Deep linking: automatically open rooms from query parameters
   useEffect(() => {
+    syncRouteFromLocation();
+    const onPopState = () => syncRouteFromLocation();
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [syncRouteFromLocation]);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const roomFromUrl = params.get("room");
     if (roomFromUrl && user && profile) {
@@ -95,8 +117,18 @@ function AppContent() {
 
   const handleBackToDashboard = () => {
     setSelectedRoomId(null);
+    setAdminPage(null);
+    setAdminProjectId(null);
     const cleanUrl = window.location.origin;
     window.history.pushState({ path: cleanUrl }, "", cleanUrl);
+  };
+
+  const handleOpenAdminPage = (path: "/admin/board-views", projectId?: string) => {
+    setSelectedRoomId(null);
+    setAdminPage("board-views");
+    setAdminProjectId(projectId ?? null);
+    const url = projectId ? `${path}?project=${projectId}` : path;
+    window.history.pushState({ path: url }, "", url);
   };
 
   // 1. Loading core state
@@ -170,14 +202,17 @@ function AppContent() {
 
       {/* Primary viewport switch container */}
       <main className="flex min-h-0 flex-1 flex-col">
-        {selectedRoomId ? (
+        {adminPage === "board-views" && profile?.role === "admin" ? (
+          <AdminBoardViews onBack={handleBackToDashboard} initialProjectId={adminProjectId} />
+        ) : selectedRoomId ? (
           <WarRoomDetail 
             roomId={selectedRoomId} 
             onBack={handleBackToDashboard} 
           />
         ) : (
           <Dashboard 
-            onSelectRoom={handleSelectRoom} 
+            onSelectRoom={handleSelectRoom}
+            onOpenAdminPage={profile?.role === "admin" ? handleOpenAdminPage : undefined}
           />
         )}
       </main>

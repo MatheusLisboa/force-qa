@@ -5,6 +5,8 @@ import {
   BugComment,
   ActivityLog,
   UserProfile,
+  BoardView,
+  Project,
 } from "../types";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
@@ -107,6 +109,32 @@ export function toBugComment(row: Record<string, unknown>): BugComment {
     avatarUrl: row.avatar_url as string,
     text: row.text as string,
     createdAt: row.created_at as string,
+  };
+}
+
+export function toBoardView(row: Record<string, unknown>): BoardView {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    slug: row.slug as string,
+    isActive: row.is_active as boolean,
+    orderIndex: (row.order_index as number) ?? 0,
+    filters: (row.filters as BoardView["filters"]) || {},
+    projectId: (row.project_id as string) || undefined,
+    createdAt: row.created_at as string,
+  };
+}
+
+export function toProject(row: Record<string, unknown>): Project {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    slug: row.slug as string,
+    squad: row.squad as string,
+    description: (row.description as string) || "",
+    warRoomId: row.war_room_id as string,
+    createdAt: row.created_at as string,
+    createdBy: row.created_by as string,
   };
 }
 
@@ -322,6 +350,81 @@ export function subscribeActivityLogs(
     callback((data || []).map(toActivityLog));
   };
   return subscribeTable("activity_logs", fetchRows, `logs-${bugId}`);
+}
+
+export function subscribeBoardViews(
+  projectId: string,
+  callback: (views: BoardView[]) => void
+): Unsubscribe {
+  const fetchRows = async () => {
+    const { data, error } = await supabase
+      .from("board_views")
+      .select("*")
+      .eq("project_id", projectId)
+      .eq("is_active", true)
+      .order("order_index", { ascending: true });
+    if (error) {
+      console.error("subscribeBoardViews:", error);
+      return;
+    }
+    callback((data || []).map(toBoardView));
+  };
+  return subscribeTable("board_views", fetchRows, `board-views-${projectId}`);
+}
+
+export function subscribeAllBoardViews(
+  projectId: string | null,
+  callback: (views: BoardView[]) => void
+): Unsubscribe {
+  const fetchRows = async () => {
+    let query = supabase.from("board_views").select("*").order("order_index", { ascending: true });
+    if (projectId) {
+      query = query.eq("project_id", projectId);
+    }
+    const { data, error } = await query;
+    if (error) {
+      console.error("subscribeAllBoardViews:", error);
+      return;
+    }
+    callback((data || []).map(toBoardView));
+  };
+  const channelKey = projectId ? `board-views-admin-${projectId}` : "board-views-admin-all";
+  return subscribeTable("board_views", fetchRows, channelKey);
+}
+
+export function subscribeProjects(callback: (projects: Project[]) => void): Unsubscribe {
+  const fetchRows = async () => {
+    const { data, error } = await supabase
+      .from("projects")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) {
+      console.error("subscribeProjects:", error);
+      return;
+    }
+    callback((data || []).map(toProject));
+  };
+  return subscribeTable("projects", fetchRows, "projects-live");
+}
+
+export function subscribeProjectByWarRoomId(
+  warRoomId: string,
+  callback: (project: Project | null) => void
+): Unsubscribe {
+  const fetchRows = async () => {
+    const { data, error } = await supabase
+      .from("projects")
+      .select("*")
+      .eq("war_room_id", warRoomId)
+      .maybeSingle();
+    if (error) {
+      console.error("subscribeProjectByWarRoomId:", error);
+      callback(null);
+      return;
+    }
+    callback(data ? toProject(data) : null);
+  };
+  return subscribeTable("projects", fetchRows, `project-room-${warRoomId}`);
 }
 
 // ---------------------------------------------------------------------------

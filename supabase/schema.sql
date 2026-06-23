@@ -176,3 +176,85 @@ CREATE POLICY "comments_delete" ON public.bug_comments FOR DELETE TO authenticat
 CREATE POLICY "logs_select" ON public.activity_logs FOR SELECT TO authenticated USING (true);
 CREATE POLICY "logs_insert" ON public.activity_logs FOR INSERT TO authenticated
   WITH CHECK (user_id = auth.uid());
+
+-- board_views (optional Kanban filters per project — see migration_board_views.sql, migration_projects.sql)
+CREATE TABLE IF NOT EXISTS public.board_views (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL CHECK (char_length(name) > 0 AND char_length(name) <= 120),
+  slug TEXT NOT NULL UNIQUE CHECK (char_length(slug) > 0 AND char_length(slug) <= 120),
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  order_index INTEGER NOT NULL DEFAULT 0,
+  filters JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_board_views_active_order
+  ON public.board_views (is_active, order_index);
+
+ALTER PUBLICATION supabase_realtime ADD TABLE public.board_views;
+
+ALTER TABLE public.board_views ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "board_views_select" ON public.board_views
+  FOR SELECT TO authenticated
+  USING (is_active = true OR public.is_admin());
+
+CREATE POLICY "board_views_insert" ON public.board_views
+  FOR INSERT TO authenticated
+  WITH CHECK (public.is_admin());
+
+CREATE POLICY "board_views_update" ON public.board_views
+  FOR UPDATE TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
+CREATE POLICY "board_views_delete" ON public.board_views
+  FOR DELETE TO authenticated
+  USING (public.is_admin());
+
+-- projects (substituem boards permanentes como entidade de topo)
+CREATE TABLE IF NOT EXISTS public.projects (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL CHECK (char_length(name) > 0 AND char_length(name) <= 200),
+  slug TEXT NOT NULL UNIQUE CHECK (char_length(slug) > 0 AND char_length(slug) <= 120),
+  squad TEXT NOT NULL CHECK (char_length(squad) > 0 AND char_length(squad) <= 200),
+  description TEXT NOT NULL DEFAULT '',
+  war_room_id TEXT NOT NULL UNIQUE REFERENCES public.war_rooms(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_by UUID NOT NULL REFERENCES auth.users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_projects_war_room ON public.projects (war_room_id);
+
+ALTER PUBLICATION supabase_realtime ADD TABLE public.projects;
+
+ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "projects_select" ON public.projects
+  FOR SELECT TO authenticated USING (true);
+
+CREATE POLICY "projects_insert" ON public.projects
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    (
+      public.is_admin()
+      OR public.current_user_role() IN ('qa', 'scrum_master')
+    )
+    AND created_by = auth.uid()
+  );
+
+CREATE POLICY "projects_update" ON public.projects
+  FOR UPDATE TO authenticated
+  USING (created_by = auth.uid() OR public.is_admin())
+  WITH CHECK (created_by = auth.uid() OR public.is_admin());
+
+CREATE POLICY "projects_delete" ON public.projects
+  FOR DELETE TO authenticated
+  USING (created_by = auth.uid() OR public.is_admin());
+
+ALTER TABLE public.board_views
+  ADD COLUMN IF NOT EXISTS project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE;
+
+CREATE UNIQUE INDEX IF NOT EXISTS board_views_project_slug_unique
+  ON public.board_views (project_id, slug)
+  WHERE project_id IS NOT NULL;
