@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS public.bugs (
   build_version TEXT,
   tags TEXT[] NOT NULL DEFAULT '{}',
   priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('immediate', 'high', 'medium', 'low')),
-  type TEXT NOT NULL CHECK (type IN ('bug', 'improvement', 'ui_adjustment', 'performance', 'security')),
+  type TEXT NOT NULL CHECK (type IN ('bug', 'requirement', 'ihc', 'product', 'improvement', 'ui_adjustment', 'performance', 'security')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   created_by UUID NOT NULL REFERENCES auth.users(id),

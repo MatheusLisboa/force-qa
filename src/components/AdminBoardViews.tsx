@@ -7,7 +7,8 @@ import {
   deleteBoardView,
   reorderBoardViews,
 } from "../lib/services";
-import { BoardView, BugStatus, BugType, Project, SeverityLevel } from "../types";
+import { BoardView, BugStatus, Project, SeverityLevel } from "../types";
+import { BUG_TYPE_OPTIONS } from "../lib/bugLabels";
 import { slugifyBoardViewName } from "../lib/boardViews";
 
 interface AdminBoardViewsProps {
@@ -15,14 +16,10 @@ interface AdminBoardViewsProps {
   initialProjectId?: string | null;
 }
 
-const BUG_TYPES: { value: BugType | "requirement"; label: string }[] = [
-  { value: "bug", label: "Bug" },
-  { value: "requirement", label: "Requisito" },
-  { value: "improvement", label: "Melhoria" },
-  { value: "ui_adjustment", label: "UI/Visual" },
-  { value: "performance", label: "Performance" },
-  { value: "security", label: "Segurança" },
-];
+const BUG_TYPES = BUG_TYPE_OPTIONS.map((opt) => ({
+  value: opt.value,
+  label: opt.label,
+}));
 
 const BUG_STATUSES: { value: BugStatus; label: string }[] = [
   { value: "new", label: "Novo" },

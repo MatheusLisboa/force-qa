@@ -138,7 +138,7 @@ Return the results matching the required JSON schema. Keep tags to a maximum of 
             },
             type: {
               type: Type.STRING,
-              description: "Must be one of: 'bug', 'improvement', 'ui_adjustment', 'performance', 'security'"
+              description: "Must be one of: 'bug', 'requirement', 'ihc', 'product', 'improvement', 'ui_adjustment', 'performance', 'security'"
             },
             tags: {
               type: Type.ARRAY,

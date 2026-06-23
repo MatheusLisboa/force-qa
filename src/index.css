@@ -448,6 +448,21 @@
     border-color: rgba(249, 115, 22, 0.2);
     color: #fb923c;
   }
+  .fq-badge--type-requirement {
+    background-color: rgba(59, 130, 246, 0.1);
+    border-color: rgba(59, 130, 246, 0.2);
+    color: #60a5fa;
+  }
+  .fq-badge--type-ihc {
+    background-color: rgba(168, 85, 247, 0.1);
+    border-color: rgba(168, 85, 247, 0.2);
+    color: #c084fc;
+  }
+  .fq-badge--type-product {
+    background-color: rgba(16, 185, 129, 0.1);
+    border-color: rgba(16, 185, 129, 0.2);
+    color: #34d399;
+  }
 
   .fq-badge--severity-blocker {
     background-color: rgba(239, 68, 68, 0.14);

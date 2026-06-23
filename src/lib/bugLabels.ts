@@ -10,11 +10,27 @@ export type BugTypeConfig = BadgeConfig;
 
 export const BUG_TYPE_CONFIG: Record<BugType, BadgeConfig> = {
   bug: { label: "Bug", className: "fq-badge--type-bug" },
+  requirement: { label: "Requisito", className: "fq-badge--type-requirement" },
+  ihc: { label: "IHC", className: "fq-badge--type-ihc" },
+  product: { label: "Produto", className: "fq-badge--type-product" },
   improvement: { label: "Melhoria", className: "fq-badge--type-improvement" },
   ui_adjustment: { label: "UI/Visual", className: "fq-badge--type-ui" },
   performance: { label: "Performance", className: "fq-badge--type-performance" },
   security: { label: "Segurança", className: "fq-badge--type-security" },
 };
+
+export const BUG_TYPE_OPTIONS: { value: BugType; label: string; emoji: string }[] = [
+  { value: "bug", label: "Bug", emoji: "🐞" },
+  { value: "requirement", label: "Requisito", emoji: "📋" },
+  { value: "ihc", label: "IHC", emoji: "🎨" },
+  { value: "product", label: "Produto", emoji: "📦" },
+  { value: "improvement", label: "Melhoria", emoji: "⚡" },
+  { value: "ui_adjustment", label: "Ajuste Visual", emoji: "🖼️" },
+  { value: "performance", label: "Performance", emoji: "🚀" },
+  { value: "security", label: "Segurança", emoji: "🔒" },
+];
+
+export const ALL_BUG_TYPES = BUG_TYPE_OPTIONS.map((o) => o.value);
 
 export const SEVERITY_CONFIG: Record<SeverityLevel, BadgeConfig> = {
   blocker: { label: "BLOCKER", className: "fq-badge--severity-blocker" },
@@ -66,11 +82,11 @@ export function getRoomTypeConfig(type: RoomType): BadgeConfig {
 }
 
 export function getBugTypeConfig(type: BugType): BadgeConfig {
-  return BUG_TYPE_CONFIG[type];
+  return BUG_TYPE_CONFIG[type] ?? BUG_TYPE_CONFIG.bug;
 }
 
 export function getBugTypeLabel(type: BugType): string {
-  return BUG_TYPE_CONFIG[type].label;
+  return getBugTypeConfig(type).label;
 }
 
 export function getSeverityConfig(severity: SeverityLevel): BadgeConfig {

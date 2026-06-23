@@ -14,7 +14,7 @@ import {
 import { aggregateBoardMetrics } from "../lib/aiReport/aggregateMetrics";
 import { BugTypeTag } from "./BugTypeTag";
 import { evidenceLabel } from "../lib/evidence";
-import { getBugTypeLabel, getStatusLabel } from "../lib/bugLabels";
+import { getBugTypeLabel, getStatusLabel, BUG_TYPE_OPTIONS, ALL_BUG_TYPES } from "../lib/bugLabels";
 import {
   resolveKanbanColumns,
   groupBugsByColumn,
@@ -68,6 +68,11 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
   const bugCreateDialogRef = useRef<HTMLDivElement>(null);
   const closeBugCreateModal = useCallback(() => setIsBugModalOpen(false), []);
   useModalA11y(isBugModalOpen, closeBugCreateModal, bugCreateDialogRef);
+
+  const openCreateCardModal = useCallback((presetType?: BugType) => {
+    if (presetType) setBugType(presetType);
+    setIsBugModalOpen(true);
+  }, []);
   const [selectedBug, setSelectedBug] = useState<Bug | null>(null);
 
   // Filters state
@@ -581,13 +586,36 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
           </div>
 
           {profile?.role !== "viewer" && (
-            <button
-              onClick={() => setIsBugModalOpen(true)}
-              className="fq-btn-primary text-xs"
-            >
-              <Plus className="w-4 h-4" />
-              Relatar Bug Instante
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => openCreateCardModal()}
+                className="fq-btn-primary text-xs"
+              >
+                <Plus className="w-4 h-4" />
+                NOVO CARD
+              </button>
+              <button
+                type="button"
+                onClick={() => openCreateCardModal("requirement")}
+                className="fq-btn-secondary text-xs font-mono"
+              >
+                📋 Requisito
+              </button>
+              <button
+                type="button"
+                onClick={() => openCreateCardModal("ihc")}
+                className="fq-btn-secondary text-xs font-mono"
+              >
+                🎨 IHC
+              </button>
+              <button
+                type="button"
+                onClick={() => openCreateCardModal("product")}
+                className="fq-btn-secondary text-xs font-mono"
+              >
+                📦 Produto
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -767,11 +795,11 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
               className="bg-transparent text-neutral-200 focus:outline-none border-none text-xs font-medium cursor-pointer"
             >
               <option value="all">TODOS</option>
-              <option value="bug">BUG</option>
-              <option value="improvement">MELHORIA</option>
-              <option value="ui_adjustment">UI/VISUAL</option>
-              <option value="performance">PERF</option>
-              <option value="security">SEC</option>
+              {BUG_TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label.toUpperCase()}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -963,7 +991,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
               <div className="fq-analytics-metric">
                 <h4 className="text-xs font-mono font-bold text-neutral-500 uppercase tracking-wider">Erros Por Divisão</h4>
                 <div className="space-y-1.5 text-xs">
-                  {["bug", "improvement", "ui_adjustment", "performance", "security"].map(type => {
+                  {ALL_BUG_TYPES.map((type) => {
                     const count = filteredBugs.filter(b => b.type === type).length;
                     return (
                       <div key={type} className="flex justify-between text-[11px] font-mono py-1 border-b border-white/[0.04]">
@@ -1078,7 +1106,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
         />
       )}
 
-      {/* RAPID CADASTRO BUG MODAL CREATE */}
+      {/* Modal: Novo Card */}
       <AnimatePresence>
         {isBugModalOpen && (
           <div className="fq-modal-overlay">
@@ -1096,7 +1124,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
               {/* Header */}
               <div className="fq-modal-header !mb-0 shrink-0">
                 <h3 id="bug-create-modal-title" className="fq-modal-title">
-                  <Sparkles className="w-5 h-5 text-neutral-400" /> Relato Rápido e Inteligente de Incidente
+                  <Sparkles className="w-5 h-5 text-neutral-400" /> Novo Card
                 </h3>
                 <button 
                   onClick={closeBugCreateModal}
@@ -1120,7 +1148,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                   <div className="space-y-4">
                     <div>
                       <label className="fq-label fq-label--xs">
-                        Título do Incidente *
+                        Título do Card *
                       </label>
                       <input
                         required
@@ -1221,11 +1249,11 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                           onChange={(e) => setBugType(e.target.value as BugType)}
                           className="fq-select"
                         >
-                          <option value="bug">🐞 BUG</option>
-                          <option value="improvement">⚡ MELHORIA</option>
-                          <option value="ui_adjustment">🎨 AJUSTE VISUAL</option>
-                          <option value="performance">🚀 PERFORMANCE</option>
-                          <option value="security">🔒 SEGURANÇA</option>
+                          {BUG_TYPE_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.emoji} {opt.label.toUpperCase()}
+                            </option>
+                          ))}
                         </select>
                       </div>
 
@@ -1360,7 +1388,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                   disabled={formSubmitting || !bugTitle.trim()}
                   className="fq-btn-primary"
                 >
-                  {formSubmitting ? "Registrando erro..." : "Reportar Incidente"}
+                  {formSubmitting ? "Criando card..." : "Criar Card"}
                 </button>
               </div>
             </motion.div>

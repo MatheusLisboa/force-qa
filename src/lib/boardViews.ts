@@ -1,7 +1,8 @@
 import { Bug, BoardView, BoardViewFilters, SeverityLevel } from "../types";
 
 const TYPE_ALIASES: Record<string, string> = {
-  requirement: "improvement",
+  requisito: "requirement",
+  produto: "product",
 };
 
 function normalizeType(type: string): string {

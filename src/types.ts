@@ -20,7 +20,15 @@ export type BugStatus = "new" | "under_analysis" | "in_progress" | "ready_for_qa
 
 export type BugPriority = "immediate" | "high" | "medium" | "low";
 
-export type BugType = "bug" | "improvement" | "ui_adjustment" | "performance" | "security";
+export type BugType =
+  | "bug"
+  | "requirement"
+  | "ihc"
+  | "product"
+  | "improvement"
+  | "ui_adjustment"
+  | "performance"
+  | "security";
 
 export type RoomType = "war_room" | "board";
 
