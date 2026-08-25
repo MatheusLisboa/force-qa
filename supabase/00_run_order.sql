@@ -1,0 +1,13 @@
+-- ForceQA — ordem de execução no SQL Editor do Supabase
+--
+-- 1. schema.sql                         (base: tabelas, RLS inicial)
+-- 2. migration_auth_profile_trigger.sql (perfil em public.users no signup)
+-- 3. migration_projects.sql
+-- 4. migration_boards.sql
+-- 5. migration_board_views.sql
+-- 6. migration_kanban_columns.sql
+-- 7. migration_bug_types.sql
+-- 8. migration_access_and_security.sql  (membership, evidências Storage, role lock)
+--
+-- Em ambiente já existente, rode apenas as migrations ainda não aplicadas.
+-- A migration_access_and_security.sql é obrigatória para convites, join e RLS de viewer.

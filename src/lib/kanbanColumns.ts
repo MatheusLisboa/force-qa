@@ -1,12 +1,34 @@
 import { Bug, BugStatus, KanbanColumn } from "../types";
 
 export const DEFAULT_KANBAN_COLUMNS: KanbanColumn[] = [
-  { id: "new", label: "NOVO INCIDENTE", color: "bg-blue-500", status: "new", builtin: true },
-  { id: "under_analysis", label: "EM ANÁLISE", color: "bg-purple-500", status: "under_analysis", builtin: true },
-  { id: "in_progress", label: "EM CORREÇÃO", color: "bg-orange-500", status: "in_progress", builtin: true },
-  { id: "ready_for_qa", label: "PRONTO PARA QA", color: "bg-yellow-500", status: "ready_for_qa", builtin: true },
-  { id: "validated", label: "VALIDADO", color: "bg-green-500", status: "validated", builtin: true },
+  { id: "new", label: "Novo", color: "bg-blue-500", status: "new", builtin: true },
+  { id: "under_analysis", label: "Em análise", color: "bg-purple-500", status: "under_analysis", builtin: true },
+  { id: "in_progress", label: "Em correção", color: "bg-orange-500", status: "in_progress", builtin: true },
+  { id: "ready_for_qa", label: "Pronto para QA", color: "bg-yellow-500", status: "ready_for_qa", builtin: true },
+  { id: "reopened", label: "Reaberto", color: "bg-red-500", status: "reopened", builtin: true },
+  { id: "validated", label: "Validado", color: "bg-green-500", status: "validated", builtin: true },
 ];
+
+const BUILTIN_LABELS: Record<string, string> = {
+  new: "Novo",
+  under_analysis: "Em análise",
+  in_progress: "Em correção",
+  ready_for_qa: "Pronto para QA",
+  reopened: "Reaberto",
+  validated: "Validado",
+};
+
+export function displayColumnLabel(column: {
+  id: string;
+  label: string;
+  status: BugStatus;
+  builtin?: boolean;
+}): string {
+  if (column.builtin && BUILTIN_LABELS[column.id]) return BUILTIN_LABELS[column.id];
+  if (BUILTIN_LABELS[column.id]) return BUILTIN_LABELS[column.id];
+  if (BUILTIN_LABELS[column.status]) return BUILTIN_LABELS[column.status];
+  return column.label;
+}
 
 const CUSTOM_COLUMN_COLORS = [
   "bg-cyan-500",
@@ -19,9 +41,23 @@ const CUSTOM_COLUMN_COLORS = [
   "bg-lime-500",
 ] as const;
 
+const REOPENED_COLUMN: KanbanColumn = {
+  id: "reopened",
+  label: "Reaberto",
+  color: "bg-red-500",
+  status: "reopened",
+  builtin: true,
+};
+
 export function resolveKanbanColumns(stored: KanbanColumn[] | undefined | null): KanbanColumn[] {
-  if (!stored || stored.length === 0) return [...DEFAULT_KANBAN_COLUMNS];
-  return stored;
+  const columns = !stored || stored.length === 0 ? [...DEFAULT_KANBAN_COLUMNS] : [...stored];
+  const hasReopened = columns.some((c) => c.id === "reopened" || c.status === "reopened");
+  if (!hasReopened) {
+    const validatedIdx = columns.findIndex((c) => c.id === "validated" || c.status === "validated");
+    if (validatedIdx >= 0) columns.splice(validatedIdx, 0, REOPENED_COLUMN);
+    else columns.push(REOPENED_COLUMN);
+  }
+  return columns;
 }
 
 export function resolveBugColumnId(bug: Bug, columns: KanbanColumn[]): string {
@@ -56,7 +92,7 @@ export function createCustomKanbanColumn(
   columns: KanbanColumn[],
   status: BugStatus = "new"
 ): KanbanColumn {
-  const trimmed = label.trim().toUpperCase();
+  const trimmed = label.trim();
   const usedColors = new Set(columns.map((c) => c.color));
   const color =
     CUSTOM_COLUMN_COLORS.find((c) => !usedColors.has(c)) ?? "bg-neutral-500";

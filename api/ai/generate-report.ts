@@ -1,7 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { httpErrorStatus, requireUser } from "../_lib/auth";
 
 // ---------------------------------------------------------------------------
-// AI Report — single file for Vercel ESM (no cross-module imports)
+// AI Report
 // ---------------------------------------------------------------------------
 
 interface AIProvider {
@@ -196,12 +197,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    await requireUser(req.headers.authorization);
     const result = await generateExecutiveReport(req.body?.metrics);
     return res.status(200).json(result);
   } catch (error: unknown) {
     const message =
       error instanceof Error ? error.message : "Falha ao gerar relatório executivo.";
     console.error("AI generate report error:", error);
-    return res.status(500).json({ error: message });
+    return res.status(httpErrorStatus(error)).json({ error: message });
   }
 }

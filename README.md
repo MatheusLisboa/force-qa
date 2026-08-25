@@ -1,12 +1,12 @@
-# ForceQA — War Room QA
+# ForceQA
 
-Plataforma de gestão colaborativa de bugs em sessões de QA intensivas ("Salas de Guerra").
+Plataforma de gestão colaborativa de bugs em sessões de QA e boards permanentes.
 
 ## Stack
 
 - **Frontend:** React 19 + TypeScript + Vite + Tailwind CSS
 - **Backend:** Supabase (Auth + PostgreSQL + Realtime)
-- **IA:** Google Gemini (server-side)
+- **IA:** Gemini (sugestão/duplicata) com fallback OpenRouter; relatório executivo via OpenRouter/Ollama
 
 ## Setup
 
@@ -19,7 +19,7 @@ npm install
 ### 2. Configurar Supabase
 
 1. Acesse o [Dashboard Supabase](https://supabase.com/dashboard/project/bdvpzgrgwgcvfgflelbn)
-2. Em **SQL Editor**, execute o conteúdo de [`supabase/schema.sql`](supabase/schema.sql)
+2. Em **SQL Editor**, siga a ordem em [`supabase/00_run_order.sql`](supabase/00_run_order.sql). Em um banco já existente, rode pelo menos [`supabase/migration_access_and_security.sql`](supabase/migration_access_and_security.sql)
 3. Em **Authentication → Providers**, habilite **Email** e desative **Confirm email** (para login imediato em dev)
 4. Em **Project Settings → API**, copie:
    - `anon` `public` key → `VITE_SUPABASE_ANON_KEY`
@@ -37,7 +37,8 @@ Edite `.env` com suas chaves:
 VITE_SUPABASE_URL=https://bdvpzgrgwgcvfgflelbn.supabase.co
 VITE_SUPABASE_ANON_KEY=sua_anon_key
 SUPABASE_SERVICE_ROLE_KEY=sua_service_role_key
-GEMINI_API_KEY=sua_gemini_key   # opcional
+GEMINI_API_KEY=sua_gemini_key       # opcional
+OPENROUTER_API_KEY=sua_openrouter   # sugestões, duplicata e relatório
 ```
 
 ### 4. Rodar localmente
@@ -64,6 +65,8 @@ O app é um **SPA estático** (Vite). Login e cadastro usam Supabase **direto no
 |------|-----------|
 | `VITE_SUPABASE_URL` | **Production** (e Preview se quiser) |
 | `VITE_SUPABASE_ANON_KEY` | **Production** |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Production** (join, convite, admin, APIs) |
+| `OPENROUTER_API_KEY` | **Production** (IA; `GEMINI_API_KEY` também serve para sugestão/duplicata) |
 
 **Importante:** o prefixo `VITE_` é obrigatório. `SUPABASE_URL` sem `VITE_` **não funciona** no frontend.
 
@@ -81,9 +84,7 @@ Adicione o domínio da Vercel:
 - Habilite **Email / Password**
 - Desative **Confirm email** (recomendado para login imediato)
 
-### O que não funciona só com static na Vercel
-
-- APIs de IA (`/api/ai/*`) e criar usuário pelo admin (`/api/admin/create-user`) — exigem servidor Node. Cadastro pelo formulário de login **funciona** sem isso.
+As rotas `/api/*` na Vercel são funções serverless. Defina `SUPABASE_SERVICE_ROLE_KEY` e `OPENROUTER_API_KEY` (ou `GEMINI_API_KEY`) no ambiente de produção.
 
 ## Scripts
 
@@ -93,3 +94,4 @@ Adicione o domínio da Vercel:
 | `npm run build` | Build completo (web + server local) |
 | `npm run build:vercel` | Build só do frontend (usado pelo `vercel.json`) |
 | `npm run lint` | Verificação TypeScript |
+| `npm test` | Testes unitários (Vitest) |

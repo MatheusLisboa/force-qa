@@ -5,15 +5,30 @@ import { Onboarding } from "./components/Onboarding";
 import { Dashboard } from "./components/Dashboard";
 import { WarRoomDetail } from "./components/WarRoomDetail";
 import { AdminBoardViews } from "./components/AdminBoardViews";
-import { Radio, ShieldAlert, LogOut, Terminal, Layers, Lock, User, Mail } from "lucide-react";
+import { LogOut, Lock, User, Bell } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useModalA11y } from "./hooks/useModalA11y";
+import { joinWarRoom, markAllNotificationsRead, markNotificationRead } from "./lib/services";
+import { subscribeNotifications } from "./lib/supabase";
+import { AppNotification } from "./types";
+import { ToastProvider } from "./context/ToastContext";
+import { adminBoardViewsPath, dashboardPath, pushPath, roomPath } from "./lib/routes";
+import { formatRoleLabel } from "./lib/format";
+import { SquadSelect } from "./components/SquadSelect";
 
 function AppContent() {
-  const { user, profile, loading, updateProfile, changePassword, logout } = useAuth();
+  const { user, profile, loading, passwordRecovery, updateProfile, changePassword, completePasswordRecovery, logout } = useAuth();
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [adminPage, setAdminPage] = useState<"board-views" | null>(null);
   const [adminProjectId, setAdminProjectId] = useState<string | null>(null);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [joinError, setJoinError] = useState("");
+  const [recoveryPassword, setRecoveryPassword] = useState("");
+  const [recoveryConfirm, setRecoveryConfirm] = useState("");
+  const [recoveryError, setRecoveryError] = useState("");
+  const [recoverySaving, setRecoverySaving] = useState(false);
+  const joinAttemptRef = useRef<string | null>(null);
 
   const syncRouteFromLocation = useCallback(() => {
     const path = window.location.pathname.replace(/\/$/, "") || "/";
@@ -91,7 +106,6 @@ function AppContent() {
     }
   };
 
-  // Deep linking: automatically open rooms from query parameters
   useEffect(() => {
     syncRouteFromLocation();
     const onPopState = () => syncRouteFromLocation();
@@ -100,35 +114,58 @@ function AppContent() {
   }, [syncRouteFromLocation]);
 
   useEffect(() => {
+    if (!user?.id) {
+      setNotifications([]);
+      return;
+    }
+    return subscribeNotifications(user.id, setNotifications);
+  }, [user?.id]);
+
+  const openRoom = useCallback(async (roomId: string) => {
+    setJoinError("");
+    try {
+      const joined = await joinWarRoom(roomId);
+      setSelectedRoomId(joined);
+      pushPath(roomPath(joined));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Não foi possível abrir a sala.";
+      setJoinError(message);
+    }
+  }, []);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const roomFromUrl = params.get("room");
-    if (roomFromUrl && user && profile) {
-      setSelectedRoomId(roomFromUrl);
+    if (
+      roomFromUrl &&
+      user &&
+      profile &&
+      selectedRoomId !== roomFromUrl &&
+      joinAttemptRef.current !== roomFromUrl
+    ) {
+      joinAttemptRef.current = roomFromUrl;
+      void openRoom(roomFromUrl);
     }
-  }, [user, profile]);
+  }, [user, profile, openRoom, selectedRoomId]);
 
   const handleSelectRoom = (roomId: string) => {
-    setSelectedRoomId(roomId);
-    
-    // Injects room into url dynamically so refreshing doesn't lose current room
-    const newUrl = `${window.location.origin}/?room=${roomId}`;
-    window.history.pushState({ path: newUrl }, "", newUrl);
+    void openRoom(roomId);
   };
 
   const handleBackToDashboard = () => {
     setSelectedRoomId(null);
     setAdminPage(null);
     setAdminProjectId(null);
-    const cleanUrl = window.location.origin;
-    window.history.pushState({ path: cleanUrl }, "", cleanUrl);
+    joinAttemptRef.current = null;
+    setJoinError("");
+    pushPath(dashboardPath());
   };
 
   const handleOpenAdminPage = (path: "/admin/board-views", projectId?: string) => {
     setSelectedRoomId(null);
     setAdminPage("board-views");
     setAdminProjectId(projectId ?? null);
-    const url = projectId ? `${path}?project=${projectId}` : path;
-    window.history.pushState({ path: url }, "", url);
+    pushPath(adminBoardViewsPath(projectId));
   };
 
   // 1. Loading core state
@@ -136,20 +173,74 @@ function AppContent() {
     return (
       <div className="fq-loading">
         <div className="fq-spinner mb-4" />
-        <p className="font-mono text-sm tracking-wide text-neutral-500">
-          CONECTANDO AO SISTEMA DE OPERAÇÕES FORCE_QA...
+        <p className="text-sm tracking-wide text-neutral-500">
+          Carregando...
         </p>
       </div>
     );
   }
 
-  // 2. Guest landing flow
+  // 2. Password recovery (magic link)
+  if (passwordRecovery) {
+    return (
+      <div className="fq-shell flex min-h-screen items-center justify-center px-4">
+        <form
+          className="fq-auth-card max-w-md w-full space-y-4"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setRecoveryError("");
+            if (recoveryPassword !== recoveryConfirm) {
+              setRecoveryError("As senhas não coincidem.");
+              return;
+            }
+            setRecoverySaving(true);
+            try {
+              await completePasswordRecovery(recoveryPassword);
+              setRecoveryPassword("");
+              setRecoveryConfirm("");
+            } catch (err: unknown) {
+              setRecoveryError(err instanceof Error ? err.message : "Não foi possível alterar a senha.");
+            } finally {
+              setRecoverySaving(false);
+            }
+          }}
+        >
+          <h1 className="font-display text-2xl font-bold text-white">Definir nova senha</h1>
+          <p className="text-sm text-neutral-500">Digite a nova senha para concluir a recuperação de acesso.</p>
+          {recoveryError && <div className="fq-alert-error text-xs">{recoveryError}</div>}
+          <input
+            type="password"
+            required
+            minLength={6}
+            className="fq-input"
+            placeholder="Nova senha (mín. 6 caracteres)"
+            value={recoveryPassword}
+            onChange={(e) => setRecoveryPassword(e.target.value)}
+          />
+          <input
+            type="password"
+            required
+            minLength={6}
+            className="fq-input"
+            placeholder="Confirmar nova senha"
+            value={recoveryConfirm}
+            onChange={(e) => setRecoveryConfirm(e.target.value)}
+          />
+          <button type="submit" disabled={recoverySaving} className="fq-btn-primary w-full">
+            {recoverySaving ? "Salvando..." : "Salvar senha"}
+          </button>
+        </form>
+      </div>
+    );
+  }
+
+  // 3. Guest landing flow
   if (!user) {
     return <LoginScreen />;
   }
 
-  // 3. Authenticated but lacks squad profile onboarding flow
-  if (!profile) {
+  // 4. Authenticated but lacks squad profile onboarding flow
+  if (!profile || !profile.squad.trim()) {
     return <Onboarding />;
   }
 
@@ -161,17 +252,69 @@ function AppContent() {
           onClick={handleBackToDashboard}
           className="flex items-center gap-2.5 cursor-pointer group"
         >
-          <div className="flex h-7 w-7 items-center justify-center rounded-md border text-[11px] font-semibold text-neutral-300 transition group-hover:bg-white/[0.06]"
-            style={{ backgroundColor: "var(--color-fq-elevated)", borderColor: "var(--color-fq-border)" }}
-          >
-            FQ
-          </div>
+          <div className="fq-brand-mark">FQ</div>
           <span className="font-display text-[15px] font-semibold tracking-tight text-neutral-100 transition group-hover:text-white">
             ForceQA
           </span>
         </div>
 
         <div className="flex items-center gap-2 text-[13px]">
+          {joinError && (
+            <span className="hidden md:inline max-w-[220px] truncate text-[11px] text-red-400 font-mono" title={joinError}>
+              {joinError}
+            </span>
+          )}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setNotifOpen((open) => !open)}
+              className="fq-btn-ghost !min-h-0 !px-2 !py-2 relative"
+              title="Notificações"
+            >
+              <Bell className="w-4 h-4" />
+              {notifications.some((n) => !n.readAt) && (
+                <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-red-500" />
+              )}
+            </button>
+            {notifOpen && (
+              <div
+                className="absolute right-0 top-full mt-2 w-80 max-h-80 overflow-y-auto rounded-lg border z-50 p-2 space-y-1"
+                style={{ backgroundColor: "var(--color-fq-elevated)", borderColor: "var(--color-fq-border)" }}
+              >
+                <div className="flex items-center justify-between px-2 py-1">
+                  <span className="text-[13px] font-medium text-neutral-500">Notificações</span>
+                  {notifications.some((n) => !n.readAt) && (
+                    <button
+                      type="button"
+                      className="text-[10px] text-neutral-400 hover:text-neutral-200"
+                      onClick={() => profile && markAllNotificationsRead(profile.id)}
+                    >
+                      Marcar todas lidas
+                    </button>
+                  )}
+                </div>
+                {notifications.length === 0 ? (
+                  <p className="text-xs text-neutral-500 px-2 py-4">Nenhuma notificação.</p>
+                ) : (
+                  notifications.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={`w-full text-left rounded-md px-2 py-2 text-xs hover:bg-white/[0.04] ${item.readAt ? "opacity-60" : ""}`}
+                      onClick={async () => {
+                        await markNotificationRead(item.id);
+                        setNotifOpen(false);
+                        if (item.warRoomId) void openRoom(item.warRoomId);
+                      }}
+                    >
+                      <span className="block font-medium text-neutral-100">{item.title}</span>
+                      {item.body && <span className="block text-neutral-500 mt-0.5">{item.body}</span>}
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
           <div 
             onClick={() => setIsProfileModalOpen(true)}
             className="flex cursor-pointer select-none items-center gap-2 rounded-md border px-2.5 py-1.5 transition hover:bg-white/[0.05]"
@@ -184,7 +327,7 @@ function AppContent() {
             <div className="hidden sm:flex flex-col text-left">
               <span className="text-[13px] font-medium leading-none text-neutral-100">{profile.name}</span>
               <span className="text-[11px] leading-none mt-0.5 text-neutral-500">
-                {profile.role === "admin" ? "ADMIN" : profile.role === "developer" ? "DEV" : profile.role.toUpperCase()} • {profile.squad}
+                {formatRoleLabel(profile.role)} · {profile.squad}
               </span>
             </div>
           </div>
@@ -192,10 +335,10 @@ function AppContent() {
           <button
             onClick={() => logout()}
             className="fq-btn-ghost !min-h-0 !px-2 !py-2"
-            title="Sair (Logout)"
+            title="Sair"
           >
             <LogOut className="w-4 h-4" />
-            <span className="hidden sm:inline">Logout</span>
+            <span className="hidden sm:inline">Sair</span>
           </button>
         </div>
       </header>
@@ -217,7 +360,6 @@ function AppContent() {
         )}
       </main>
 
-      {/* Interactive Profile & Password Update Modal Overlay */}
       <AnimatePresence>
         {isProfileModalOpen && (
           <div className="fq-modal-overlay animate-fade-in">
@@ -277,24 +419,18 @@ function AppContent() {
 
                 <div>
                   <label className="fq-label fq-label--xs">
-                    Sua Squad Operacional
+                    Sua squad
                   </label>
-                  <div className="relative">
-                    <input
-                      required
-                      type="text"
-                      className="fq-input pl-9 font-mono text-xs"
-                      placeholder="Ex: Squad Core, Squad Pix"
-                      value={profileSquadInput}
-                      onChange={(e) => setProfileSquadInput(e.target.value)}
-                    />
-                    <Layers className="absolute left-3 top-2.5 w-3.5 h-3.5 text-neutral-500" />
-                  </div>
+                  <SquadSelect
+                    required
+                    value={profileSquadInput}
+                    onChange={setProfileSquadInput}
+                  />
                 </div>
 
                 <div className="border-t border-white/[0.06] pt-4 mt-2">
-                  <h4 className="font-mono text-[10px] font-bold text-indigo-400 uppercase mb-3">
-                    🔐 ALTERAR SENHA DE ACESSO (OPCIONAL)
+                  <h4 className="text-[13px] font-medium text-neutral-300 mb-3">
+                    Alterar senha (opcional)
                   </h4>
                   
                   <div className="space-y-3.5">
@@ -336,23 +472,16 @@ function AppContent() {
                   <button
                     type="button"
                     onClick={closeProfileModal}
-                    className="fq-btn-ghost text-xs font-mono font-bold"
+                    className="fq-btn-ghost text-sm"
                   >
-                    FECHAR
+                    Fechar
                   </button>
                   <button
                     type="submit"
                     disabled={profileSaving}
-                    className="fq-btn-primary text-xs font-mono font-bold"
+                    className="fq-btn-primary text-sm"
                   >
-                    {profileSaving ? (
-                      <>
-                        <span className="fq-spinner !h-3 !w-3 !border-white !border-t-transparent" />
-                        SALVANDO...
-                      </>
-                    ) : (
-                      "SALVAR ALTERAÇÕES"
-                    )}
+                    {profileSaving ? "Salvando..." : "Salvar"}
                   </button>
                 </div>
               </form>
@@ -360,17 +489,6 @@ function AppContent() {
           </div>
         )}
       </AnimatePresence>
-
-      {/* Tactical logs footer status bar */}
-      <footer className="fq-footer flex flex-col sm:flex-row items-center justify-between gap-4 font-mono">
-        <div className="flex items-center gap-2">
-          <span className="fq-status-dot" />
-          <span>ESTADO: COMUNICAÇÃO SEGUIDA FIELMENTE NO SUPABASE</span>
-        </div>
-        <div>
-          DATABASE_REF: <span className="text-neutral-500">forceqa-supabase</span>
-        </div>
-      </footer>
     </div>
   );
 }
@@ -378,7 +496,9 @@ function AppContent() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <ToastProvider>
+        <AppContent />
+      </ToastProvider>
     </AuthProvider>
   );
 }

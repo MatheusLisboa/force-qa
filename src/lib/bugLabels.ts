@@ -33,11 +33,11 @@ export const BUG_TYPE_OPTIONS: { value: BugType; label: string; emoji: string }[
 export const ALL_BUG_TYPES = BUG_TYPE_OPTIONS.map((o) => o.value);
 
 export const SEVERITY_CONFIG: Record<SeverityLevel, BadgeConfig> = {
-  blocker: { label: "BLOCKER", className: "fq-badge--severity-blocker" },
-  critical: { label: "CRÍTICO", className: "fq-badge--severity-critical" },
-  high: { label: "ALTO", className: "fq-badge--severity-high" },
-  medium: { label: "MÉDIO", className: "fq-badge--severity-medium" },
-  low: { label: "BAIXO", className: "fq-badge--severity-low" },
+  blocker: { label: "Blocker", className: "fq-badge--severity-blocker" },
+  critical: { label: "Crítico", className: "fq-badge--severity-critical" },
+  high: { label: "Alto", className: "fq-badge--severity-high" },
+  medium: { label: "Médio", className: "fq-badge--severity-medium" },
+  low: { label: "Baixo", className: "fq-badge--severity-low" },
 };
 
 export const STATUS_CONFIG: Record<BugStatus, BadgeConfig> = {
@@ -50,27 +50,27 @@ export const STATUS_CONFIG: Record<BugStatus, BadgeConfig> = {
 };
 
 export const USER_ROLE_CONFIG: Record<string, BadgeConfig> = {
-  admin: { label: "ADMIN", className: "fq-badge--role-admin" },
+  admin: { label: "Admin", className: "fq-badge--role-admin" },
   dba: { label: "DBA", className: "fq-badge--role-dba" },
   qa: { label: "QA", className: "fq-badge--role-qa" },
-  developer: { label: "DEV", className: "fq-badge--role-dev" },
-  devops: { label: "DEVOPS", className: "fq-badge--role-devops" },
-  scrum_master: { label: "SCRUM", className: "fq-badge--role-scrum" },
-  viewer: { label: "OBS/VIEWER", className: "fq-badge--role-viewer" },
+  developer: { label: "Dev", className: "fq-badge--role-dev" },
+  devops: { label: "DevOps", className: "fq-badge--role-devops" },
+  scrum_master: { label: "Scrum", className: "fq-badge--role-scrum" },
+  viewer: { label: "Viewer", className: "fq-badge--role-viewer" },
 };
 
 export type WarRoomStatus = "active" | "paused" | "ended";
 export type RoomType = "board" | "war_room";
 
 export const ROOM_STATUS_CONFIG: Record<WarRoomStatus, BadgeConfig> = {
-  active: { label: "ATIVO", className: "fq-badge--room-active" },
-  paused: { label: "PAUSADO", className: "fq-badge--room-paused" },
-  ended: { label: "ENCERRADO", className: "fq-badge--room-ended" },
+  active: { label: "Ativo", className: "fq-badge--room-active" },
+  paused: { label: "Pausado", className: "fq-badge--room-paused" },
+  ended: { label: "Encerrado", className: "fq-badge--room-ended" },
 };
 
 export const ROOM_TYPE_CONFIG: Record<RoomType, BadgeConfig> = {
-  board: { label: "BOARD", className: "fq-badge--room-board" },
-  war_room: { label: "WAR ROOM", className: "fq-badge--room-war" },
+  board: { label: "Board", className: "fq-badge--room-board" },
+  war_room: { label: "War room", className: "fq-badge--room-war" },
 };
 
 export function getRoomStatusConfig(status: WarRoomStatus): BadgeConfig {

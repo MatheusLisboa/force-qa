@@ -7,7 +7,9 @@ import {
   UserProfile,
   BoardView,
   Project,
+  AppNotification,
 } from "../types";
+import { applyRealtimeChange, isIncompleteRow, RealtimeEvent } from "./realtime";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -47,6 +49,7 @@ export function toUserProfile(row: Record<string, unknown>): UserProfile {
     role: row.role as UserProfile["role"],
     squad: (row.squad as string) || "",
     avatarUrl: (row.avatar_url as string) || undefined,
+    isGuest: Boolean(row.is_guest),
     createdAt: row.created_at as string,
   };
 }
@@ -96,6 +99,21 @@ export function toBug(row: Record<string, unknown>): Bug {
     createdByName: row.created_by_name as string,
     resolvedAt: (row.resolved_at as string) || undefined,
     reopenCount: (row.reopen_count as number) || 0,
+    archived: Boolean(row.archived),
+  };
+}
+
+export function toNotification(row: Record<string, unknown>): AppNotification {
+  return {
+    id: row.id as string,
+    userId: row.user_id as string,
+    type: (row.type as string) || "assignment",
+    title: row.title as string,
+    body: (row.body as string) || "",
+    warRoomId: (row.war_room_id as string) || undefined,
+    bugId: (row.bug_id as string) || undefined,
+    readAt: (row.read_at as string) || null,
+    createdAt: row.created_at as string,
   };
 }
 
@@ -177,11 +195,84 @@ export function handleDbError(
   throw new Error(message);
 }
 
-// ---------------------------------------------------------------------------
-// Realtime subscriptions (fetch + listen)
-// ---------------------------------------------------------------------------
-
 type Unsubscribe = () => void;
+
+export const DASHBOARD_BUGS_LIMIT = 1500;
+
+function subscribeMappedList<T>(options: {
+  table: string;
+  channelName: string;
+  fetchRows: () => Promise<T[]>;
+  mapRow: (row: Record<string, unknown>) => T;
+  getId: (item: T) => string;
+  onChange: (items: T[]) => void;
+  matches?: (item: T) => boolean;
+  requiredKeys?: string[];
+  insertAt?: "start" | "end";
+}): Unsubscribe {
+  let items: T[] = [];
+  let refetchTimer: ReturnType<typeof setTimeout> | null = null;
+  const requiredKeys = options.requiredKeys ?? ["id"];
+
+  const publish = (next: T[]) => {
+    items = next;
+    options.onChange(items);
+  };
+
+  const load = async () => {
+    try {
+      publish(await options.fetchRows());
+    } catch (error) {
+      console.error(`${options.channelName}:`, error);
+    }
+  };
+
+  const scheduleRefetch = () => {
+    if (refetchTimer) return;
+    refetchTimer = setTimeout(() => {
+      refetchTimer = null;
+      void load();
+    }, 80);
+  };
+
+  void load();
+
+  const channel = supabase
+    .channel(options.channelName)
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: options.table },
+      (payload) => {
+        const event = payload.eventType as RealtimeEvent;
+        const raw = (event === "DELETE" ? payload.old : payload.new) as Record<string, unknown> | null;
+        if (!raw || isIncompleteRow(raw, event === "DELETE" ? ["id"] : requiredKeys)) {
+          scheduleRefetch();
+          return;
+        }
+        const mapped = options.mapRow(raw);
+        if (options.matches && event !== "DELETE" && !options.matches(mapped)) {
+          publish(items.filter((item) => options.getId(item) !== options.getId(mapped)));
+          return;
+        }
+        if (event === "INSERT" && options.insertAt === "end") {
+          const id = options.getId(mapped);
+          if (items.some((item) => options.getId(item) === id)) {
+            publish(items.map((item) => (options.getId(item) === id ? mapped : item)));
+          } else {
+            publish([...items, mapped]);
+          }
+          return;
+        }
+        publish(applyRealtimeChange(items, event, mapped, options.getId));
+      }
+    )
+    .subscribe();
+
+  return () => {
+    if (refetchTimer) clearTimeout(refetchTimer);
+    supabase.removeChannel(channel);
+  };
+}
 
 function subscribeTable(
   table: string,
@@ -208,44 +299,64 @@ function subscribeTable(
 export function subscribeWarRooms(
   callback: (rooms: WarRoom[]) => void
 ): Unsubscribe {
-  const fetchRows = async () => {
-    const { data, error } = await supabase
-      .from("war_rooms")
-      .select("*")
-      .order("created_at", { ascending: false });
-    if (error) {
-      console.error("subscribeWarRooms:", error);
-      return;
-    }
-    callback((data || []).map(toWarRoom));
-  };
-  return subscribeTable("war_rooms", fetchRows, "war_rooms-live");
+  return subscribeMappedList({
+    table: "war_rooms",
+    channelName: "war_rooms-live",
+    fetchRows: async () => {
+      const { data, error } = await supabase
+        .from("war_rooms")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data || []).map(toWarRoom);
+    },
+    mapRow: toWarRoom,
+    getId: (room) => room.id,
+    onChange: callback,
+    requiredKeys: ["id", "name"],
+  });
 }
 
 export function subscribeAllBugs(callback: (bugs: Bug[]) => void): Unsubscribe {
-  const fetchRows = async () => {
-    const { data, error } = await supabase.from("bugs").select("*");
-    if (error) {
-      console.error("subscribeAllBugs:", error);
-      return;
-    }
-    callback((data || []).map(toBug));
-  };
-  return subscribeTable("bugs", fetchRows, "bugs-all-live");
+  return subscribeMappedList({
+    table: "bugs",
+    channelName: "bugs-all-live",
+    fetchRows: async () => {
+      const { data, error } = await supabase
+        .from("bugs")
+        .select(
+          "id, war_room_id, title, criticism, status, owner_id, owner_name, environment, type, priority, created_at, updated_at, created_by, created_by_name, resolved_at, reopen_count, archived"
+        )
+        .eq("archived", false)
+        .order("created_at", { ascending: false })
+        .limit(DASHBOARD_BUGS_LIMIT);
+      if (error) throw error;
+      return (data || []).map(toBug);
+    },
+    mapRow: toBug,
+    getId: (bug) => bug.id,
+    onChange: callback,
+    matches: (bug) => !bug.archived,
+    requiredKeys: ["id", "war_room_id", "title"],
+  });
 }
 
 export function subscribeUsers(
   callback: (users: UserProfile[]) => void
 ): Unsubscribe {
-  const fetchRows = async () => {
-    const { data, error } = await supabase.from("users").select("*");
-    if (error) {
-      console.error("subscribeUsers:", error);
-      return;
-    }
-    callback((data || []).map(toUserProfile));
-  };
-  return subscribeTable("users", fetchRows, "users-live");
+  return subscribeMappedList({
+    table: "users",
+    channelName: "users-live",
+    fetchRows: async () => {
+      const { data, error } = await supabase.from("users").select("*");
+      if (error) throw error;
+      return (data || []).map(toUserProfile);
+    },
+    mapRow: toUserProfile,
+    getId: (user) => user.id,
+    onChange: callback,
+    requiredKeys: ["id", "email"],
+  });
 }
 
 export function subscribeWarRoom(
@@ -271,28 +382,25 @@ export function subscribeBugsByRoom(
   roomId: string,
   callback: (bugs: Bug[]) => void
 ): Unsubscribe {
-  const fetchRows = async () => {
-    const { data, error } = await supabase
-      .from("bugs")
-      .select("*")
-      .eq("war_room_id", roomId)
-      .order("created_at", { ascending: false });
-    if (error) {
-      console.error("subscribeBugsByRoom:", error);
-      return;
-    }
-    callback((data || []).map(toBug));
-  };
-  fetchRows();
-  const channel = supabase
-    .channel(`bugs-room-${roomId}`)
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "bugs" },
-      () => fetchRows()
-    )
-    .subscribe();
-  return () => supabase.removeChannel(channel);
+  return subscribeMappedList({
+    table: "bugs",
+    channelName: `bugs-room-${roomId}`,
+    fetchRows: async () => {
+      const { data, error } = await supabase
+        .from("bugs")
+        .select("*")
+        .eq("war_room_id", roomId)
+        .eq("archived", false)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data || []).map(toBug);
+    },
+    mapRow: toBug,
+    getId: (bug) => bug.id,
+    onChange: callback,
+    matches: (bug) => bug.warRoomId === roomId && !bug.archived,
+    requiredKeys: ["id", "war_room_id", "title", "status"],
+  });
 }
 
 export function subscribeBug(
@@ -318,38 +426,49 @@ export function subscribeBugComments(
   bugId: string,
   callback: (comments: BugComment[]) => void
 ): Unsubscribe {
-  const fetchRows = async () => {
-    const { data, error } = await supabase
-      .from("bug_comments")
-      .select("*")
-      .eq("bug_id", bugId)
-      .order("created_at", { ascending: true });
-    if (error) {
-      console.error("subscribeBugComments:", error);
-      return;
-    }
-    callback((data || []).map(toBugComment));
-  };
-  return subscribeTable("bug_comments", fetchRows, `comments-${bugId}`);
+  return subscribeMappedList({
+    table: "bug_comments",
+    channelName: `comments-${bugId}`,
+    fetchRows: async () => {
+      const { data, error } = await supabase
+        .from("bug_comments")
+        .select("*")
+        .eq("bug_id", bugId)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return (data || []).map(toBugComment);
+    },
+    mapRow: toBugComment,
+    getId: (comment) => comment.id,
+    onChange: callback,
+    matches: (comment) => comment.bugId === bugId,
+    requiredKeys: ["id", "bug_id", "text"],
+    insertAt: "end",
+  });
 }
 
 export function subscribeActivityLogs(
   bugId: string,
   callback: (logs: ActivityLog[]) => void
 ): Unsubscribe {
-  const fetchRows = async () => {
-    const { data, error } = await supabase
-      .from("activity_logs")
-      .select("*")
-      .eq("bug_id", bugId)
-      .order("created_at", { ascending: false });
-    if (error) {
-      console.error("subscribeActivityLogs:", error);
-      return;
-    }
-    callback((data || []).map(toActivityLog));
-  };
-  return subscribeTable("activity_logs", fetchRows, `logs-${bugId}`);
+  return subscribeMappedList({
+    table: "activity_logs",
+    channelName: `logs-${bugId}`,
+    fetchRows: async () => {
+      const { data, error } = await supabase
+        .from("activity_logs")
+        .select("*")
+        .eq("bug_id", bugId)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data || []).map(toActivityLog);
+    },
+    mapRow: toActivityLog,
+    getId: (log) => log.id,
+    onChange: callback,
+    matches: (log) => log.bugId === bugId,
+    requiredKeys: ["id", "bug_id"],
+  });
 }
 
 export function subscribeBoardViews(
@@ -427,6 +546,26 @@ export function subscribeProjectByWarRoomId(
   return subscribeTable("projects", fetchRows, `project-room-${warRoomId}`);
 }
 
+export function subscribeNotifications(
+  userId: string,
+  callback: (items: AppNotification[]) => void
+): Unsubscribe {
+  const fetchRows = async () => {
+    const { data, error } = await supabase
+      .from("notifications")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(30);
+    if (error) {
+      console.error("subscribeNotifications:", error);
+      return;
+    }
+    callback((data || []).map(toNotification));
+  };
+  return subscribeTable("notifications", fetchRows, `notifications-${userId}`);
+}
+
 // ---------------------------------------------------------------------------
 // War room lookup
 // ---------------------------------------------------------------------------
@@ -446,14 +585,10 @@ export async function findWarRoomByIdOrName(
   const { data: byName } = await supabase
     .from("war_rooms")
     .select("*")
-    .eq("name", trimmed)
+    .ilike("name", trimmed)
     .limit(1)
     .maybeSingle();
   if (byName) return toWarRoom(byName);
 
-  const { data: all } = await supabase.from("war_rooms").select("*");
-  const match = (all || []).find(
-    (r) => (r.name as string)?.trim().toLowerCase() === trimmed.toLowerCase()
-  );
-  return match ? toWarRoom(match) : null;
+  return null;
 }

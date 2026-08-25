@@ -2,12 +2,12 @@ import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { isSupabaseConfigured } from "../lib/supabase";
 import { getAuthErrorCode, getAuthErrorMessage, isUserAlreadyRegistered } from "../lib/authErrors";
-import { LogIn, Sparkles, AlertTriangle, ShieldCheck, Zap, Mail, UserPlus, HelpCircle } from "lucide-react";
+import { LogIn, AlertTriangle, Mail, UserPlus } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { SQUAD_PRESETS } from "../lib/squads";
+import { SquadSelect } from "./SquadSelect";
 
 export const LoginScreen: React.FC = () => {
-  const { loginWithEmail, signUpUser, loginAsGuest } = useAuth();
+  const { loginWithEmail, signUpUser, loginAsGuest, requestPasswordReset } = useAuth();
 
   // Tab state
   const [activeTab, setActiveTab] = useState<"email" | "guest">("email");
@@ -18,6 +18,8 @@ export const LoginScreen: React.FC = () => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailError, setEmailError] = useState("");
+  const [resetSent, setResetSent] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
 
   // Sign up fields state
   const [signUpName, setSignUpName] = useState("");
@@ -26,8 +28,7 @@ export const LoginScreen: React.FC = () => {
 
   // Guest form state
   const [guestName, setGuestName] = useState("");
-  const [guestSquad, setGuestSquad] = useState("Requisitos");
-  const [customSquad, setCustomSquad] = useState("");
+  const [guestSquad, setGuestSquad] = useState("");
   const [warRoomName, setWarRoomName] = useState("");
   const [guestLoading, setGuestLoading] = useState(false);
   const [guestError, setGuestError] = useState("");
@@ -64,7 +65,7 @@ export const LoginScreen: React.FC = () => {
 
       if (code === "invalid_credentials" || msg.includes("Invalid login credentials")) {
         setEmailError(
-          "E-mail ou senha incorretos. Se você já tentou cadastrar antes, exclua o usuário em Supabase → Authentication → Users e tente de novo."
+          "E-mail ou senha incorretos. Se não lembra a senha, use Recuperar senha."
         );
       } else if (code === "email_not_confirmed" || msg.includes("Email not confirmed")) {
         setEmailError(
@@ -72,7 +73,7 @@ export const LoginScreen: React.FC = () => {
         );
       } else if (isUserAlreadyRegistered(err)) {
         setEmailError(
-          "Este e-mail já está registrado. Use a opção de login abaixo (não cadastro). Se não lembra a senha, exclua o usuário no Supabase e cadastre de novo."
+          "Este e-mail já está cadastrado. Entre com sua senha ou recupere o acesso."
         );
       } else if (code === "weak_password" || msg.toLowerCase().includes("password")) {
         setEmailError("Senha fraca. Use no mínimo 6 caracteres.");
@@ -95,7 +96,7 @@ export const LoginScreen: React.FC = () => {
       return;
     }
 
-    const selectedSquad = guestSquad === "other" ? customSquad.trim() : guestSquad;
+    const selectedSquad = guestSquad.trim();
     if (!selectedSquad) {
       setGuestError("Por favor, informe a qual squad você pertence (ex: dev, dba).");
       return;
@@ -124,19 +125,12 @@ export const LoginScreen: React.FC = () => {
     <div className="fq-shell relative flex min-h-screen flex-col justify-between overflow-hidden">
       <div className="fq-header z-10 !relative">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-md border text-[11px] font-semibold text-neutral-300"
-            style={{ backgroundColor: "var(--color-fq-elevated)", borderColor: "var(--color-fq-border)" }}
-          >
-            FQ
-          </div>
+          <div className="fq-brand-mark">FQ</div>
           <span className="font-display text-lg font-semibold tracking-tight text-white">
             ForceQA
           </span>
         </div>
-        <div className="flex items-center gap-2 text-xs font-mono text-neutral-500">
-          <span className="h-2 w-2 rounded-full bg-green-500" />
-          SYSTEM_ONLINE // DEPLOY_HOT
-        </div>
+        <span className="text-xs text-neutral-500">QA colaborativo</span>
       </div>
 
       <main className="z-10 flex flex-1 items-center justify-center px-4 py-8">
@@ -157,33 +151,33 @@ export const LoginScreen: React.FC = () => {
               </div>
             )}
 
-            <div className="mb-4 inline-flex rounded-xl border p-3 text-neutral-300"
-              style={{ backgroundColor: "var(--color-fq-elevated)", borderColor: "var(--color-fq-border)" }}
+            <div className="mb-5 inline-flex rounded-2xl border p-3"
+              style={{ backgroundColor: "var(--color-fq-accent-muted)", borderColor: "rgba(45, 212, 191, 0.25)" }}
             >
-              <ShieldCheck className="h-8 w-8" />
+              <div className="fq-brand-mark !h-10 !w-10 !text-sm">FQ</div>
             </div>
             
-            <h1 className="font-display text-4xl font-extrabold tracking-tight text-white mb-1">
-              ForceQA <span className="text-red-500 font-light">StrikeBoard</span>
+            <h1 className="font-display text-3xl font-semibold tracking-tight text-white mb-2">
+              Entre para continuar
             </h1>
-            <p className="text-neutral-500 text-xs max-w-sm mx-auto mb-6 leading-relaxed">
-              Plataforma de guerra ágil e em tempo real para controle tático de bugs críticos.
+            <p className="text-neutral-400 text-sm max-w-sm mx-auto mb-6 leading-relaxed">
+              Acompanhe bugs, boards e sessões de QA em tempo real.
             </p>
           </div>
 
           {/* Premium Selector Tabs */}
-          <div className="fq-segmented mb-6 grid-cols-2 text-center font-mono text-[11px] font-bold">
+          <div className="fq-segmented mb-6 grid-cols-2 text-center text-sm font-medium">
             <button
               onClick={() => setActiveTab("email")}
               className={`fq-segment ${activeTab === "email" ? "fq-segment--active" : ""}`}
             >
-              E-MAIL
+              Entrar
             </button>
             <button
               onClick={() => setActiveTab("guest")}
               className={`fq-segment ${activeTab === "guest" ? "fq-segment--active" : ""}`}
             >
-              CONVIDADO
+              Convidado
             </button>
           </div>
 
@@ -212,7 +206,7 @@ export const LoginScreen: React.FC = () => {
                       className="space-y-4 overflow-hidden pt-1 pb-2"
                     >
                       <div>
-                        <label className="fq-label">NOME COMPLETO</label>
+                        <label className="fq-label">Nome completo</label>
                         <input
                           type="text"
                           required={isSignUp}
@@ -225,29 +219,26 @@ export const LoginScreen: React.FC = () => {
 
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="fq-label">TIME / FUNÇÃO</label>
+                          <label className="fq-label">Função</label>
                           <select
-                            className="fq-select font-mono text-sm"
+                            className="fq-select"
                             value={signUpRole}
                             onChange={(e) => setSignUpRole(e.target.value as any)}
                           >
                             <option value="qa">QA</option>
-                            <option value="developer">DEV</option>
+                            <option value="developer">Dev</option>
                             <option value="dba">DBA</option>
-                            <option value="devops">DEVOPS</option>
-                            <option value="scrum_master">SCRUM MASTER</option>
+                            <option value="devops">DevOps</option>
+                            <option value="scrum_master">Scrum Master</option>
                           </select>
                         </div>
 
                         <div>
-                          <label className="fq-label">SQUAD DE ATUAÇÃO</label>
-                          <input
-                            type="text"
+                          <label className="fq-label">Squad</label>
+                          <SquadSelect
                             required={isSignUp}
-                            className="fq-input font-mono"
-                            placeholder="Ex: Squad Pix"
                             value={signUpSquad}
-                            onChange={(e) => setSignUpSquad(e.target.value)}
+                            onChange={setSignUpSquad}
                           />
                         </div>
                       </div>
@@ -255,7 +246,7 @@ export const LoginScreen: React.FC = () => {
                   )}
 
                   <div>
-                    <label className="fq-label">E-MAIL CORPORATIVO / PESSOAL</label>
+                    <label className="fq-label">E-mail</label>
                     <div className="relative">
                       <input
                         type="email"
@@ -270,7 +261,7 @@ export const LoginScreen: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="fq-label">SENHA DE ACESSO</label>
+                    <label className="fq-label">Senha</label>
                     <input
                       type="password"
                       required
@@ -281,22 +272,53 @@ export const LoginScreen: React.FC = () => {
                     />
                   </div>
 
+                  {!isSignUp && (
+                    <div className="flex justify-end -mt-2">
+                      <button
+                        type="button"
+                        disabled={resetLoading || !email.trim()}
+                        onClick={async () => {
+                          setEmailError("");
+                          setResetSent(false);
+                          setResetLoading(true);
+                          try {
+                            await requestPasswordReset(email);
+                            setResetSent(true);
+                          } catch (err: unknown) {
+                            setEmailError(err instanceof Error ? err.message : "Não foi possível enviar o e-mail de recuperação.");
+                          } finally {
+                            setResetLoading(false);
+                          }
+                        }}
+                        className="text-[11px] text-neutral-400 hover:text-neutral-200 font-mono"
+                      >
+                        {resetLoading ? "Enviando..." : "Esqueci a senha"}
+                      </button>
+                    </div>
+                  )}
+
+                  {resetSent && (
+                    <p className="text-[11px] text-emerald-400 font-mono">
+                      Se o e-mail existir, você receberá o link para redefinir a senha.
+                    </p>
+                  )}
+
                   <button
                     type="submit"
                     disabled={emailLoading}
-                    className="fq-btn-primary w-full font-semibold"
+                    className="fq-btn-primary w-full"
                   >
                     {emailLoading ? (
-                      <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span className="w-5 h-5 border-2 border-zinc-900 border-t-transparent rounded-full animate-spin" />
                     ) : isSignUp ? (
                       <>
                         <UserPlus className="w-4 h-4" />
-                        Criar Conta e Entrar
+                        Criar conta
                       </>
                     ) : (
                       <>
                         <LogIn className="w-4 h-4" />
-                        Autenticar por E-mail
+                        Entrar
                       </>
                     )}
                   </button>
@@ -308,9 +330,9 @@ export const LoginScreen: React.FC = () => {
                         setIsSignUp(!isSignUp);
                         setEmailError("");
                       }}
-                      className="text-xs text-red-400 hover:text-red-300 font-mono underline hover:no-underline"
+                      className="text-sm text-teal-300/90 hover:text-teal-200"
                     >
-                      {isSignUp ? "Já possui conta? Fazer Login por e-mail" : "Não tem conta? Cadastrar-se agora"}
+                      {isSignUp ? "Já tem conta? Entrar" : "Não tem conta? Criar agora"}
                     </button>
                   </div>
                 </form>
@@ -334,11 +356,11 @@ export const LoginScreen: React.FC = () => {
 
                 <form onSubmit={handleGuestSubmit} className="space-y-4">
                   <div>
-                    <label className="fq-label">SEU NOME COMPLETO</label>
+                    <label className="fq-label">Seu nome</label>
                     <input
                       type="text"
                       required
-                      placeholder="Ex: Rodrigo Silva, Ana Souza"
+                      placeholder="Como você quer aparecer na sala"
                       className="fq-input"
                       value={guestName}
                       onChange={(e) => setGuestName(e.target.value)}
@@ -346,58 +368,16 @@ export const LoginScreen: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="fq-label !mb-2">SUA SQUAD OPERACIONAL</label>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mb-2 font-mono text-xs">
-                      {SQUAD_PRESETS.map((preset) => (
-                        <button
-                          key={preset}
-                          type="button"
-                          onClick={() => setGuestSquad(preset)}
-                          className={`fq-filter-chip w-full justify-center font-mono font-bold cursor-pointer py-2 ${
-                            guestSquad === preset ? "!bg-white/[0.08] !border-white/[0.16] text-neutral-100" : ""
-                          }`}
-                        >
-                          {preset.toUpperCase()}
-                        </button>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={() => setGuestSquad("other")}
-                        className={`fq-filter-chip w-full justify-center font-mono font-bold cursor-pointer py-2 ${
-                          guestSquad === "other" ? "!bg-white/[0.08] !border-white/[0.16] text-neutral-100" : ""
-                        }`}
-                      >
-                        OUTRA
-                      </button>
-                    </div>
-
-                    {guestSquad === "other" && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        className="pt-1"
-                      >
-                        <input
-                          type="text"
-                          required
-                          placeholder="Informe sua Squad (ex: squad de faturamento)"
-                          className="fq-input text-xs"
-                          value={customSquad}
-                          onChange={(e) => setCustomSquad(e.target.value)}
-                        />
-                      </motion.div>
-                    )}
+                    <label className="fq-label">Squad</label>
+                    <SquadSelect required value={guestSquad} onChange={setGuestSquad} />
                   </div>
 
                   <div>
-                    <label className="fq-label fq-label--inline justify-between w-full">
-                      <span>ID DA WAR ROOM</span>
-                      <span className="text-[10px] text-red-400">[PRÉ-CRIADA POR ADMIN]</span>
-                    </label>
+                    <label className="fq-label">ID da war room</label>
                     <input
                       type="text"
                       required
-                      placeholder="Ex: ab709841-a010-41da-a7a2-dfb8a6e7c2eb"
+                      placeholder="Cole o ID compartilhado com você"
                       className="fq-input"
                       value={warRoomName}
                       onChange={(e) => setWarRoomName(e.target.value)}
@@ -407,15 +387,12 @@ export const LoginScreen: React.FC = () => {
                   <button
                     type="submit"
                     disabled={guestLoading}
-                    className="fq-btn-primary w-full font-semibold"
+                    className="fq-btn-primary w-full"
                   >
                     {guestLoading ? (
-                      <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span className="w-5 h-5 border-2 border-zinc-900 border-t-transparent rounded-full animate-spin" />
                     ) : (
-                      <>
-                        <Zap className="w-4 h-4" />
-                        Conectar e Entrar na Sala de Guerra
-                      </>
+                      "Entrar na sala"
                     )}
                   </button>
                 </form>
@@ -424,18 +401,6 @@ export const LoginScreen: React.FC = () => {
           </AnimatePresence>
         </motion.div>
       </main>
-
-      {/* Footer system names credits */}
-      <footer className="fq-footer z-10 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          AUTONOMIC CRITICAL METRICS BOARD v2.5.0
-        </div>
-        <div className="flex gap-4">
-          <span>PROJECTS: FORCE_QA</span>
-          <span>SYSTEM_WARROOM</span>
-          <span>STRIKEBOARD</span>
-        </div>
-      </footer>
     </div>
   );
 };

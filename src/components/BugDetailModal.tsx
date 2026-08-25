@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { subscribeBug, subscribeBugComments, subscribeActivityLogs } from "../lib/supabase";
-import { updateBugField, createComment, fetchUsersList } from "../lib/services";
+import { updateBugField, createComment, fetchUsersList, archiveBug } from "../lib/services";
+import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 import { Bug, BugComment, ActivityLog, BugStatus } from "../types";
 import { isImageEvidence } from "../lib/evidence";
@@ -8,6 +9,7 @@ import { truncateForLog, getStatusLabel } from "../lib/bugLabels";
 import { BugTypeTag } from "./BugTypeTag";
 import { SeverityBadge, StatusBadge } from "./BugBadges";
 import { useModalA11y } from "../hooks/useModalA11y";
+import { canArchiveBugs, canAssignBugs, canWriteBugs } from "../lib/permissions";
 import { 
   X, 
   Terminal, 
@@ -34,6 +36,7 @@ interface BugDetailModalProps {
 
 export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) => {
   const { profile } = useAuth();
+  const { toast } = useToast();
   const [activeBug, setActiveBug] = useState<Bug>(bug);
   const [comments, setComments] = useState<BugComment[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
@@ -58,7 +61,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
   useModalA11y(true, onClose, dialogRef);
   useModalA11y(isFullscreenEvidence && !!fullscreenUrl, closeEvidenceFullscreen, evidenceDialogRef);
 
-  const canEdit = profile?.role !== "viewer";
+  const canEdit = canWriteBugs(profile?.role);
 
   // Fetch commenters, logs, and users list
   useEffect(() => {
@@ -86,7 +89,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
     if (!profile || !canEdit) return;
     const trimmed = editTitle.trim();
     if (!trimmed) {
-      alert("O título não pode ficar vazio.");
+      toast("O título não pode ficar vazio.", { kind: "error" });
       return;
     }
     if (trimmed === activeBug.title) {
@@ -167,8 +170,8 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
 
   const handleUpdateStatus = async (newStatus: BugStatus) => {
     if (!profile) return;
-    if (profile.role === "viewer") {
-      alert("Operação não permitida: Observadores não podem modificar o status de tarefas.");
+    if (!canWriteBugs(profile.role)) {
+      toast("Observadores não podem modificar o status de tarefas.", { kind: "error" });
       return;
     }
 
@@ -186,6 +189,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
 
     if (newStatus === "reopened") {
       cleanFields.reopenCount = (activeBug.reopenCount || 0) + 1;
+      cleanFields.kanbanColumnId = "reopened";
       logMessage = `Reabriu o bug (Contador: ${cleanFields.reopenCount})`;
     }
 
@@ -198,8 +202,8 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
 
   const handleClaimTask = async () => {
     if (!profile) return;
-    if (profile.role === "viewer") {
-      alert("Apenas desenvolvedores e QAs autorizados podem assumir responsabilidades de tarefas.");
+    if (!canWriteBugs(profile.role)) {
+      toast("Observadores não podem assumir cards.", { kind: "error" });
       return;
     }
 
@@ -218,7 +222,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
   };
 
   const handleAssignOwner = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    if (!profile) return;
+    if (!profile || !canAssignBugs(profile.role)) return;
     const selectedUserId = e.target.value;
     if (!selectedUserId) return;
 
@@ -268,13 +272,34 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
             <StatusBadge status={activeBug.status} size="md" />
           </div>
 
-          <button 
-            onClick={onClose}
-            className="fq-btn-icon"
-            aria-label="Fechar"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {(canArchiveBugs(profile?.role) || activeBug.createdBy === profile?.id) && (
+              <button
+                type="button"
+                className="fq-btn-danger text-[10px] font-mono !py-1.5"
+                onClick={async () => {
+                  if (!profile) return;
+                  if (!window.confirm("Arquivar este card? Ele sai do Kanban, mas o histórico permanece.")) return;
+                  try {
+                    await archiveBug(activeBug.id, activeBug.warRoomId, profile.id, profile.name);
+                    onClose();
+                  } catch (err) {
+                    console.error(err);
+                    toast(err instanceof Error ? err.message : "Não foi possível arquivar.", { kind: "error" });
+                  }
+                }}
+              >
+                Arquivar
+              </button>
+            )}
+            <button 
+              onClick={onClose}
+              className="fq-btn-icon"
+              aria-label="Fechar"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Workspace body columns hierarchy scrolling container */}
@@ -506,7 +531,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
           <div className="lg:col-span-3 fq-detail-panel fq-detail-panel-bordered flex flex-col">
             <div>
               <h3 className="fq-panel-title">
-                Painel Tático Operacional
+                Painel do card
               </h3>
               
               {/* Responsibility owner section */}
@@ -540,7 +565,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
                 </div>
 
                 {/* Squad admin assignment drop selector */}
-                {profile?.role === "admin" && (
+                {canAssignBugs(profile?.role) && (
                   <div>
                     <span className="fq-label fq-label--inline !mb-1.5 gap-1">
                       <UserPlus className="w-3.5 h-3.5" /> ATRIBUIR RESPONSÁVEL:
@@ -562,7 +587,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
             {/* Action status workflow path */}
             <div>
               <span className="fq-panel-title">
-                Alterar Status Tático
+                Alterar status
               </span>
               
               <div className="space-y-2">
@@ -587,7 +612,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
 
             <div className="flex-1 flex flex-col min-h-[150px]">
               <span className="fq-panel-title">
-                Timeline Tático de Auditoria
+                Histórico
               </span>
 
               <div className="space-y-2 overflow-y-auto max-h-[220px] pr-1">

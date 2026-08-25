@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS public.users (
   role TEXT NOT NULL CHECK (role IN ('admin', 'qa', 'developer', 'dba', 'devops', 'scrum_master', 'viewer')),
   squad TEXT NOT NULL DEFAULT '' CHECK (char_length(squad) <= 100),
   avatar_url TEXT,
+  is_guest BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -56,7 +57,8 @@ CREATE TABLE IF NOT EXISTS public.bugs (
   created_by UUID NOT NULL REFERENCES auth.users(id),
   created_by_name TEXT NOT NULL DEFAULT '',
   resolved_at TIMESTAMPTZ,
-  reopen_count INTEGER NOT NULL DEFAULT 0
+  reopen_count INTEGER NOT NULL DEFAULT 0,
+  archived BOOLEAN NOT NULL DEFAULT false
 );
 
 CREATE TABLE IF NOT EXISTS public.bug_comments (

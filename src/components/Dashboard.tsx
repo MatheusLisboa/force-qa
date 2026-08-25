@@ -1,37 +1,34 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
-import { createWarRoom, createProject, updateUserProfile, deleteUserProfile } from "../lib/services";
-import { subscribeWarRooms, subscribeAllBugs, subscribeUsers, subscribeProjects, subscribeAllBoardViews, findWarRoomByIdOrName } from "../lib/supabase";
+import React, { useEffect, useState } from "react";
+import { joinWarRoom } from "../lib/services";
+import { subscribeWarRooms, subscribeAllBugs, subscribeProjects, subscribeAllBoardViews, DASHBOARD_BUGS_LIMIT } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
-import { WarRoom, Bug, SeverityLevel, Project, BoardView } from "../types";
-import { SquadSelect } from "./SquadSelect";
+import { useToast } from "../context/ToastContext";
+import { WarRoom, Bug, Project, BoardView } from "../types";
 import { 
   Radio, 
   Activity, 
-  Plus, 
   AlertOctagon, 
-  Server, 
   Clock, 
   ShieldAlert, 
   Layers, 
   ExternalLink, 
   CheckCircle,
-  HelpCircle,
   TrendingUp,
   User,
   Share2,
   UserPlus,
   Key,
-  Trash2,
-  Edit2,
-  Check,
-  X,
   Download,
-  LayoutGrid
+  LayoutGrid,
+  Search
 } from "lucide-react";
-import { motion, AnimatePresence } from "motion/react";
-import { RoleBadge, RoomStatusBadge, RoomTypeBadge } from "./BugBadges";
-import { SeverityPicker } from "./SeverityPicker";
-import { useModalA11y } from "../hooks/useModalA11y";
+import { AnimatePresence } from "motion/react";
+import { RoomStatusBadge, RoomTypeBadge } from "./BugBadges";
+import { canManageSpaces as roleCanManageSpaces } from "../lib/permissions";
+import { shortId } from "../lib/format";
+import { CreateWarRoomModal } from "./CreateWarRoomModal";
+import { CreateProjectModal } from "./CreateProjectModal";
+import { AdminUsersModal } from "./AdminUsersModal";
 
 interface DashboardProps {
   onSelectRoom: (roomId: string) => void;
@@ -39,100 +36,24 @@ interface DashboardProps {
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminPage }) => {
-  const { profile, adminCreateUser } = useAuth();
+  const { profile } = useAuth();
+  const { toast } = useToast();
   const [warRooms, setWarRooms] = useState<WarRoom[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [allBoardViews, setAllBoardViews] = useState<BoardView[]>([]);
   const [allBugs, setAllBugs] = useState<Bug[]>([]);
   const [selectedDashboardRoomId, setSelectedDashboardRoomId] = useState<string>("all");
+  const [myCardsOnly, setMyCardsOnly] = useState(false);
   const [isWarRoomModalOpen, setIsWarRoomModalOpen] = useState(false);
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
+  const [isAdminUsersModalOpen, setIsAdminUsersModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Search by ID State
   const [enterRoomIdInput, setEnterRoomIdInput] = useState("");
   const [enteringRoomLoading, setEnteringRoomLoading] = useState(false);
   const [enterRoomError, setEnterRoomError] = useState("");
   const [enterRoomSuccess, setEnterRoomSuccess] = useState("");
-
-  // User Management State
-  const [isAdminUsersModalOpen, setIsAdminUsersModalOpen] = useState(false);
-  const [newUserEmail, setNewUserEmail] = useState("");
-  const [newUserPassword, setNewUserPassword] = useState("");
-  const [newUserName, setNewUserName] = useState("");
-  const [newUserRole, setNewUserRole] = useState<"admin" | "qa" | "developer" | "dba" | "viewer" | "devops" | "scrum_master">("developer");
-  const [newUserSquad, setNewUserSquad] = useState("");
-  const [isCreatingUser, setIsCreatingUser] = useState(false);
-  const [userCreationError, setUserCreationError] = useState("");
-  const [userCreationSuccess, setUserCreationSuccess] = useState("");
-  const [usersList, setUsersList] = useState<any[]>([]);
-
-  // User inline editing state
-  const [editingUserId, setEditingUserId] = useState<string | null>(null);
-  const [editingName, setEditingName] = useState("");
-  const [editingRole, setEditingRole] = useState<any>("developer");
-  const [editingSquad, setEditingSquad] = useState("");
-
-  const warRoomDialogRef = useRef<HTMLDivElement>(null);
-  const projectDialogRef = useRef<HTMLDivElement>(null);
-  const adminDialogRef = useRef<HTMLDivElement>(null);
-
-  const closeWarRoomModal = useCallback(() => setIsWarRoomModalOpen(false), []);
-  const closeProjectModal = useCallback(() => setIsProjectModalOpen(false), []);
-  const closeAdminUsersModal = useCallback(() => {
-    setIsAdminUsersModalOpen(false);
-    setUserCreationError("");
-    setUserCreationSuccess("");
-  }, []);
-
-  useModalA11y(isWarRoomModalOpen, closeWarRoomModal, warRoomDialogRef);
-  useModalA11y(isProjectModalOpen, closeProjectModal, projectDialogRef);
-  useModalA11y(isAdminUsersModalOpen, closeAdminUsersModal, adminDialogRef);
-
-  // Live real-time stream subscription for System Users
-  useEffect(() => {
-    if (profile?.role === "admin") {
-      return subscribeUsers((list) => setUsersList(list));
-    }
-  }, [profile]);
-
-  const handleAdminCreateUserSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newUserName.trim() || !newUserEmail.trim() || !newUserPassword.trim() || !newUserSquad.trim()) {
-      setUserCreationError("Por favor, preencha todos os campos obrigatórios.");
-      return;
-    }
-    
-    if (newUserPassword.length < 6) {
-      setUserCreationError("A senha deve conter no mínimo 6 caracteres.");
-      return;
-    }
-
-    setIsCreatingUser(true);
-    setUserCreationError("");
-    setUserCreationSuccess("");
-
-    try {
-      await adminCreateUser(
-        newUserName.trim(),
-        newUserEmail.trim(),
-        newUserPassword,
-        newUserRole,
-        newUserSquad.trim()
-      );
-      setUserCreationSuccess(`Usuário ${newUserName.trim()} cadastrado com sucesso!`);
-      // Reset form
-      setNewUserName("");
-      setNewUserEmail("");
-      setNewUserPassword("");
-      setNewUserSquad("");
-    } catch (err: any) {
-      console.error("Error creating user:", err);
-      setUserCreationError(err.message || "Erro desconhecido ao cadastrar usuário.");
-    } finally {
-      setIsCreatingUser(false);
-    }
-  };
+  const [spaceQuery, setSpaceQuery] = useState("");
 
   const handleEnterRoomById = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -144,23 +65,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
     setEnterRoomSuccess("");
 
     try {
-      const room = await findWarRoomByIdOrName(inputVal);
-      const roomId = room?.id;
-
-      if (!roomId || !room) {
-        throw new Error("Sala de Guerra não encontrada. Certifique-se de que o ID ou Nome está correto.");
-      }
-
-      const accessedStr = localStorage.getItem("accessed_rooms") || "[]";
-      let accessedList: string[] = JSON.parse(accessedStr);
-      if (!accessedList.includes(roomId)) {
-        accessedList.push(roomId);
-        localStorage.setItem("accessed_rooms", JSON.stringify(accessedList));
-      }
-
-      setEnterRoomSuccess("Canal destrancado operacionalmente!");
+      const roomId = await joinWarRoom(inputVal);
+      setEnterRoomSuccess("Sala desbloqueada. Abrindo o Kanban...");
       setEnterRoomIdInput("");
-
       onSelectRoom(roomId);
     } catch (err: any) {
       console.error(err);
@@ -170,59 +77,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
     }
   };
 
-  const handleStartEdit = (usr: any) => {
-    setEditingUserId(usr.id);
-    setEditingName(usr.name || "");
-    setEditingRole(usr.role || "developer");
-    setEditingSquad(usr.squad || "");
-  };
-
-  const handleCancelEdit = () => {
-    setEditingUserId(null);
-  };
-
-  const handleSaveEdit = async (userId: string) => {
-    if (!editingName.trim() || !editingSquad.trim()) {
-      setUserCreationError("Todos os campos de edição são obrigatórios.");
-      return;
-    }
-    try {
-      await updateUserProfile(userId, {
-        name: editingName.trim(),
-        role: editingRole,
-        squad: editingSquad.trim(),
-      });
-      setEditingUserId(null);
-    } catch (err: any) {
-      console.error(err);
-      setUserCreationError(err.message || "Erro ao atualizar usuário.");
-    }
-  };
-
-  const handleDeleteUser = async (userId: string) => {
-    if (!window.confirm("ATENÇÃO: Deseja realmente remover este usuário do sistema? Esta ação removerá o perfil no banco de dados.")) {
-      return;
-    }
-    try {
-      await deleteUserProfile(userId);
-    } catch (err: any) {
-      console.error(err);
-      setUserCreationError(err.message || "Erro ao deletar usuário.");
-    }
-  };
-
-  // Form states for creating a new room
-  const [name, setName] = useState("");
-  const [project, setProject] = useState("");
-  const [squad, setSquad] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
-  const [periodEnd, setPeriodEnd] = useState("");
-  const [description, setDescription] = useState("");
-  const [severity, setSeverity] = useState<SeverityLevel>("medium");
-  const [submitting, setSubmitting] = useState(false);
-  const [formError, setFormError] = useState("");
-
-  // Live real-time stream subscription for War Rooms
   useEffect(() => {
     const unsubscribeRooms = subscribeWarRooms((rooms) => {
       setWarRooms(rooms);
@@ -240,11 +94,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
   }, []);
 
   // Compute stats metrics dynamically
-  const activeRooms = warRooms.filter(r => r.status === "active").length;
-
-  const filteredBugs = selectedDashboardRoomId === "all"
-    ? allBugs
-    : allBugs.filter(b => b.warRoomId === selectedDashboardRoomId);
+  const filteredBugs = (
+    selectedDashboardRoomId === "all"
+      ? allBugs
+      : allBugs.filter(b => b.warRoomId === selectedDashboardRoomId)
+  ).filter((b) => !myCardsOnly || b.ownerId === profile?.id);
 
   const bugsCrit = {
     blocker: filteredBugs.filter(b => b.criticism === "blocker" && b.status !== "validated").length,
@@ -291,32 +145,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
     }
   });
 
-  // Filter displayed War Rooms based on authenticated user access
-  const accessedRoomsStr = localStorage.getItem("accessed_rooms") || "[]";
-  let accessedRoomIds: string[] = [];
-  try {
-    accessedRoomIds = JSON.parse(accessedRoomsStr);
-  } catch (err) {
-    accessedRoomIds = [];
-  }
+  // Filter displayed War Rooms: RLS already scopes to membership (admins see all)
+  const displayedRooms = warRooms;
 
-  const displayedRooms = warRooms.filter((room) => {
-    if (profile?.role === "admin") return true;
-    if (room.createdBy === profile?.id) return true;
-    if (accessedRoomIds.includes(room.id)) return true;
-    return false;
-  });
+  const spaceQueryNorm = spaceQuery.trim().toLowerCase();
+  const matchesSpaceQuery = (...values: Array<string | undefined>) =>
+    !spaceQueryNorm ||
+    values.some((value) => (value || "").toLowerCase().includes(spaceQueryNorm));
 
-  const displayedWarRooms = displayedRooms.filter(
-    (r) => (r.roomType || "war_room") === "war_room"
+  const displayedWarRooms = displayedRooms
+    .filter((r) => (r.roomType || "war_room") === "war_room")
+    .filter((r) => matchesSpaceQuery(r.name, r.project, r.squad, r.id));
+
+  const displayedProjects = projects.filter((p) =>
+    matchesSpaceQuery(p.name, p.squad, p.warRoomId)
   );
-
-  const displayedProjects = projects.filter((proj) => {
-    if (profile?.role === "admin") return true;
-    if (proj.createdBy === profile?.id) return true;
-    if (accessedRoomIds.includes(proj.warRoomId)) return true;
-    return false;
-  });
 
   const viewCountByProject = allBoardViews.reduce<Record<string, number>>((acc, view) => {
     if (view.projectId && view.isActive) {
@@ -325,16 +168,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
     return acc;
   }, {});
 
-  const canManageSpaces =
-    profile?.role === "admin" ||
-    profile?.role === "qa" ||
-    profile?.role === "scrum_master";
+  const canManageSpaces = roleCanManageSpaces(profile?.role);
 
   const copyShareLink = (roomId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const relativeUrl = `${window.location.origin}/?room=${roomId}`;
     navigator.clipboard.writeText(relativeUrl);
-    alert("Link de compartilhamento rápido copiado para a área de transferência!");
+    toast("Link copiado.", { kind: "success" });
   };
 
   const renderSpaceCard = (room: WarRoom) => {
@@ -366,30 +206,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
             )}
           </div>
 
-          <div className="mt-2 text-[11px] text-neutral-500 flex items-center gap-1.5 font-mono">
-            <span>CHAVE:</span>
-            <span className="text-neutral-400 select-all bg-white/[0.04] px-1.5 py-0.5 rounded border border-white/[0.06] text-[10px]">
-              {room.id}
+          <div className="mt-2 text-[12px] text-neutral-500 flex items-center gap-1.5">
+            <span className="text-neutral-400 select-all bg-white/[0.04] px-1.5 py-0.5 rounded-md border border-white/[0.06]" title={room.id}>
+              {shortId(room.id)}
             </span>
           </div>
 
-          <div className="flex items-center gap-2 mt-2.5 text-[12px] text-neutral-500 font-mono">
+          <div className="flex items-center gap-2 mt-2.5 text-[13px] text-neutral-500">
             <span>
-              PROJECT: <span className="text-neutral-300 font-medium">{room.project}</span>
+              {room.project}
             </span>
-            <span>•</span>
+            <span className="text-neutral-700">·</span>
             <span>
-              SQUAD: <span className="text-neutral-300 font-medium">{room.squad}</span>
+              {room.squad}
             </span>
           </div>
 
           {!isBoard && room.date && (
-            <div className="mt-1.5 text-[11px] font-mono text-neutral-500">
-              PERÍODO:{" "}
-              <span className="text-neutral-400">
-                {room.date}
-                {room.periodEnd ? ` → ${room.periodEnd}` : ""}
-              </span>
+            <div className="mt-1.5 text-[12px] text-neutral-500">
+              {room.date}
+              {room.periodEnd ? ` → ${room.periodEnd}` : ""}
             </div>
           )}
 
@@ -397,20 +233,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
             {room.description ||
               (isBoard
                 ? "Board permanente de acompanhamento de qualidade."
-                : "Nenhuma descrição operacional adicional foi especificada preliminarmente.")}
+                : "Sem descrição.")}
           </p>
         </div>
 
         <div className="mt-4 pt-3.5 border-t border-white/[0.06] flex justify-between items-center">
           <div className="flex gap-5">
             <div>
-              <span className="block text-[11px] font-mono uppercase text-neutral-500">Abertos</span>
+              <span className="block text-[11px] text-neutral-500">Abertos</span>
               <span className={`text-[15px] font-semibold tabular-nums ${roomTotalOpen > 0 ? "text-neutral-100" : "text-neutral-600"}`}>
                 {roomTotalOpen}
               </span>
             </div>
             <div>
-              <span className="block text-[11px] font-mono uppercase text-neutral-500">Falta QA</span>
+              <span className="block text-[11px] text-neutral-500">Falta QA</span>
               <span
                 className={`text-[15px] font-semibold tabular-nums ${
                   activeRoomBugs.filter((b) => b.status === "ready_for_qa").length > 0
@@ -423,7 +259,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
             </div>
             {roomBlocker > 0 && (
               <div>
-                <span className="block text-[11px] font-mono uppercase text-red-400/80">BLOCKER</span>
+                <span className="block text-[11px] text-red-400/80">Blocker</span>
                 <span className="text-[15px] font-semibold text-red-400 tabular-nums">{roomBlocker}</span>
               </div>
             )}
@@ -437,8 +273,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
             >
               <Share2 className="w-3.5 h-3.5" />
             </button>
-            <span className="text-[11px] font-mono text-neutral-500 group-hover:text-neutral-300 transition flex items-center gap-1">
-              ENTRAR <ExternalLink className="w-3 h-3" />
+            <span className="text-[12px] text-neutral-500 group-hover:text-teal-300 transition flex items-center gap-1">
+              Abrir <ExternalLink className="w-3 h-3" />
             </span>
           </div>
         </div>
@@ -471,21 +307,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
             <RoomTypeBadge type="board" permanent />
           </div>
 
-          <div className="mt-2 text-[11px] text-neutral-500 flex items-center gap-1.5 font-mono">
-            <span>CHAVE:</span>
-            <span className="text-neutral-400 select-all bg-white/[0.04] px-1.5 py-0.5 rounded border border-white/[0.06] text-[10px]">
-              {proj.warRoomId}
+          <div className="mt-2 text-[12px] text-neutral-500 flex items-center gap-1.5">
+            <span className="text-neutral-400 select-all bg-white/[0.04] px-1.5 py-0.5 rounded-md border border-white/[0.06]" title={proj.warRoomId}>
+              {shortId(proj.warRoomId)}
             </span>
           </div>
 
-          <div className="flex items-center gap-2 mt-2.5 text-[12px] text-neutral-500 font-mono">
-            <span>
-              SQUAD: <span className="text-neutral-300 font-medium">{proj.squad}</span>
-            </span>
-            <span>•</span>
-            <span>
-              VIEWS: <span className="text-neutral-300 font-medium">{viewCount}</span>
-            </span>
+          <div className="flex items-center gap-2 mt-2.5 text-[13px] text-neutral-500">
+            <span>{proj.squad}</span>
+            <span className="text-neutral-700">·</span>
+            <span>{viewCount} {viewCount === 1 ? "view" : "views"}</span>
           </div>
 
           <p className="text-[13px] text-neutral-500 mt-3 line-clamp-2 leading-relaxed" title={proj.description}>
@@ -496,14 +327,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
         <div className="mt-4 pt-3.5 border-t border-white/[0.06] flex justify-between items-center">
           <div className="flex gap-5">
             <div>
-              <span className="block text-[11px] font-mono uppercase text-neutral-500">Abertos</span>
+              <span className="block text-[11px] text-neutral-500">Abertos</span>
               <span className={`text-[15px] font-semibold tabular-nums ${roomTotalOpen > 0 ? "text-neutral-100" : "text-neutral-600"}`}>
                 {roomTotalOpen}
               </span>
             </div>
             {roomBlocker > 0 && (
               <div>
-                <span className="block text-[11px] font-mono uppercase text-red-400/80">BLOCKER</span>
+                <span className="block text-[11px] text-red-400/80">Blocker</span>
                 <span className="text-[15px] font-semibold text-red-400 tabular-nums">{roomBlocker}</span>
               </div>
             )}
@@ -583,7 +414,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
     csvRows.push([]); // Empty row separator
 
     // Bugs Detail list
-    csvRows.push(["--- DETALHAMENTO DE BUGS E INCIDENTES ---"]);
+    csvRows.push(["--- DETALHAMENTO DE CARDS ---"]);
     csvRows.push([
       "ID do Bug",
       "Titulo",
@@ -639,99 +470,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
     document.body.removeChild(link);
   };
 
-  const handleCreateWarRoom = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!canManageSpaces) {
-      setFormError("Permissão negada. Apenas administradores, QAs e Scrum Masters podem criar War Rooms.");
-      return;
-    }
-
-    if (!name.trim() || !project.trim() || !squad.trim()) {
-      setFormError("Por favor, preencha todos os campos obrigatórios.");
-      return;
-    }
-
-    setSubmitting(true);
-    setFormError("");
-    try {
-      const roomId = await createWarRoom({
-        name: name.trim(),
-        project: project.trim(),
-        squad: squad.trim(),
-        date,
-        periodEnd: periodEnd || undefined,
-        description: description.trim(),
-        severity,
-        status: "active",
-        roomType: "war_room",
-        createdBy: profile?.id || "unknown",
-        createdByName: profile?.name || "Anonymous Hunter",
-      });
-
-      setName("");
-      setProject("");
-      setSquad("");
-      setDescription("");
-      setPeriodEnd("");
-      setSeverity("medium");
-      setIsWarRoomModalOpen(false);
-      onSelectRoom(roomId);
-    } catch (err: any) {
-      setFormError("Erro ao criar War Room: " + err.message);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleCreateProjectSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!canManageSpaces) {
-      setFormError("Permissão negada. Apenas administradores, QAs e Scrum Masters podem criar projetos.");
-      return;
-    }
-
-    if (!name.trim() || !squad.trim()) {
-      setFormError("Por favor, preencha todos os campos obrigatórios.");
-      return;
-    }
-
-    setSubmitting(true);
-    setFormError("");
-    try {
-      const { warRoomId } = await createProject({
-        name: name.trim(),
-        squad: squad.trim(),
-        description: description.trim(),
-        createdBy: profile?.id || "unknown",
-        createdByName: profile?.name || "Anonymous Hunter",
-      });
-
-      setName("");
-      setSquad("");
-      setDescription("");
-      setIsProjectModalOpen(false);
-      onSelectRoom(warRoomId);
-    } catch (err: any) {
-      setFormError("Erro ao criar projeto: " + err.message);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   return (
     <div className="fq-page fq-page--operational">
       <div className="fq-page-header">
         <div>
-          <p className="fq-page-eyebrow font-mono uppercase tracking-wider flex items-center gap-1.5">
-            <Radio className="w-3.5 h-3.5 text-neutral-500" /> OPERATIONAL COMMAND STATUS
+          <p className="fq-page-eyebrow flex items-center gap-1.5">
+            <Radio className="w-3.5 h-3.5 text-teal-400" /> Painel
           </p>
           <h1 className="fq-page-title mt-1">
-            Painel Central de QA
+            Suas salas e projetos
           </h1>
-          <p className="text-neutral-500 text-[13px] mt-1">
-            War Rooms por período e projetos com visualizações de board.
+          <p className="text-neutral-500 text-sm mt-1">
+            Abra uma war room por período ou um board permanente.
           </p>
         </div>
 
@@ -740,18 +490,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
             <>
               <button
                 onClick={() => setIsAdminUsersModalOpen(true)}
-                className="fq-btn-secondary text-xs font-mono"
+                className="fq-btn-secondary text-sm"
               >
                 <UserPlus className="w-4 h-4" />
-                GERENCIAR USUÁRIOS
+                Usuários
               </button>
               {onOpenAdminPage && (
                 <button
                   onClick={() => onOpenAdminPage("/admin/board-views")}
-                  className="fq-btn-secondary text-xs font-mono"
+                  className="fq-btn-secondary text-sm"
                 >
                   <LayoutGrid className="w-4 h-4" />
-                  BOARD VIEWS (ADMIN)
+                  Views
                 </button>
               )}
             </>
@@ -760,24 +510,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
           {canManageSpaces && (
             <>
               <button
-                onClick={() => {
-                  setFormError("");
-                  setIsWarRoomModalOpen(true);
-                }}
-                className="fq-btn-primary text-xs font-mono"
+                onClick={() => setIsWarRoomModalOpen(true)}
+                className="fq-btn-primary text-sm"
               >
                 <Clock className="w-4 h-4" />
-                NOVA WAR ROOM
+                Nova war room
               </button>
               <button
-                onClick={() => {
-                  setFormError("");
-                  setIsProjectModalOpen(true);
-                }}
-                className="fq-btn-secondary text-xs font-mono"
+                onClick={() => setIsProjectModalOpen(true)}
+                className="fq-btn-secondary text-sm"
               >
                 <LayoutGrid className="w-4 h-4" />
-                NOVO PROJETO
+                Novo projeto
               </button>
             </>
           )}
@@ -790,10 +534,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
           <div>
             <h3 className="fq-section-title !mb-1">
               <Activity className="w-4 h-4 text-neutral-500" />
-              CONTROLE DE FILTRO CENTRALIZADO
+              Filtro do painel
             </h3>
             <p className="text-neutral-500 text-xs">
-              Visualize indicadores estratégicos de maneira consolidada (Geral) ou selecione um escopo individual por Sala de Guerra.
+              Indicadores consolidados ou filtrados por uma sala/projeto.
             </p>
           </div>
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 min-w-[320px] md:min-w-[440px]">
@@ -802,7 +546,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
               onChange={(e) => setSelectedDashboardRoomId(e.target.value)}
               className="fq-select flex-1 text-xs font-mono"
             >
-              <option value="all">📊 TODOS OS INCIDENTES (Consolidado Geral)</option>
+              <option value="all">Todos os cards (consolidado)</option>
               {warRooms.map((room) => (
                 <option key={room.id} value={room.id}>
                   {room.roomType === "board" ? "📋" : "🛡️"} {room.name} ({room.project})
@@ -810,15 +554,31 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
               ))}
             </select>
             <button
+              type="button"
+              onClick={() => setMyCardsOnly((v) => !v)}
+              className={`fq-btn-ghost justify-center whitespace-nowrap text-sm ${
+                myCardsOnly ? "!bg-white/[0.08] !border-white/20 text-neutral-100" : ""
+              }`}
+              title="Filtrar métricas pelos cards atribuídos a você"
+            >
+              {myCardsOnly ? "Meus cards ✓" : "Meus cards"}
+            </button>
+            <button
               onClick={handleExportCSV}
-              className="fq-btn-ghost justify-center whitespace-nowrap text-[11px] font-mono font-bold"
+              className="fq-btn-ghost justify-center whitespace-nowrap text-sm"
               title="Exportar dados selecionados para formato CSV"
             >
               <Download className="w-3.5 h-3.5" />
-              EXPORTAR RELATÓRIO
+              Exportar
             </button>
           </div>
         </div>
+      )}
+
+      {allBugs.length >= DASHBOARD_BUGS_LIMIT && (
+        <p className="text-amber-400/90 text-xs font-mono">
+          Métricas do painel usam os {DASHBOARD_BUGS_LIMIT} cards mais recentes.
+        </p>
       )}
 
       {/* Grid counters */}
@@ -881,7 +641,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
           <div className="lg:col-span-2 fq-panel p-5">
             <h3 className="fq-section-title">
               <Activity className="w-4 h-4 text-neutral-500" />
-              Vulnerabilidades por Severidade Geral (Sem Validar)
+              Vulnerabilidades por severidade (não validados)
             </h3>
             
             <div className="space-y-4">
@@ -991,54 +751,68 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
       {/* Active War Rooms Grid List */}
       <div>
         {/* Code to enter a War Room by ID */}
-        <div className="fq-panel mb-5">
-          <h4 className="text-[13px] font-medium text-neutral-400 mb-2.5 flex items-center gap-1.5 font-mono uppercase tracking-wider">
-            <Key className="w-3.5 h-3.5 text-neutral-500" /> Acessar War Room ou Board via ID
-          </h4>
-          <form onSubmit={handleEnterRoomById} className="flex gap-2">
+        <div className="fq-panel mb-5 grid gap-4 lg:grid-cols-2">
+          <div>
+            <h4 className="text-[13px] font-medium text-neutral-300 mb-2.5 flex items-center gap-1.5">
+              <Search className="w-3.5 h-3.5 text-teal-400" /> Buscar
+            </h4>
             <input
-              type="text"
-              required
-              placeholder="Digite o ID (Ex: room-XXXXXX ou board-XXXXXX)"
-              className="fq-input flex-1 font-mono text-[13px]"
-              value={enterRoomIdInput}
-              onChange={(e) => setEnterRoomIdInput(e.target.value)}
+              type="search"
+              placeholder="Nome, projeto, squad ou ID"
+              className="fq-input"
+              value={spaceQuery}
+              onChange={(e) => setSpaceQuery(e.target.value)}
             />
-            <button
-              type="submit"
-              disabled={enteringRoomLoading}
-              className="fq-btn-primary font-mono"
-            >
-              {enteringRoomLoading ? (
-                <span className="fq-spinner !h-4 !w-4 !border-neutral-900 !border-t-transparent" />
-              ) : (
-                "LIBERAR ACESSO"
-              )}
-            </button>
-          </form>
-          {enterRoomError && (
-            <p className="text-red-400 text-[12px] mt-2 font-mono">{enterRoomError}</p>
-          )}
-          {enterRoomSuccess && (
-            <p className="text-emerald-400 text-[12px] mt-2 font-mono">{enterRoomSuccess}</p>
-          )}
+          </div>
+          <div>
+            <h4 className="text-[13px] font-medium text-neutral-300 mb-2.5 flex items-center gap-1.5">
+              <Key className="w-3.5 h-3.5 text-neutral-500" /> Entrar com ID
+            </h4>
+            <form onSubmit={handleEnterRoomById} className="flex gap-2">
+              <input
+                type="text"
+                required
+                placeholder="Cole o ID da sala"
+                className="fq-input flex-1"
+                value={enterRoomIdInput}
+                onChange={(e) => setEnterRoomIdInput(e.target.value)}
+              />
+              <button
+                type="submit"
+                disabled={enteringRoomLoading}
+                className="fq-btn-primary"
+              >
+                {enteringRoomLoading ? "..." : "Entrar"}
+              </button>
+            </form>
+            {enterRoomError && (
+              <p className="text-red-400 text-[12px] mt-2">{enterRoomError}</p>
+            )}
+            {enterRoomSuccess && (
+              <p className="text-emerald-400 text-[12px] mt-2">{enterRoomSuccess}</p>
+            )}
+          </div>
         </div>
 
-        <h3 className="fq-section-title uppercase tracking-wide font-mono">
-          <Clock className="w-4 h-4 text-neutral-500" /> War Rooms por Período ({displayedWarRooms.length})
+        <h3 className="fq-section-title">
+          <Clock className="w-4 h-4 text-neutral-500" /> War rooms ({displayedWarRooms.length})
         </h3>
 
         {loading ? (
           <div className="fq-empty-state mb-8">
             <div className="fq-spinner mx-auto mb-2" />
-            <p className="text-neutral-500 text-[13px] font-mono">Sincronizando Banco de Dados...</p>
+            <p className="text-neutral-500 text-[13px] font-mono">Carregando salas...</p>
           </div>
         ) : displayedWarRooms.length === 0 ? (
           <div className="fq-empty-state mb-8">
             <AlertOctagon className="w-8 h-8 text-neutral-600 mx-auto mb-3" />
-            <h4 className="text-neutral-200 font-medium text-[15px]">Nenhuma War Room ativa</h4>
-            <p className="text-neutral-500 text-xs mt-1 max-w-sm mx-auto">
-              War Rooms concentram operações de QA por período específico. Crie uma nova ou entre via ID acima.
+            <h4 className="text-neutral-200 font-medium text-[15px]">
+              {spaceQuery ? "Nenhuma war room encontrada" : "Nenhuma war room ainda"}
+            </h4>
+            <p className="text-neutral-500 text-sm mt-1 max-w-sm mx-auto">
+              {spaceQuery
+                ? "Tente outro termo ou entre com o ID da sala."
+                : "Crie uma war room ou cole um ID compartilhado acima."}
             </p>
           </div>
         ) : (
@@ -1047,7 +821,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
           </div>
         )}
 
-        <h3 className="fq-section-title uppercase tracking-wide font-mono">
+        <h3 className="fq-section-title">
           <LayoutGrid className="w-4 h-4 text-neutral-500" /> Projetos ({displayedProjects.length})
         </h3>
 
@@ -1056,7 +830,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
             <LayoutGrid className="w-8 h-8 text-neutral-600 mx-auto mb-3" />
             <h4 className="text-neutral-200 font-medium text-[15px]">Nenhum projeto cadastrado</h4>
             <p className="text-neutral-500 text-xs mt-1 max-w-sm mx-auto">
-              Projetos agrupam o Kanban e as visualizações de board. Use &quot;NOVO PROJETO&quot; para criar.
+              {spaceQuery ? "Nenhum projeto corresponde à busca." : "Crie um projeto para ter um Kanban permanente."}
             </p>
           </div>
         ) : (
@@ -1066,535 +840,42 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
         )}
       </div>
 
-      {/* Modal: Nova War Room */}
       <AnimatePresence>
         {isWarRoomModalOpen && (
-          <div className="fq-modal-overlay">
-            <motion.div 
-              ref={warRoomDialogRef}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="war-room-modal-title"
-              tabIndex={-1}
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="fq-modal fq-modal--md"
-            >
-              <div className="fq-modal-header">
-                <h3 id="war-room-modal-title" className="fq-modal-title">
-                  <Clock className="w-5 h-5 text-neutral-400" /> Nova War Room
-                </h3>
-                <button 
-                  onClick={closeWarRoomModal}
-                  className="fq-btn-icon"
-                  aria-label="Fechar"
-                >
-                  X
-                </button>
-              </div>
-
-              <p className="text-xs text-neutral-500 font-mono mb-4">
-                Operação concentrada por período específico (release, hotfix, incidente).
-              </p>
-
-              {formError && (
-                <div className="fq-alert-error mb-4">
-                  {formError}
-                </div>
-              )}
-
-              <form onSubmit={handleCreateWarRoom} className="space-y-4 text-sm text-neutral-300">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="fq-label">
-                      Nome da War Room *
-                    </label>
-                    <input
-                      required
-                      type="text"
-                      className="fq-input"
-                      placeholder="Ex: WarRoom Release v2.4"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="fq-label">
-                      Projeto / Sistema *
-                    </label>
-                    <input
-                      required
-                      type="text"
-                      className="fq-input"
-                      placeholder="Ex: App Android Checkout"
-                      value={project}
-                      onChange={(e) => setProject(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="fq-label">
-                      Squad Principal *
-                    </label>
-                    <SquadSelect
-                      required
-                      value={squad}
-                      onChange={setSquad}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="fq-label">
-                      Data de Início *
-                    </label>
-                    <input
-                      required
-                      type="date"
-                      className="fq-input"
-                      value={date}
-                      onChange={(e) => setDate(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="fq-label">
-                    Data de Término (opcional)
-                  </label>
-                  <input
-                    type="date"
-                    className="fq-input"
-                    value={periodEnd}
-                    onChange={(e) => setPeriodEnd(e.target.value)}
-                  />
-                </div>
-
-                <div>
-                  <label className="fq-label">
-                    Descrição do Escopo
-                  </label>
-                  <textarea
-                    rows={3}
-                    className="fq-textarea"
-                    placeholder="Contexto do incidente e escopo dos testes..."
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                  />
-                </div>
-
-                <div>
-                  <label className="fq-label">
-                    Severidade Geral Prevista
-                  </label>
-                  <SeverityPicker value={severity} onChange={setSeverity} />
-                </div>
-
-                <div className="pt-4 border-t border-white/[0.06] flex justify-end gap-3 font-semibold">
-                  <button
-                    type="button"
-                    onClick={() => setIsWarRoomModalOpen(false)}
-                    className="fq-btn-ghost"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    className="fq-btn-primary"
-                  >
-                    {submitting ? "Criando..." : "Criar War Room"}
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
+          <CreateWarRoomModal
+            open={isWarRoomModalOpen}
+            createdBy={profile?.id || "unknown"}
+            createdByName={profile?.name || "Usuário"}
+            onClose={() => setIsWarRoomModalOpen(false)}
+            onCreated={(roomId) => {
+              setIsWarRoomModalOpen(false);
+              onSelectRoom(roomId);
+            }}
+          />
         )}
       </AnimatePresence>
 
-      {/* Modal: Novo Projeto */}
       <AnimatePresence>
         {isProjectModalOpen && (
-          <div className="fq-modal-overlay">
-            <motion.div 
-              ref={projectDialogRef}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="project-modal-title"
-              tabIndex={-1}
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="fq-modal fq-modal--md"
-            >
-              <div className="fq-modal-header">
-                <h3 id="project-modal-title" className="fq-modal-title">
-                  <LayoutGrid className="w-5 h-5 text-neutral-400" /> Novo Projeto
-                </h3>
-                <button 
-                  onClick={closeProjectModal}
-                  className="fq-btn-icon"
-                  aria-label="Fechar"
-                >
-                  X
-                </button>
-              </div>
-
-              <p className="text-xs text-neutral-500 font-mono mb-4">
-                Crie um projeto e, em seguida, configure as visualizações de board em Admin → Board Views.
-              </p>
-
-              {formError && (
-                <div className="fq-alert-error mb-4">
-                  {formError}
-                </div>
-              )}
-
-              <form onSubmit={handleCreateProjectSubmit} className="space-y-4 text-sm text-neutral-300">
-                <div>
-                  <label className="fq-label">
-                    Nome do Projeto *
-                  </label>
-                  <input
-                    required
-                    type="text"
-                    className="fq-input"
-                    placeholder="Ex: Portal Admin"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                  />
-                </div>
-
-                <div>
-                  <label className="fq-label">
-                    Squad Responsável *
-                  </label>
-                  <SquadSelect
-                    required
-                    value={squad}
-                    onChange={setSquad}
-                  />
-                </div>
-
-                <div>
-                  <label className="fq-label">
-                    Descrição
-                  </label>
-                  <textarea
-                    rows={3}
-                    className="fq-textarea"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                  />
-                </div>
-
-                <div className="pt-4 border-t border-white/[0.06] flex justify-end gap-3 font-semibold">
-                  <button
-                    type="button"
-                    onClick={() => setIsProjectModalOpen(false)}
-                    className="fq-btn-ghost"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    className="fq-btn-primary"
-                  >
-                    {submitting ? "Criando..." : "Criar Projeto"}
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
+          <CreateProjectModal
+            open={isProjectModalOpen}
+            createdBy={profile?.id || "unknown"}
+            createdByName={profile?.name || "Usuário"}
+            onClose={() => setIsProjectModalOpen(false)}
+            onCreated={(warRoomId) => {
+              setIsProjectModalOpen(false);
+              onSelectRoom(warRoomId);
+            }}
+          />
         )}
       </AnimatePresence>
 
-      {/* Admin User Management Modal Overview */}
       <AnimatePresence>
         {isAdminUsersModalOpen && profile?.role === "admin" && (
-          <div className="fq-modal-overlay">
-            <motion.div 
-              ref={adminDialogRef}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="admin-users-modal-title"
-              tabIndex={-1}
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="fq-modal fq-modal--lg max-w-4xl max-h-[90vh] overflow-y-auto"
-            >
-              <div className="fq-modal-header">
-                <h3 id="admin-users-modal-title" className="fq-modal-title">
-                  <UserPlus className="w-5 h-5 text-neutral-400" /> Painel de Registro & Controle de Usuários
-                </h3>
-                <button 
-                  onClick={closeAdminUsersModal}
-                  className="fq-btn-ghost text-xs font-mono font-bold"
-                  aria-label="Fechar"
-                >
-                  FECHAR (ESC)
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-sm text-neutral-500">
-                {/* Panel 1: Creation form */}
-                <div className="space-y-4">
-                  <div className="border-b border-white/[0.03] pb-2">
-                    <h4 className="font-mono text-xs font-bold uppercase text-indigo-400 tracking-wider">
-                      ➕ ADICIONAR NOVO INTEGRANTE AO OPERATIVO
-                    </h4>
-                    <p className="text-neutral-500 text-[11px] mt-0.5 leading-relaxed">
-                      Registre credenciais de acesso locais para agentes da mesa de comando da ForceQA.
-                    </p>
-                  </div>
-
-                  {userCreationError && (
-                    <div className="fq-alert-error text-xs font-mono">
-                      ❌ {userCreationError}
-                    </div>
-                  )}
-
-                  {userCreationSuccess && (
-                    <div className="fq-alert-success text-xs font-mono">
-                      ✅ {userCreationSuccess}
-                    </div>
-                  )}
-
-                  <form onSubmit={handleAdminCreateUserSubmit} className="space-y-4">
-                    <div>
-                      <label className="fq-label fq-label--xs">
-                        Nome Completo
-                      </label>
-                      <input
-                        required
-                        type="text"
-                        className="fq-input text-xs font-mono"
-                        placeholder="Ex: Matheus Lisboa"
-                        value={newUserName}
-                        onChange={(e) => setNewUserName(e.target.value)}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="fq-label fq-label--xs">
-                        Endereço de E-mail (Acesso)
-                      </label>
-                      <input
-                        required
-                        type="email"
-                        className="fq-input text-xs font-mono"
-                        placeholder="Ex: matheus@forceqa.com"
-                        value={newUserEmail}
-                        onChange={(e) => setNewUserEmail(e.target.value)}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="fq-label fq-label--xs">
-                        Senha Inicial (Mínimo de 6 caracteres)
-                      </label>
-                      <input
-                        required
-                        type="password"
-                        className="fq-input text-xs font-mono"
-                        placeholder="Ex: senhatemporaria"
-                        value={newUserPassword}
-                        onChange={(e) => setNewUserPassword(e.target.value)}
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="fq-label fq-label--xs">
-                          Função Operacional
-                        </label>
-                        <select
-                          className="fq-select text-xs font-mono"
-                          value={newUserRole}
-                          onChange={(e) => setNewUserRole(e.target.value as any)}
-                        >
-                          <option value="developer">Developer (DEV)</option>
-                          <option value="qa">QA Analyst (QA)</option>
-                          <option value="dba">Database Admin (DBA)</option>
-                          <option value="admin">Administrator (ADMIN)</option>
-                          <option value="viewer">Viewer (OBS/VIEWER)</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="fq-label fq-label--xs">
-                          Squad de Atuação
-                        </label>
-                        <input
-                          required
-                          type="text"
-                          className="fq-input text-xs font-mono"
-                          placeholder="Ex: Squad Pix"
-                          value={newUserSquad}
-                          onChange={(e) => setNewUserSquad(e.target.value)}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="pt-2">
-                      <button
-                        type="submit"
-                        disabled={isCreatingUser}
-                        className="fq-btn-primary w-full text-xs font-bold uppercase font-mono tracking-wider"
-                      >
-                        {isCreatingUser ? (
-                          <>
-                            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            CADASTRANDO INTEGRANTE...
-                          </>
-                        ) : (
-                          <>
-                            <UserPlus className="w-4 h-4" />
-                            CADASTRAR E VALIDAR CONTA
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </form>
-                </div>
-
-                {/* Panel 2: Live Registered Members List */}
-                <div className="space-y-4 flex flex-col justify-start">
-                  <div className="border-b border-white/[0.03] pb-2">
-                    <h4 className="font-mono text-xs font-bold uppercase text-neutral-500 tracking-wider flex items-center justify-between">
-                      <span>👥 AGENTES OPERATIVOS ATIVOS ({usersList.length})</span>
-                      <span className="text-[9px] text-green-500 uppercase font-black tracking-widest">[SINCRONIZADO]</span>
-                    </h4>
-                    <p className="text-neutral-500 text-[11px] mt-0.5 leading-relaxed">
-                      Todos os usuários cadastrados e habilitados na mesa tática da ForceQA.
-                    </p>
-                  </div>
-
-                  <div className="overflow-y-auto pr-1 max-h-[350px]">
-                    {usersList.length === 0 ? (
-                      <div className="fq-empty-state py-10">
-                        <span className="text-xs text-neutral-500 font-mono">Buscando lista de agentes...</span>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="fq-table-header mb-2">
-                          <span>Agente</span>
-                          <span>Squad</span>
-                          <span className="text-right">Ações</span>
-                        </div>
-                        <div className="space-y-2">
-                      {usersList.map((usr: any) => {
-                        const isEditing = editingUserId === usr.id;
-
-                        if (isEditing) {
-                          return (
-                            <div key={usr.id} className="fq-table-row--editing font-mono">
-                              <div className="grid grid-cols-2 gap-2">
-                                <div>
-                                  <label className="fq-label fq-label--xs !text-[9px] !mb-1">Nome</label>
-                                  <input
-                                    type="text"
-                                    value={editingName}
-                                    onChange={(e) => setEditingName(e.target.value)}
-                                    className="fq-input text-xs py-1.5"
-                                    placeholder="Nome"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="fq-label fq-label--xs !text-[9px] !mb-1">Squad</label>
-                                  <input
-                                    type="text"
-                                    value={editingSquad}
-                                    onChange={(e) => setEditingSquad(e.target.value)}
-                                    className="fq-input text-xs py-1.5"
-                                    placeholder="Squad"
-                                  />
-                                </div>
-                              </div>
-                              <div className="flex justify-between items-end gap-2">
-                                <div className="flex-1">
-                                  <label className="fq-label fq-label--xs !text-[9px] !mb-1">Função</label>
-                                  <select
-                                    value={editingRole}
-                                    onChange={(e) => setEditingRole(e.target.value as any)}
-                                    className="fq-select text-xs py-1.5"
-                                  >
-                                    <option value="developer">DEV</option>
-                                    <option value="qa">QA</option>
-                                    <option value="dba">DBA</option>
-                                    <option value="devops">DEVOPS</option>
-                                    <option value="scrum_master">SCRUM MASTER</option>
-                                    <option value="admin">ADMIN</option>
-                                    <option value="viewer">VIEWER</option>
-                                  </select>
-                                </div>
-                                <div className="flex gap-1.5 pb-[2px]">
-                                  <button
-                                    onClick={() => handleSaveEdit(usr.id)}
-                                    className="fq-btn-primary text-xs py-1.5 px-2"
-                                    title="Confirmar Alteração"
-                                  >
-                                    <Check className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    onClick={handleCancelEdit}
-                                    className="fq-btn-ghost text-xs py-1.5 px-2"
-                                    title="Cancelar"
-                                  >
-                                    <X className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        }
-
-                        return (
-                          <div key={usr.id} className="fq-table-row group">
-                            <div className="min-w-0 space-y-0.5">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-semibold text-neutral-100 text-xs truncate">{usr.name}</span>
-                                <RoleBadge role={usr.role} />
-                              </div>
-                              <div className="text-[10px] font-mono text-neutral-500 leading-none truncate">
-                                {usr.email}
-                              </div>
-                            </div>
-                            <div className="text-right font-mono text-[9px] uppercase text-neutral-400 fq-badge bg-white/[0.03] border-white/[0.06] py-0.5 px-2">
-                              {usr.squad || "Sem Squad"}
-                            </div>
-                            <div className="flex items-center justify-end gap-1">
-                              <button
-                                onClick={() => handleStartEdit(usr)}
-                                className="fq-btn-icon !p-1"
-                                title="Editar membro"
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteUser(usr.id)}
-                                className="fq-btn-icon !p-1 hover:text-red-400 hover:bg-red-500/10"
-                                title="Excluir membro"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          </div>
+          <AdminUsersModal
+            open={isAdminUsersModalOpen}
+            onClose={() => setIsAdminUsersModalOpen(false)}
+          />
         )}
       </AnimatePresence>
     </div>

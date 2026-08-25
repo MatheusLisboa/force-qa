@@ -12,13 +12,13 @@ import {
   ActivityLog,
   AISuggestion,
   AIDuplicateCheck,
-  AIWarRoomSummary,
   UserProfile,
 } from "../types";
 import type { BoardReportMetrics, AIExecutiveReport } from "./aiReport/types";
-import { BoardView, BoardViewFilters, Project } from "../types";
+import { BoardView, BoardViewFilters, Project, AppNotification } from "../types";
 import { DEFAULT_KANBAN_COLUMNS } from "./kanbanColumns";
 import { slugifyBoardViewName } from "./boardViews";
+import { authFetch, readApiError } from "./apiClient";
 
 function cleanUndefined<T extends object>(obj: T): T {
   const result = { ...obj } as Record<string, unknown>;
@@ -29,7 +29,8 @@ function cleanUndefined<T extends object>(obj: T): T {
 }
 
 function generateId(prefix: string): string {
-  return prefix + Math.random().toString(36).substring(2, 11).toUpperCase();
+  const uuid = crypto.randomUUID();
+  return `${prefix}${uuid}`;
 }
 
 function warRoomToRow(data: Omit<WarRoom, "id" | "createdAt">, customId: string) {
@@ -184,6 +185,12 @@ export async function createBug(
 ): Promise<string> {
   const customId = generateId("bug-");
   try {
+    if (data.evidenceUrl?.startsWith("data:")) {
+      throw new Error("Evidências devem ser enviadas como arquivo (Storage), não Base64.");
+    }
+    if (data.prototypeUrl?.startsWith("data:")) {
+      throw new Error("Protótipos devem ser enviados como arquivo (Storage), não Base64.");
+    }
     const now = new Date().toISOString();
     const row = cleanUndefined({
       id: customId,
@@ -258,6 +265,7 @@ export async function updateBugField(
   if (fields.priority !== undefined) payload.priority = fields.priority;
   if (fields.type !== undefined) payload.type = fields.type;
   if (fields.reopenCount !== undefined) payload.reopen_count = fields.reopenCount;
+  if (fields.archived !== undefined) payload.archived = fields.archived;
 
   const { error } = await supabase.from("bugs").update(payload).eq("id", bugId);
   if (error) handleDbError(error, OperationType.UPDATE, `bugs/${bugId}`);
@@ -270,6 +278,90 @@ export async function updateBugField(
     type: logType,
     description: logDescription,
   });
+
+  if (fields.ownerId && fields.ownerId !== userId) {
+    await createNotification({
+      userId: fields.ownerId,
+      type: "assignment",
+      title: `${userName} atribuiu um card para você`,
+      body: logDescription,
+      warRoomId,
+      bugId,
+    });
+  }
+}
+
+export async function archiveBug(
+  bugId: string,
+  warRoomId: string,
+  userId: string,
+  userName: string
+): Promise<void> {
+  await updateBugField(
+    bugId,
+    warRoomId,
+    { archived: true },
+    userId,
+    userName,
+    "Arquivou o card",
+    "archive"
+  );
+}
+
+export async function joinWarRoom(input: string): Promise<string> {
+  const response = await authFetch("/api/rooms/join", {
+    method: "POST",
+    body: JSON.stringify({ input }),
+  });
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Não foi possível entrar na sala."));
+  }
+  const data = await response.json();
+  return data.roomId as string;
+}
+
+export async function inviteToRoom(roomId: string, email: string): Promise<{ invited: boolean; alreadyMember: boolean }> {
+  const response = await authFetch("/api/rooms/invite", {
+    method: "POST",
+    body: JSON.stringify({ roomId, email }),
+  });
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Não foi possível enviar o convite."));
+  }
+  return response.json();
+}
+
+export async function createNotification(
+  data: Omit<AppNotification, "id" | "createdAt" | "readAt">
+): Promise<void> {
+  const { error } = await supabase.from("notifications").insert({
+    user_id: data.userId,
+    type: data.type,
+    title: data.title,
+    body: data.body,
+    war_room_id: data.warRoomId || null,
+    bug_id: data.bugId || null,
+  });
+  if (error) {
+    console.error("createNotification:", error);
+  }
+}
+
+export async function markNotificationRead(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("notifications")
+    .update({ read_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) handleDbError(error, OperationType.UPDATE, `notifications/${id}`);
+}
+
+export async function markAllNotificationsRead(userId: string): Promise<void> {
+  const { error } = await supabase
+    .from("notifications")
+    .update({ read_at: new Date().toISOString() })
+    .eq("user_id", userId)
+    .is("read_at", null);
+  if (error) handleDbError(error, OperationType.UPDATE, "notifications");
 }
 
 // -------------------------
@@ -349,8 +441,13 @@ export async function updateUserProfile(
 }
 
 export async function deleteUserProfile(userId: string): Promise<void> {
-  const { error } = await supabase.from("users").delete().eq("id", userId);
-  if (error) handleDbError(error, OperationType.DELETE, `users/${userId}`);
+  const response = await authFetch("/api/admin/delete-user", {
+    method: "POST",
+    body: JSON.stringify({ userId }),
+  });
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Erro ao remover usuário."));
+  }
 }
 
 // -------------------------
@@ -361,14 +458,12 @@ export async function fetchAISuggestions(
   title: string,
   description: string
 ): Promise<AISuggestion> {
-  const response = await fetch("/api/ai/suggest-bug-fields", {
+  const response = await authFetch("/api/ai/suggest-bug-fields", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ title, description }),
   });
   if (!response.ok) {
-    const errData = await response.json().catch(() => ({}));
-    throw new Error(errData.error || "Failed to fetch AI suggests.");
+    throw new Error(await readApiError(response, "Failed to fetch AI suggests."));
   }
   return response.json();
 }
@@ -378,14 +473,12 @@ export async function fetchAIDuplicateCheck(
   description: string,
   existingBugs: Partial<Bug>[]
 ): Promise<AIDuplicateCheck> {
-  const response = await fetch("/api/ai/detect-duplicate", {
+  const response = await authFetch("/api/ai/detect-duplicate", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ title, description, existingBugs }),
   });
   if (!response.ok) {
-    const errData = await response.json().catch(() => ({}));
-    throw new Error(errData.error || "Failed to fetch Duplication checks.");
+    throw new Error(await readApiError(response, "Failed to fetch Duplication checks."));
   }
   return response.json();
 }
@@ -393,30 +486,12 @@ export async function fetchAIDuplicateCheck(
 export async function fetchAIExecutiveReport(
   metrics: BoardReportMetrics
 ): Promise<AIExecutiveReport> {
-  const response = await fetch("/api/ai/generate-report", {
+  const response = await authFetch("/api/ai/generate-report", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ metrics }),
   });
   if (!response.ok) {
-    const errData = await response.json().catch(() => ({}));
-    throw new Error(errData.error || "Falha ao gerar relatório executivo.");
-  }
-  return response.json();
-}
-
-export async function fetchAIWarRoomSummary(
-  warRoom: WarRoom,
-  bugs: Bug[]
-): Promise<AIWarRoomSummary> {
-  const response = await fetch("/api/ai/summarize-warroom", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ warRoom, bugs }),
-  });
-  if (!response.ok) {
-    const errData = await response.json().catch(() => ({}));
-    throw new Error(errData.error || "Failed to fetch War Room summary report.");
+    throw new Error(await readApiError(response, "Falha ao gerar relatório executivo."));
   }
   return response.json();
 }

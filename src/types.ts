@@ -1,5 +1,5 @@
 /**
- * Type declarations for ForceQA "War Room" Operations board
+ * Type declarations for ForceQA War Room board
  */
 
 export type UserRole = "admin" | "qa" | "developer" | "dba" | "devops" | "scrum_master" | "viewer";
@@ -11,7 +11,8 @@ export interface UserProfile {
   role: UserRole;
   squad: string;
   avatarUrl?: string;
-  createdAt: any; // Firestore server timestamp / Date
+  isGuest?: boolean;
+  createdAt: string;
 }
 
 export type SeverityLevel = "blocker" | "critical" | "high" | "medium" | "low";
@@ -52,7 +53,7 @@ export interface WarRoom {
   status: "active" | "ended" | "paused";
   roomType: RoomType;
   kanbanColumns?: KanbanColumn[];
-  createdAt: any;
+  createdAt: string;
   createdBy: string;
   createdByName?: string;
   guestAccessDisabled?: boolean;
@@ -66,8 +67,8 @@ export interface Bug {
   criticism: SeverityLevel;
   status: BugStatus;
   kanbanColumnId?: string;
-  evidenceUrl?: string; // Base64 data URL, image URL, or external link
-  prototypeUrl?: string; // Optional figma/prototype screenshot
+  evidenceUrl?: string; // Storage public URL or external link
+  prototypeUrl?: string;
   ownerId: string | null;
   ownerName: string | null;
   environment: "production" | "homologation" | "dev";
@@ -76,12 +77,25 @@ export interface Bug {
   tags: string[];
   priority: BugPriority;
   type: BugType;
-  createdAt: any;
-  updatedAt: any;
+  createdAt: string;
+  updatedAt: string;
   createdBy: string;
   createdByName: string;
-  resolvedAt?: any;
+  resolvedAt?: string;
   reopenCount?: number;
+  archived?: boolean;
+}
+
+export interface AppNotification {
+  id: string;
+  userId: string;
+  type: string;
+  title: string;
+  body: string;
+  warRoomId?: string;
+  bugId?: string;
+  readAt?: string | null;
+  createdAt: string;
 }
 
 export interface BugComment {
@@ -92,7 +106,7 @@ export interface BugComment {
   userName: string;
   avatarUrl: string;
   text: string;
-  createdAt: any;
+  createdAt: string;
 }
 
 export interface ActivityLog {
@@ -103,7 +117,7 @@ export interface ActivityLog {
   userName: string;
   type: string; // e.g. "creation", "status_change", "assignment", "comment"
   description: string;
-  createdAt: any;
+  createdAt: string;
 }
 
 export interface AISuggestion {

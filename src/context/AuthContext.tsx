@@ -3,20 +3,24 @@ import { User, Session } from "@supabase/supabase-js";
 import {
   supabase,
   toUserProfile,
-  findWarRoomByIdOrName,
 } from "../lib/supabase";
 import { isUserAlreadyRegistered } from "../lib/authErrors";
 import { UserProfile, UserRole } from "../types";
+import { SIGNUP_ROLES } from "../lib/permissions";
+import { joinWarRoom } from "../lib/services";
 
 interface AuthContextType {
   user: User | null;
   profile: UserProfile | null;
   loading: boolean;
+  passwordRecovery: boolean;
   loginWithEmail: (email: string, password: string, isSignUp: boolean) => Promise<User>;
   signUpUser: (name: string, email: string, password: string, role: UserRole, squad: string) => Promise<User>;
   loginAsGuest: (name: string, squad: string, warRoomName: string) => Promise<string>;
   adminCreateUser: (name: string, email: string, password: string, role: UserRole, squad: string) => Promise<void>;
   changePassword: (newPassword: string) => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<void>;
+  completePasswordRecovery: (newPassword: string) => Promise<void>;
   logout: () => Promise<void>;
   createProfile: (name: string, role: UserRole, squad: string) => Promise<void>;
   updateProfile: (profileData: Partial<UserProfile>) => Promise<void>;
@@ -46,6 +50,7 @@ async function saveProfile(profile: UserProfile): Promise<void> {
     role: profile.role,
     squad: profile.squad,
     avatar_url: profile.avatarUrl || null,
+    is_guest: profile.isGuest ?? false,
     created_at: profile.createdAt || new Date().toISOString(),
   });
 
@@ -63,6 +68,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
   const profileRef = useRef<UserProfile | null>(null);
 
   const applyProfile = (next: UserProfile | null) => {
@@ -106,6 +112,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Evita deadlock/race com signUp + insert do perfil (recomendação Supabase)
         setTimeout(() => {
+          if (event === "PASSWORD_RECOVERY") {
+            setPasswordRecovery(true);
+            setLoading(false);
+            return;
+          }
           if (event === "SIGNED_IN" || event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED") {
             syncProfile(currentUser.id).finally(() => setLoading(false));
           } else {
@@ -153,12 +164,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     squad: string
   ): Promise<User> => {
     const trimmedEmail = email.trim().toLowerCase();
+    const safeRole: UserRole = SIGNUP_ROLES.includes(role) ? role : "viewer";
     const newUserProfile: UserProfile = {
       id: "",
       name: name.trim(),
       email: trimmedEmail,
-      role,
+      role: safeRole,
       squad: squad.trim(),
+      isGuest: false,
       createdAt: new Date().toISOString(),
     };
 
@@ -170,8 +183,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       options: {
         data: {
           name: newUserProfile.name,
-          role,
+          role: safeRole,
           squad: newUserProfile.squad,
+          is_guest: false,
         },
       },
     });
@@ -230,30 +244,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     squad: string,
     warRoomName: string
   ): Promise<string> => {
+    const validateRes = await fetch("/api/guest/validate-room", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ input: warRoomName }),
+    });
+    if (!validateRes.ok) {
+      const errData = await validateRes.json().catch(() => ({}));
+      throw new Error(errData.error || "Não foi possível validar a sala.");
+    }
+    const room = await validateRes.json() as { id: string };
+
     const tempEmail = `guest_${Date.now()}_${Math.floor(Math.random() * 1000)}@guest.forceqa.com`;
-    const tempPassword = `guestPass_${Math.floor(Math.random() * 900000) + 100000}`;
+    const tempPassword = `guestPass_${crypto.randomUUID()}`;
 
     try {
       const { data, error } = await supabase.auth.signUp({
         email: tempEmail,
         password: tempPassword,
+        options: {
+          data: {
+            name: name.trim(),
+            role: "viewer",
+            squad: squad.trim(),
+            is_guest: true,
+          },
+        },
       });
       if (error) throw error;
       if (!data.user || !data.session) {
         throw new Error("Falha ao criar sessão de convidado.");
-      }
-
-      const room = await findWarRoomByIdOrName(warRoomName);
-      if (!room) {
-        throw new Error(
-          "A sala de guerra informada não existe ou o ID é inválido. Verifique se o ID/Nome está correto."
-        );
-      }
-
-      if (room.guestAccessDisabled === true) {
-        throw new Error(
-          "O acesso de convidados (Guest) para esta Sala de Guerra foi desativado pelo administrador."
-        );
       }
 
       const guestProfile: UserProfile = {
@@ -262,13 +282,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: tempEmail,
         role: "viewer",
         squad: squad.trim(),
+        isGuest: true,
         createdAt: new Date().toISOString(),
       };
 
       await saveProfile(guestProfile);
       applyProfile(guestProfile);
       setUser(data.user);
-      return room.id;
+
+      const joinedId = await joinWarRoom(room.id);
+      return joinedId;
     } catch (error) {
       await supabase.auth.signOut();
       applyProfile(null);
@@ -307,6 +330,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (error) throw error;
   };
 
+  const requestPasswordReset = async (email: string) => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+      redirectTo: `${window.location.origin}/`,
+    });
+    if (error) throw error;
+  };
+
+  const completePasswordRecovery = async (newPassword: string) => {
+    if (newPassword.length < 6) {
+      throw new Error("A nova senha deve ter no mínimo 6 caracteres.");
+    }
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+    setPasswordRecovery(false);
+  };
+
   const logout = async () => {
     await supabase.auth.signOut();
     setUser(null);
@@ -315,12 +354,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const createProfile = async (name: string, role: UserRole, squad: string) => {
     if (!user) throw new Error("No authenticated user active.");
+    const safeRole: UserRole = SIGNUP_ROLES.includes(role) ? role : "viewer";
     const newProfile: UserProfile = {
       id: user.id,
       name,
       email: user.email || "",
-      role,
+      role: safeRole,
       squad,
+      isGuest: false,
       createdAt: new Date().toISOString(),
     };
     if (user.user_metadata?.avatar_url) {
@@ -337,6 +378,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ...profileData,
       id: user.id,
       email: profile.email,
+      role: profile.role,
+      isGuest: profile.isGuest,
     };
     await saveProfile(updated);
     applyProfile(updated);
@@ -348,11 +391,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user,
         profile,
         loading,
+        passwordRecovery,
         loginWithEmail,
         signUpUser,
         loginAsGuest,
         adminCreateUser,
         changePassword,
+        requestPasswordReset,
+        completePasswordRecovery,
         logout,
         createProfile,
         updateProfile,

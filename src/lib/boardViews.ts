@@ -37,7 +37,8 @@ export function filterItemsByView<T extends Pick<Bug, "type" | "status" | "criti
   return items.filter((item) => {
     if (f.types?.length) {
       const allowed = f.types.map(normalizeType);
-      if (!allowed.includes(item.type) && !f.types.includes(item.type)) return false;
+      const itemType = normalizeType(item.type);
+      if (!allowed.includes(itemType) && !f.types.includes(item.type)) return false;
     }
     if (f.statuses?.length && !f.statuses.includes(item.status)) return false;
     const severity = itemSeverity(item);

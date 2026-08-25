@@ -25,7 +25,7 @@ export const SeverityBadge: React.FC<
   const config = getSeverityConfig(severity);
   return (
     <span
-      className={`fq-badge font-mono font-bold uppercase ${config.className} ${SIZE_CLASSES[size]}`}
+      className={`fq-badge font-medium ${config.className} ${SIZE_CLASSES[size]}`}
     >
       {config.label}
     </span>
@@ -38,7 +38,7 @@ export const StatusBadge: React.FC<
   const config = getStatusConfig(status);
   return (
     <span
-      className={`fq-badge font-mono font-semibold uppercase ${config.className} ${SIZE_CLASSES[size]}`}
+      className={`fq-badge font-medium ${config.className} ${SIZE_CLASSES[size]}`}
     >
       {config.label}
     </span>
@@ -49,7 +49,7 @@ export const RoleBadge: React.FC<{ role: string }> = ({ role }) => {
   const config = getUserRoleConfig(role);
   return (
     <span
-      className={`fq-badge font-mono font-bold uppercase text-[9px] px-1.5 py-0.5 tracking-wide ${config.className}`}
+      className={`fq-badge font-medium text-[10px] px-1.5 py-0.5 ${config.className}`}
     >
       {config.label}
     </span>
@@ -59,7 +59,7 @@ export const RoleBadge: React.FC<{ role: string }> = ({ role }) => {
 export const RoomStatusBadge: React.FC<{ status: WarRoomStatus }> = ({ status }) => {
   const config = getRoomStatusConfig(status);
   return (
-    <span className={`fq-badge font-mono font-bold uppercase ${config.className}`}>
+    <span className={`fq-badge font-medium ${config.className}`}>
       {config.label}
     </span>
   );
@@ -71,10 +71,10 @@ export const RoomTypeBadge: React.FC<{
 }> = ({ type, permanent = false }) => {
   const config = getRoomTypeConfig(type);
   const label =
-    type === "board" && permanent ? "BOARD PERMANENTE" : config.label;
+    type === "board" && permanent ? "Board permanente" : config.label;
 
   return (
-    <span className={`fq-badge font-mono font-bold uppercase ${config.className}`}>
+    <span className={`fq-badge font-medium ${config.className}`}>
       {label}
     </span>
   );

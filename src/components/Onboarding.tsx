@@ -6,12 +6,12 @@ import { motion } from "motion/react";
 import { SquadSelect } from "./SquadSelect";
 
 export const Onboarding: React.FC = () => {
-  const { user, createProfile } = useAuth();
+  const { user, profile, createProfile, updateProfile } = useAuth();
   const [name, setName] = useState(
-    user?.user_metadata?.full_name || user?.user_metadata?.name || ""
+    profile?.name || user?.user_metadata?.full_name || user?.user_metadata?.name || ""
   );
-  const [squad, setSquad] = useState("");
-  const [role, setRole] = useState<UserRole>("developer");
+  const [squad, setSquad] = useState(profile?.squad || "");
+  const [role, setRole] = useState<UserRole>(profile?.role && profile.role !== "admin" ? profile.role : "developer");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -29,7 +29,11 @@ export const Onboarding: React.FC = () => {
     setSubmitting(true);
     setError("");
     try {
-      await createProfile(name.trim(), role, squad.trim());
+      if (profile) {
+        await updateProfile({ name: name.trim(), squad: squad.trim() });
+      } else {
+        await createProfile(name.trim(), role, squad.trim());
+      }
     } catch (err: any) {
       setError("Erro ao criar perfil. Tente novamente.");
       console.error(err);
@@ -52,16 +56,16 @@ export const Onboarding: React.FC = () => {
       icon: Terminal,
     },
     {
-      value: "admin",
-      title: "Admin Commander",
-      desc: "Gerencia canais de salas de guerra, configura parâmetros e analisa consolidados.",
-      icon: Shield,
+      value: "scrum_master",
+      title: "Scrum Master",
+      desc: "Abre salas, acompanha o fluxo e convoca o time para a operação.",
+      icon: Users,
     },
     {
       value: "viewer",
       title: "Viewer (Observador)",
       desc: "Acompanha o progresso da operação em tempo real sem alterar statuses.",
-      icon: Users,
+      icon: Shield,
     },
   ];
 
@@ -125,6 +129,12 @@ export const Onboarding: React.FC = () => {
             <label className="fq-label fq-label--md !mb-3">
               Selecione o seu Papel Operacional (Role)
             </label>
+            {profile?.role ? (
+              <p className="text-xs text-neutral-500 mb-3">
+                Seu papel atual é <span className="text-neutral-200 font-mono">{profile.role}</span>.
+                Apenas um admin pode alterá-lo.
+              </p>
+            ) : null}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {rolesList.map((r) => {
                 const IconComponent = r.icon;
@@ -133,7 +143,8 @@ export const Onboarding: React.FC = () => {
                   <button
                     key={r.value}
                     type="button"
-                    onClick={() => setRole(r.value)}
+                    onClick={() => !profile?.role && setRole(r.value)}
+                    disabled={Boolean(profile?.role)}
                     className={`text-left p-4 rounded-lg border transition fq-surface ${
                       isSelected
                         ? "border-white/20 bg-white/[0.04]"
