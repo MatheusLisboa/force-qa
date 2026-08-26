@@ -873,6 +873,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
       <AnimatePresence>
         {isAdminUsersModalOpen && profile?.role === "admin" && (
           <AdminUsersModal
+            key="admin-users-modal"
             open={isAdminUsersModalOpen}
             onClose={() => setIsAdminUsersModalOpen(false)}
           />

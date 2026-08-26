@@ -370,7 +370,10 @@ export async function joinWarRoom(input: string): Promise<string> {
 
 export async function fetchMembershipPairs(): Promise<Array<{ userId: string; roomId: string }>> {
   const { data, error } = await supabase.from("room_members").select("user_id, war_room_id");
-  if (error) handleDbError(error, OperationType.LIST, "room_members");
+  if (error) {
+    console.error("fetchMembershipPairs:", error);
+    return [];
+  }
   return (data || []).map((row) => ({
     userId: row.user_id as string,
     roomId: row.war_room_id as string,

@@ -3,7 +3,7 @@ import { Check, Edit2, Trash2, UserPlus, X } from "lucide-react";
 import { motion } from "motion/react";
 import { useModalA11y } from "../hooks/useModalA11y";
 import { useAuth } from "../context/AuthContext";
-import { subscribeUsers, subscribeWarRooms } from "../lib/supabase";
+import { supabase, subscribeUsers, toWarRoom } from "../lib/supabase";
 import { deleteUserProfile, fetchMembershipPairs, fetchUserRoomIds, setUserRoomAccess, updateUserProfile } from "../lib/services";
 import { UserProfile, UserRole, WarRoom } from "../types";
 import { RoleBadge } from "./BugBadges";
@@ -38,13 +38,13 @@ function RoomAccessCheckboxes({
   selectedIds: string[];
   onChange: (ids: string[]) => void;
 }) {
-  if (rooms.length === 0) {
+  if (!Array.isArray(rooms) || rooms.length === 0) {
     return <p className="text-[11px] text-neutral-500">Nenhum board cadastrado ainda.</p>;
   }
 
   return (
     <div className="max-h-40 overflow-y-auto space-y-1.5 rounded-md border border-white/[0.06] p-2">
-      {rooms.map((room) => (
+      {rooms.filter((room) => room?.id).map((room) => (
         <label key={room.id} className="flex items-center gap-2 text-xs text-neutral-300 cursor-pointer">
           <input
             type="checkbox"
@@ -88,10 +88,22 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({ open, onClose 
   useEffect(() => {
     if (!open) return;
     const unsubUsers = subscribeUsers(setUsersList);
-    const unsubRooms = subscribeWarRooms(setRooms);
+    let cancelled = false;
+    void (async () => {
+      const { data, error } = await supabase
+        .from("war_rooms")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (cancelled) return;
+      if (error) {
+        console.error("admin users rooms:", error);
+        return;
+      }
+      setRooms((data || []).map(toWarRoom));
+    })();
     return () => {
+      cancelled = true;
       unsubUsers();
-      unsubRooms();
     };
   }, [open]);
 
@@ -192,7 +204,12 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({ open, onClose 
   };
 
   return (
-    <div className="fq-modal-overlay">
+    <div
+      className="fq-modal-overlay"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
       <motion.div
         ref={dialogRef}
         role="dialog"
@@ -202,7 +219,7 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({ open, onClose 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="fq-modal fq-modal--lg max-w-5xl max-h-[90vh] overflow-y-auto"
+        className="fq-modal fq-modal--lg w-full max-w-5xl max-h-[90vh] overflow-y-auto my-6"
       >
         <div className="fq-modal-header">
           <h3 id="admin-users-modal-title" className="fq-modal-title">
@@ -330,7 +347,7 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({ open, onClose 
                     <span className="text-right">Ações</span>
                   </div>
                   <div className="space-y-2">
-                    {usersList.map((usr) => {
+                    {usersList.filter((usr) => usr?.id).map((usr) => {
                       const isEditing = editingUserId === usr.id;
                       if (isEditing) {
                         return (
