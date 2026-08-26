@@ -8,6 +8,7 @@ import { isUserAlreadyRegistered } from "../lib/authErrors";
 import { UserProfile, UserRole } from "../types";
 import { SIGNUP_ROLES } from "../lib/permissions";
 import { joinWarRoom } from "../lib/services";
+import { authFetch, readApiError } from "../lib/apiClient";
 
 interface AuthContextType {
   user: User | null;
@@ -17,7 +18,7 @@ interface AuthContextType {
   loginWithEmail: (email: string, password: string, isSignUp: boolean) => Promise<User>;
   signUpUser: (name: string, email: string, password: string, role: UserRole, squad: string) => Promise<User>;
   loginAsGuest: (name: string, squad: string, warRoomName: string) => Promise<string>;
-  adminCreateUser: (name: string, email: string, password: string, role: UserRole, squad: string) => Promise<void>;
+  adminCreateUser: (name: string, email: string, password: string, role: UserRole, squad: string) => Promise<string>;
   changePassword: (newPassword: string) => Promise<void>;
   requestPasswordReset: (email: string) => Promise<void>;
   completePasswordRecovery: (newPassword: string) => Promise<void>;
@@ -307,22 +308,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     role: UserRole,
     squad: string
   ) => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) throw new Error("Sessão expirada. Faça login novamente.");
-
-    const response = await fetch("/api/admin/create-user", {
+    const response = await authFetch("/api/admin/create-user", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${session.access_token}`,
-      },
       body: JSON.stringify({ name, email, password, role, squad }),
     });
 
     if (!response.ok) {
-      const errData = await response.json().catch(() => ({}));
-      throw new Error(errData.error || "Erro ao criar usuário.");
+      throw new Error(await readApiError(response, "Erro ao criar usuário."));
     }
+
+    const data = await response.json().catch(() => ({}));
+    return String(data.userId || "");
   };
 
   const changePassword = async (newPassword: string) => {

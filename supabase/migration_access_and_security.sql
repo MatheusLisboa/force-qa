@@ -129,6 +129,21 @@ AS $$
   );
 $$;
 
+CREATE OR REPLACE FUNCTION public.can_guest_join_room(p_room_id TEXT)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT public.is_guest_user()
+    AND EXISTS (
+      SELECT 1 FROM public.war_rooms wr
+      WHERE wr.id = p_room_id
+        AND NOT COALESCE(wr.guest_access_disabled, false)
+    );
+$$;
+
 CREATE OR REPLACE FUNCTION public.can_write_bugs()
 RETURNS BOOLEAN
 LANGUAGE sql
@@ -327,7 +342,7 @@ CREATE POLICY "room_members_insert" ON public.room_members
   WITH CHECK (
     (
       user_id = auth.uid()
-      AND public.can_join_room(war_room_id)
+      AND public.can_guest_join_room(war_room_id)
     )
     OR public.is_admin()
     OR (
@@ -338,7 +353,14 @@ CREATE POLICY "room_members_insert" ON public.room_members
 
 CREATE POLICY "room_members_delete" ON public.room_members
   FOR DELETE TO authenticated
-  USING (public.is_admin() OR user_id = auth.uid());
+  USING (
+    public.is_admin()
+    OR user_id = auth.uid()
+    OR (
+      public.current_user_role() IN ('qa', 'scrum_master')
+      AND public.is_room_member(war_room_id)
+    )
+  );
 
 DROP POLICY IF EXISTS "bugs_select" ON public.bugs;
 DROP POLICY IF EXISTS "bugs_insert" ON public.bugs;

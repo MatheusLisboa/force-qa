@@ -19,7 +19,7 @@ npm install
 ### 2. Configurar Supabase
 
 1. Acesse o [Dashboard Supabase](https://supabase.com/dashboard/project/bdvpzgrgwgcvfgflelbn)
-2. Em **SQL Editor**, siga a ordem em [`supabase/00_run_order.sql`](supabase/00_run_order.sql). Em um banco já existente, rode pelo menos [`supabase/migration_access_and_security.sql`](supabase/migration_access_and_security.sql)
+2. Em **SQL Editor**, siga a ordem em [`supabase/00_run_order.sql`](supabase/00_run_order.sql). Em um banco já existente, rode [`supabase/migration_access_and_security.sql`](supabase/migration_access_and_security.sql) e [`supabase/migration_room_access_ui.sql`](supabase/migration_room_access_ui.sql)
 3. Em **Authentication → Providers**, habilite **Email** e desative **Confirm email** (para login imediato em dev)
 4. Em **Project Settings → API**, copie:
    - `anon` `public` key → `VITE_SUPABASE_ANON_KEY`

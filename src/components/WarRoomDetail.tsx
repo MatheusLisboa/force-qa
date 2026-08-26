@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { subscribeWarRoom, subscribeBugsByRoom, subscribeBoardViews, subscribeProjectByWarRoomId } from "../lib/supabase";
-import { updateBugField, updateWarRoom, deleteWarRoom, inviteToRoom } from "../lib/services";
+import { updateBugField, updateWarRoom, deleteWarRoom } from "../lib/services";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 import { WarRoom, Bug, BugStatus, BugType, BoardView, Project, KanbanColumn } from "../types";
@@ -9,6 +9,7 @@ import { AIReportModal } from "./AIReportModal";
 import { BoardViewSwitcher } from "./BoardViewSwitcher";
 import { KanbanBoard } from "./KanbanBoard";
 import { CreateBugModal } from "./CreateBugModal";
+import { RoomMembersPanel } from "./RoomMembersPanel";
 import {
   filterItemsByView,
   readStoredBoardViewId,
@@ -75,9 +76,6 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
   const [boardViewsLoading, setBoardViewsLoading] = useState(true);
   const [project, setProject] = useState<Project | null>(null);
   const [activeBoardViewId, setActiveBoardViewId] = useState<string | null>(null);
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteBusy, setInviteBusy] = useState(false);
-  const [inviteMessage, setInviteMessage] = useState("");
   const [isCoarsePointer, setIsCoarsePointer] = useState(false);
   const [isAiReportModalOpen, setIsAiReportModalOpen] = useState(false);
   const [aiReportAutoGenerate, setAiReportAutoGenerate] = useState(false);
@@ -473,8 +471,8 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
         </div>
       </div>
 
-      {/* Admin Panel for room creator or admin */}
-      {(profile?.role === "admin" || warRoom.createdBy === profile?.id) && (
+      {/* Admin / members panel */}
+      {(profile?.role === "admin" || warRoom.createdBy === profile?.id || canInviteToRoom(profile?.role)) && (
         <div className="fq-admin-bar shrink-0">
           <div className="flex items-center gap-3">
             <Sliders className="w-5 h-5 text-neutral-400" />
@@ -484,12 +482,15 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
               </h4>
               <p className="text-[12px] text-neutral-500">
                 {profile?.role === "admin"
-                  ? "Admin: controle total sobre status, acesso e exclusão."
-                  : "Gerencie status, acesso de convidados e exclusão da sala."}
+                  ? "Defina quem vê esta sala, status, convidados e exclusão."
+                  : canInviteToRoom(profile?.role) && warRoom.createdBy !== profile?.id
+                    ? "Adicione ou remova quem pode ver este board."
+                    : "Gerencie status, acesso de convidados e exclusão da sala."}
               </p>
             </div>
           </div>
 
+          {(profile?.role === "admin" || warRoom.createdBy === profile?.id) && (
           <div className="flex flex-wrap items-center gap-3">
             {warRoom.roomType !== "board" && (
               <div className="fq-filter-chip">
@@ -528,50 +529,6 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
               Bloquear Acesso Convidado (Guest)
             </label>
 
-            {canInviteToRoom(profile?.role) && (
-              <form
-                className="flex items-center gap-2"
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  if (!inviteEmail.trim() || inviteBusy) return;
-                  setInviteBusy(true);
-                  setInviteMessage("");
-                  try {
-                    const result = await inviteToRoom(roomId, inviteEmail.trim());
-                    setInviteEmail("");
-                    if (result.alreadyMember) {
-                      setInviteMessage("Já é membro desta sala.");
-                    } else if (result.invited) {
-                      setInviteMessage("Convite enviado por e-mail.");
-                    } else {
-                      setInviteMessage("Usuário adicionado à sala.");
-                    }
-                  } catch (err: unknown) {
-                    setInviteMessage(err instanceof Error ? err.message : "Falha ao convidar.");
-                  } finally {
-                    setInviteBusy(false);
-                  }
-                }}
-              >
-                <input
-                  type="email"
-                  required
-                  placeholder="email@empresa.com"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  className="fq-input !py-1.5 !text-xs w-44"
-                />
-                <button type="submit" disabled={inviteBusy} className="fq-btn-secondary text-xs !py-1.5">
-                  {inviteBusy ? "..." : "Convidar"}
-                </button>
-                {inviteMessage && (
-                  <span className="text-[10px] font-mono text-neutral-400 max-w-[160px] truncate" title={inviteMessage}>
-                    {inviteMessage}
-                  </span>
-                )}
-              </form>
-            )}
-
             <button
               onClick={async () => {
                 if (!window.confirm("Excluir esta sala? Cards e histórico serão removidos. Esta ação não pode ser desfeita.")) {
@@ -590,6 +547,9 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
               Excluir {warRoom.roomType === "board" ? "Board" : "War Room"}
             </button>
           </div>
+          )}
+
+          {canInviteToRoom(profile?.role) && <RoomMembersPanel roomId={roomId} />}
 
           {profile?.role === "admin" && warRoom.roomType === "board" && (
             <div className="w-full basis-full pt-3 mt-1 border-t border-white/[0.06]">

@@ -20,6 +20,7 @@ import { BoardView, BoardViewFilters, Project, AppNotification } from "../types"
 import { DEFAULT_KANBAN_COLUMNS } from "./kanbanColumns";
 import { slugifyBoardViewName } from "./boardViews";
 import { authFetch, readApiError } from "./apiClient";
+import { diffRoomAccess } from "./roomAccess";
 
 function cleanUndefined<T extends object>(obj: T): T {
   const result = { ...obj } as Record<string, unknown>;
@@ -309,29 +310,6 @@ export async function archiveBug(
   );
 }
 
-function isIgnorableMembershipError(error: { code?: string; message?: string } | null): boolean {
-  if (!error) return true;
-  const code = error.code || "";
-  const message = (error.message || "").toLowerCase();
-  return (
-    code === "23505" ||
-    code === "42P01" ||
-    code === "PGRST205" ||
-    message.includes("room_members") && message.includes("does not exist")
-  );
-}
-
-async function ensureRoomMembership(roomId: string, userId: string): Promise<void> {
-  const { error } = await supabase.from("room_members").insert({
-    war_room_id: roomId,
-    user_id: userId,
-    added_by: userId,
-  });
-  if (error && !isIgnorableMembershipError(error)) {
-    console.warn("ensureRoomMembership:", error);
-  }
-}
-
 async function joinWarRoomViaApi(input: string): Promise<string> {
   const response = await authFetch("/api/rooms/join", {
     method: "POST",
@@ -353,9 +331,18 @@ export async function joinWarRoom(input: string): Promise<string> {
   if (!userId) throw new Error("Sessão expirada. Faça login novamente.");
 
   const visible = await findWarRoomByIdOrName(trimmed);
-  if (visible) {
-    await ensureRoomMembership(visible.id, userId);
-    return visible.id;
+  if (visible) return visible.id;
+
+  const { data: profile } = await supabase
+    .from("users")
+    .select("is_guest")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (!profile?.is_guest) {
+    throw new Error(
+      "Você não tem acesso a esta sala. Peça a um admin para marcar o board em Usuários."
+    );
   }
 
   const { error } = await supabase.from("room_members").insert({
@@ -367,7 +354,11 @@ export async function joinWarRoom(input: string): Promise<string> {
     return trimmed;
   }
   if (error.code === "23503") {
-    throw new Error("Sala não encontrada. Confira o ID.");
+    try {
+      return await joinWarRoomViaApi(trimmed);
+    } catch {
+      throw new Error("Sala não encontrada. Confira o ID.");
+    }
   }
 
   try {
@@ -377,15 +368,115 @@ export async function joinWarRoom(input: string): Promise<string> {
   }
 }
 
-export async function inviteToRoom(roomId: string, email: string): Promise<{ invited: boolean; alreadyMember: boolean }> {
-  const response = await authFetch("/api/rooms/invite", {
-    method: "POST",
-    body: JSON.stringify({ roomId, email }),
+export async function fetchMembershipPairs(): Promise<Array<{ userId: string; roomId: string }>> {
+  const { data, error } = await supabase.from("room_members").select("user_id, war_room_id");
+  if (error) handleDbError(error, OperationType.LIST, "room_members");
+  return (data || []).map((row) => ({
+    userId: row.user_id as string,
+    roomId: row.war_room_id as string,
+  }));
+}
+
+export async function fetchUserRoomIds(userId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("room_members")
+    .select("war_room_id")
+    .eq("user_id", userId);
+  if (error) handleDbError(error, OperationType.LIST, `room_members/${userId}`);
+  return (data || []).map((row) => row.war_room_id as string);
+}
+
+export async function fetchRoomMemberIds(roomId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("room_members")
+    .select("user_id")
+    .eq("war_room_id", roomId);
+  if (error) handleDbError(error, OperationType.LIST, `room_members/${roomId}`);
+  return (data || []).map((row) => row.user_id as string);
+}
+
+export async function addRoomMember(
+  roomId: string,
+  userId: string,
+  addedBy: string
+): Promise<void> {
+  const { error } = await supabase.from("room_members").insert({
+    war_room_id: roomId,
+    user_id: userId,
+    added_by: addedBy,
   });
-  if (!response.ok) {
-    throw new Error(await readApiError(response, "Não foi possível enviar o convite."));
+  if (error && error.code !== "23505") {
+    handleDbError(error, OperationType.CREATE, `room_members/${roomId}/${userId}`);
   }
-  return response.json();
+}
+
+export async function removeRoomMember(roomId: string, userId: string): Promise<void> {
+  const { error } = await supabase
+    .from("room_members")
+    .delete()
+    .eq("war_room_id", roomId)
+    .eq("user_id", userId);
+  if (error) handleDbError(error, OperationType.DELETE, `room_members/${roomId}/${userId}`);
+}
+
+export async function setUserRoomAccess(
+  userId: string,
+  roomIds: string[],
+  actorId: string
+): Promise<void> {
+  const current = await fetchUserRoomIds(userId);
+  const { add, remove } = diffRoomAccess(current, roomIds);
+  await Promise.all([
+    ...add.map((roomId) => addRoomMember(roomId, userId, actorId)),
+    ...remove.map((roomId) => removeRoomMember(roomId, userId)),
+  ]);
+}
+
+async function addExistingUserToRoomByEmail(
+  roomId: string,
+  email: string
+): Promise<{ invited: boolean; alreadyMember: boolean }> {
+  const normalized = email.trim().toLowerCase();
+  const { data: sessionData } = await supabase.auth.getSession();
+  const actorId = sessionData.session?.user.id;
+  if (!actorId) throw new Error("Sessão expirada. Faça login novamente.");
+
+  const { data: profile, error } = await supabase
+    .from("users")
+    .select("id")
+    .eq("email", normalized)
+    .maybeSingle();
+  if (error) handleDbError(error, OperationType.GET, "users");
+  if (!profile) {
+    throw new Error(
+      "Usuário ainda não cadastrado. Cadastre-o em Usuários e marque os boards de acesso."
+    );
+  }
+
+  const memberIds = await fetchRoomMemberIds(roomId);
+  if (memberIds.includes(profile.id)) {
+    return { invited: false, alreadyMember: true };
+  }
+
+  await addRoomMember(roomId, profile.id, actorId);
+  return { invited: false, alreadyMember: false };
+}
+
+export async function inviteToRoom(
+  roomId: string,
+  email: string
+): Promise<{ invited: boolean; alreadyMember: boolean }> {
+  try {
+    const response = await authFetch("/api/rooms/invite", {
+      method: "POST",
+      body: JSON.stringify({ roomId, email }),
+    });
+    if (response.ok) return response.json();
+  } catch (error) {
+    console.warn("inviteToRoom API:", error);
+  }
+
+  return addExistingUserToRoomByEmail(roomId, email);
 }
 
 export async function createNotification(

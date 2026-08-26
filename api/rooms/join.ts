@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { httpErrorStatus, readJsonBody, requireUser } from "../_lib/auth";
-import { joinRoom } from "../_lib/rooms";
+import { httpErrorStatus, readJsonBody, requireUser } from "../shared/auth";
+import { joinRoom } from "../shared/rooms";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {

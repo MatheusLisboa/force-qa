@@ -3,10 +3,10 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import { generateExecutiveReport } from "./api/ai/generate-report";
-import { httpErrorStatus, requireAdmin, requireUser } from "./api/_lib/auth";
-import { adminCreateUser, adminDeleteUser } from "./api/_lib/adminUsers";
-import { inviteToRoom, joinRoom, validateGuestRoom } from "./api/_lib/rooms";
-import { detectDuplicate, suggestBugFields } from "./api/_lib/geminiBugs";
+import { httpErrorStatus, requireAdmin, requireUser } from "./api/shared/auth";
+import { adminCreateUser, adminDeleteUser } from "./api/shared/adminUsers";
+import { inviteToRoom, joinRoom, validateGuestRoom } from "./api/shared/rooms";
+import { detectDuplicate, suggestBugFields } from "./api/shared/geminiBugs";
 
 dotenv.config();
 

@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { httpErrorStatus, requireUser } from "../_lib/auth";
-import { detectDuplicate } from "../_lib/geminiBugs";
+import { httpErrorStatus, readJsonBody, requireUser } from "../shared/auth";
+import { detectDuplicate } from "../shared/geminiBugs";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
@@ -10,10 +10,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     await requireUser(req.headers.authorization);
+    const body = readJsonBody(req.body);
     const result = await detectDuplicate(
-      String(req.body?.title || ""),
-      req.body?.description,
-      Array.isArray(req.body?.existingBugs) ? req.body.existingBugs : []
+      String(body.title || ""),
+      typeof body.description === "string" ? body.description : undefined,
+      Array.isArray(body.existingBugs)
+        ? (body.existingBugs as Array<{ id?: string; title?: string; description?: string }>)
+        : []
     );
     return res.status(200).json(result);
   } catch (error: unknown) {

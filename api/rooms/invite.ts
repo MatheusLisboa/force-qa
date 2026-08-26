@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { httpErrorStatus, requireUser } from "../_lib/auth";
-import { inviteToRoom } from "../_lib/rooms";
+import { httpErrorStatus, readJsonBody, requireUser } from "../shared/auth";
+import { inviteToRoom } from "../shared/rooms";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
@@ -10,12 +10,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const authed = await requireUser(req.headers.authorization);
+    const body = readJsonBody(req.body);
     const origin = String(req.headers.origin || process.env.APP_URL || "https://force-qa.vercel.app");
     const result = await inviteToRoom({
       actorId: authed.user.id,
       actorRole: authed.role,
-      roomId: String(req.body?.roomId || ""),
-      email: String(req.body?.email || ""),
+      roomId: String(body.roomId || ""),
+      email: String(body.email || ""),
       redirectTo: `${origin.replace(/\/$/, "")}/`,
     });
     return res.status(200).json(result);

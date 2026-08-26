@@ -766,13 +766,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
           </div>
           <div>
             <h4 className="text-[13px] font-medium text-neutral-300 mb-2.5 flex items-center gap-1.5">
-              <Key className="w-3.5 h-3.5 text-neutral-500" /> Entrar com ID
+              <Key className="w-3.5 h-3.5 text-neutral-500" /> Abrir sala com acesso
             </h4>
             <form onSubmit={handleEnterRoomById} className="flex gap-2">
               <input
                 type="text"
                 required
-                placeholder="Cole o ID da sala"
+                placeholder="Cole o ID de uma sala que você já pode ver"
                 className="fq-input flex-1"
                 value={enterRoomIdInput}
                 onChange={(e) => setEnterRoomIdInput(e.target.value)}

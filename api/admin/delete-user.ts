@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { httpErrorStatus, requireAdmin } from "../_lib/auth";
-import { adminDeleteUser } from "../_lib/adminUsers";
+import { adminDeleteUser } from "../shared/adminUsers";
+import { httpErrorStatus, readJsonBody, requireAdmin } from "../shared/auth";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
@@ -10,7 +10,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     await requireAdmin(req.headers.authorization);
-    await adminDeleteUser(String(req.body?.userId || ""));
+    const body = readJsonBody(req.body);
+    await adminDeleteUser(String(body.userId || ""));
     return res.status(200).json({ success: true });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Falha ao remover usuário.";

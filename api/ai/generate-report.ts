@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { httpErrorStatus, requireUser } from "../_lib/auth";
+import { httpErrorStatus, readJsonBody, requireUser } from "../shared/auth";
 
 // ---------------------------------------------------------------------------
 // AI Report
@@ -198,7 +198,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     await requireUser(req.headers.authorization);
-    const result = await generateExecutiveReport(req.body?.metrics);
+    const body = readJsonBody(req.body);
+    const result = await generateExecutiveReport(body.metrics);
     return res.status(200).json(result);
   } catch (error: unknown) {
     const message =

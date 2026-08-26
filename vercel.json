@@ -4,7 +4,7 @@
   "framework": null,
   "functions": {
     "api/**/*.ts": {
-      "includeFiles": "api/_lib/**"
+      "includeFiles": "api/shared/**"
     }
   },
   "rewrites": [

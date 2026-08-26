@@ -39,6 +39,21 @@ export async function joinRoom(userId: string, input: string, isGuest: boolean):
   }
 
   const roomId = row.id as string;
+
+  if (!isGuest) {
+    const { data: membership } = await admin
+      .from("room_members")
+      .select("user_id")
+      .eq("war_room_id", roomId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (membership) return roomId;
+    throw Object.assign(
+      new Error("Você não tem acesso a esta sala. Peça a um admin para adicionar você em Usuários."),
+      { status: 403 }
+    );
+  }
+
   const { error } = await admin.from("room_members").insert({
     war_room_id: roomId,
     user_id: userId,

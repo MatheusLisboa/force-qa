@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { httpErrorStatus, requireAdmin } from "../_lib/auth";
-import { adminCreateUser } from "../_lib/adminUsers";
+import { adminCreateUser } from "../shared/adminUsers";
+import { httpErrorStatus, readJsonBody, requireAdmin } from "../shared/auth";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
@@ -10,8 +10,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     await requireAdmin(req.headers.authorization);
-    const { name, email, password, role, squad } = req.body || {};
-    const userId = await adminCreateUser({ name, email, password, role, squad });
+    const body = readJsonBody(req.body);
+    const userId = await adminCreateUser({
+      name: String(body.name || ""),
+      email: String(body.email || ""),
+      password: String(body.password || ""),
+      role: String(body.role || ""),
+      squad: String(body.squad || ""),
+    });
     return res.status(200).json({ success: true, userId });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Falha ao criar usuário.";

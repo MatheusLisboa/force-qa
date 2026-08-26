@@ -29,7 +29,7 @@ function extractApiErrorMessage(errData: unknown): string | null {
     const nested = error as { message?: unknown; code?: unknown };
     if (typeof nested.message === "string" && nested.message.trim()) return nested.message;
     if (typeof nested.code === "string" && nested.code === "FUNCTION_INVOCATION_FAILED") {
-      return "Falha no servidor ao entrar na sala. Tente de novo em instantes.";
+      return "Falha no servidor. Tente de novo em instantes.";
     }
   }
   return null;

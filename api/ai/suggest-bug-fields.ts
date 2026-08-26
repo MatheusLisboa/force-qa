@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { httpErrorStatus, requireUser } from "../_lib/auth";
-import { suggestBugFields } from "../_lib/geminiBugs";
+import { httpErrorStatus, readJsonBody, requireUser } from "../shared/auth";
+import { suggestBugFields } from "../shared/geminiBugs";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
@@ -10,7 +10,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     await requireUser(req.headers.authorization);
-    const result = await suggestBugFields(String(req.body?.title || ""), req.body?.description);
+    const body = readJsonBody(req.body);
+    const result = await suggestBugFields(
+      String(body.title || ""),
+      typeof body.description === "string" ? body.description : undefined
+    );
     return res.status(200).json(result);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to analyze bug fields";

@@ -3,9 +3,9 @@ import { Check, Edit2, Trash2, UserPlus, X } from "lucide-react";
 import { motion } from "motion/react";
 import { useModalA11y } from "../hooks/useModalA11y";
 import { useAuth } from "../context/AuthContext";
-import { subscribeUsers } from "../lib/supabase";
-import { deleteUserProfile, updateUserProfile } from "../lib/services";
-import { UserProfile, UserRole } from "../types";
+import { subscribeUsers, subscribeWarRooms } from "../lib/supabase";
+import { deleteUserProfile, fetchMembershipPairs, fetchUserRoomIds, setUserRoomAccess, updateUserProfile } from "../lib/services";
+import { UserProfile, UserRole, WarRoom } from "../types";
 import { RoleBadge } from "./BugBadges";
 import { SquadSelect } from "./SquadSelect";
 
@@ -24,8 +24,46 @@ const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
   { value: "viewer", label: "Viewer" },
 ];
 
+function toggleId(ids: string[], id: string, checked: boolean): string[] {
+  if (checked) return ids.includes(id) ? ids : [...ids, id];
+  return ids.filter((item) => item !== id);
+}
+
+function RoomAccessCheckboxes({
+  rooms,
+  selectedIds,
+  onChange,
+}: {
+  rooms: WarRoom[];
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  if (rooms.length === 0) {
+    return <p className="text-[11px] text-neutral-500">Nenhum board cadastrado ainda.</p>;
+  }
+
+  return (
+    <div className="max-h-40 overflow-y-auto space-y-1.5 rounded-md border border-white/[0.06] p-2">
+      {rooms.map((room) => (
+        <label key={room.id} className="flex items-center gap-2 text-xs text-neutral-300 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={selectedIds.includes(room.id)}
+            onChange={(e) => onChange(toggleId(selectedIds, room.id, e.target.checked))}
+            className="rounded border-neutral-700 text-teal-400 bg-transparent focus:ring-0"
+          />
+          <span className="truncate">{room.name}</span>
+          <span className="ml-auto shrink-0 text-[10px] font-mono text-neutral-500">
+            {room.roomType === "board" ? "board" : "sala"}
+          </span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
 export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({ open, onClose }) => {
-  const { adminCreateUser } = useAuth();
+  const { adminCreateUser, profile } = useAuth();
   const dialogRef = useRef<HTMLDivElement>(null);
   useModalA11y(open, onClose, dialogRef);
 
@@ -42,11 +80,39 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({ open, onClose 
   const [editingName, setEditingName] = useState("");
   const [editingRole, setEditingRole] = useState<UserRole>("developer");
   const [editingSquad, setEditingSquad] = useState("");
+  const [editingRoomIds, setEditingRoomIds] = useState<string[]>([]);
+  const [newUserRoomIds, setNewUserRoomIds] = useState<string[]>([]);
+  const [rooms, setRooms] = useState<WarRoom[]>([]);
+  const [roomIdsByUser, setRoomIdsByUser] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
     if (!open) return;
-    return subscribeUsers(setUsersList);
+    const unsubUsers = subscribeUsers(setUsersList);
+    const unsubRooms = subscribeWarRooms(setRooms);
+    return () => {
+      unsubUsers();
+      unsubRooms();
+    };
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    fetchMembershipPairs()
+      .then((pairs) => {
+        if (cancelled) return;
+        const next: Record<string, string[]> = {};
+        for (const pair of pairs) {
+          if (!next[pair.userId]) next[pair.userId] = [];
+          next[pair.userId].push(pair.roomId);
+        }
+        setRoomIdsByUser(next);
+      })
+      .catch((err) => console.error("fetchMembershipPairs:", err));
+    return () => {
+      cancelled = true;
+    };
+  }, [open, usersList.length]);
 
   if (!open) return null;
 
@@ -65,18 +131,22 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({ open, onClose 
     setUserCreationError("");
     setUserCreationSuccess("");
     try {
-      await adminCreateUser(
+      const userId = await adminCreateUser(
         newUserName.trim(),
         newUserEmail.trim(),
         newUserPassword,
         newUserRole,
         newUserSquad.trim()
       );
+      if (userId && profile?.id && newUserRoomIds.length > 0) {
+        await setUserRoomAccess(userId, newUserRoomIds, profile.id);
+      }
       setUserCreationSuccess(`Usuário ${newUserName.trim()} cadastrado com sucesso.`);
       setNewUserName("");
       setNewUserEmail("");
       setNewUserPassword("");
       setNewUserSquad("");
+      setNewUserRoomIds([]);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Erro ao cadastrar usuário.";
       setUserCreationError(message);
@@ -96,6 +166,10 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({ open, onClose 
         role: editingRole,
         squad: editingSquad.trim(),
       });
+      if (profile?.id) {
+        await setUserRoomAccess(userId, editingRoomIds, profile.id);
+        setRoomIdsByUser((prev) => ({ ...prev, [userId]: editingRoomIds }));
+      }
       setEditingUserId(null);
       setUserCreationError("");
     } catch (err: unknown) {
@@ -128,7 +202,7 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({ open, onClose 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="fq-modal fq-modal--lg max-w-4xl max-h-[90vh] overflow-y-auto"
+        className="fq-modal fq-modal--lg max-w-5xl max-h-[90vh] overflow-y-auto"
       >
         <div className="fq-modal-header">
           <h3 id="admin-users-modal-title" className="fq-modal-title">
@@ -146,7 +220,7 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({ open, onClose 
                 Novo usuário
               </h4>
               <p className="text-neutral-500 text-[11px] mt-0.5 leading-relaxed">
-                Cria a conta no Auth e o perfil no ForceQA.
+                Cria a conta no Auth e o perfil no ForceQA. Marque abaixo quais boards essa pessoa vê.
               </p>
             </div>
 
@@ -213,6 +287,14 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({ open, onClose 
                   />
                 </div>
               </div>
+              <div>
+                <label className="fq-label fq-label--xs">Acesso aos boards</label>
+                <RoomAccessCheckboxes
+                  rooms={rooms}
+                  selectedIds={newUserRoomIds}
+                  onChange={setNewUserRoomIds}
+                />
+              </div>
               <div className="pt-2">
                 <button
                   type="submit"
@@ -231,7 +313,7 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({ open, onClose 
                 Usuários ({usersList.length})
               </h4>
               <p className="text-neutral-500 text-[11px] mt-0.5 leading-relaxed">
-                Perfis cadastrados. Excluir remove também a conta no Auth.
+                Perfis cadastrados. Edite para marcar os boards de cada pessoa. Excluir remove também a conta no Auth.
               </p>
             </div>
 
@@ -244,7 +326,7 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({ open, onClose 
                 <>
                   <div className="fq-table-header mb-2">
                     <span>Usuário</span>
-                    <span>Squad</span>
+                    <span>Acesso</span>
                     <span className="text-right">Ações</span>
                   </div>
                   <div className="space-y-2">
@@ -305,6 +387,14 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({ open, onClose 
                                 </button>
                               </div>
                             </div>
+                            <div>
+                              <label className="fq-label fq-label--xs !text-[9px] !mb-1">Boards e salas</label>
+                              <RoomAccessCheckboxes
+                                rooms={rooms}
+                                selectedIds={editingRoomIds}
+                                onChange={setEditingRoomIds}
+                              />
+                            </div>
                           </div>
                         );
                       }
@@ -320,16 +410,28 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({ open, onClose 
                               {usr.email}
                             </div>
                           </div>
-                          <div className="text-right font-mono text-[9px] uppercase text-neutral-400 fq-badge bg-white/[0.03] border-white/[0.06] py-0.5 px-2">
-                            {usr.squad || "Sem Squad"}
+                          <div className="text-right font-mono text-[9px] text-neutral-400">
+                            <div className="fq-badge bg-white/[0.03] border-white/[0.06] py-0.5 px-2 uppercase">
+                              {usr.squad || "Sem Squad"}
+                            </div>
+                            <div className="mt-1 text-neutral-500">
+                              {(roomIdsByUser[usr.id] || []).length} board(s)
+                            </div>
                           </div>
                           <div className="flex items-center justify-end gap-1">
                             <button
-                              onClick={() => {
+                              onClick={async () => {
                                 setEditingUserId(usr.id);
                                 setEditingName(usr.name || "");
                                 setEditingRole(usr.role || "developer");
                                 setEditingSquad(usr.squad || "");
+                                try {
+                                  setEditingRoomIds(
+                                    roomIdsByUser[usr.id] || (await fetchUserRoomIds(usr.id))
+                                  );
+                                } catch {
+                                  setEditingRoomIds([]);
+                                }
                               }}
                               className="fq-btn-icon !p-1"
                               title="Editar"
