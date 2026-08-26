@@ -1,9 +1,9 @@
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { subscribeWarRoom, subscribeBugsByRoom, subscribeBoardViews, subscribeProjectByWarRoomId } from "../lib/supabase";
 import { updateBugField, updateWarRoom, deleteWarRoom } from "../lib/services";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
-import { WarRoom, Bug, BugStatus, BugType, BoardView, Project, KanbanColumn } from "../types";
+import { WarRoom, Bug, BugType, BoardView, Project, KanbanColumn } from "../types";
 import { BugDetailModal } from "./BugDetailModal";
 import { AIReportModal } from "./AIReportModal";
 import { BoardViewSwitcher } from "./BoardViewSwitcher";
@@ -16,7 +16,7 @@ import {
   writeStoredBoardViewId,
 } from "../lib/boardViews";
 import { aggregateBoardMetrics } from "../lib/aiReport/aggregateMetrics";
-import { getBugTypeLabel, BUG_TYPE_OPTIONS, ALL_BUG_TYPES } from "../lib/bugLabels";
+import { getBugTypeLabel, BUG_TYPE_OPTIONS, ALL_BUG_TYPES, ENVIRONMENT_LABELS } from "../lib/bugLabels";
 import {
   resolveKanbanColumns,
   groupBugsByColumn,
@@ -24,8 +24,7 @@ import {
   resolveBugColumnId,
   displayColumnLabel,
 } from "../lib/kanbanColumns";
-import { shortId } from "../lib/format";
-import { SeverityBadge, RoomTypeBadge } from "./BugBadges";
+import { RoomTypeBadge } from "./BugBadges";
 import { canInviteToRoom, canWriteBugs } from "../lib/permissions";
 import {
   ArrowLeft,
@@ -39,6 +38,8 @@ import {
   Copy,
   X,
   Sparkles,
+  MoreHorizontal,
+  Settings,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -79,6 +80,9 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
   const [isCoarsePointer, setIsCoarsePointer] = useState(false);
   const [isAiReportModalOpen, setIsAiReportModalOpen] = useState(false);
   const [aiReportAutoGenerate, setAiReportAutoGenerate] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
+  const [roomMoreOpen, setRoomMoreOpen] = useState(false);
+  const roomMoreRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const mq = window.matchMedia("(pointer: coarse)");
@@ -87,6 +91,15 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
     mq.addEventListener("change", sync);
     return () => mq.removeEventListener("change", sync);
   }, []);
+
+  useEffect(() => {
+    if (!roomMoreOpen) return;
+    const onDoc = (event: MouseEvent) => {
+      if (!roomMoreRef.current?.contains(event.target as Node)) setRoomMoreOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [roomMoreOpen]);
   useEffect(() => {
     const unsubscribeRoom = subscribeWarRoom(roomId, setWarRoom);
     const unsubscribeBugs = subscribeBugsByRoom(roomId, (bList) => {
@@ -282,9 +295,6 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
     [filteredBugs, activeBoardView]
   );
 
-  // Calculate stats for current War Room bugs listings
-  const totalBugsLength = filteredBugs.length;
-
   const reportMetrics = useMemo(
     () => (warRoom ? aggregateBoardMetrics(warRoom, bugs) : null),
     [warRoom, bugs]
@@ -308,6 +318,9 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
 
   const kanbanColumns = resolveKanbanColumns(warRoom.kanbanColumns);
   const bugsByColumn = groupBugsByColumn(visibleKanbanBugs, kanbanColumns);
+  const openCount = bugs.filter((bug) => bug.status !== "validated").length;
+  const canManageThisRoom =
+    profile?.role === "admin" || warRoom.createdBy === profile?.id || canInviteToRoom(profile?.role);
 
   const openAiReport = (autoGenerate = false) => {
     setAiReportAutoGenerate(autoGenerate);
@@ -352,127 +365,148 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
 
   return (
     <div className="fq-page fq-page--operational space-y-5">
-      <div className="fq-page-header shrink-0">
-        <div className="space-y-1">
+      <div className="fq-page-header shrink-0 !flex-row !items-center !flex-wrap gap-3">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
           <button
             onClick={onBack}
-            className="flex items-center gap-1.5 text-sm text-neutral-500 hover:text-neutral-200 transition mb-2"
+            className="shrink-0 flex items-center gap-1.5 text-sm text-neutral-500 hover:text-neutral-200 transition"
           >
-            <ArrowLeft className="w-3.5 h-3.5" /> Voltar
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Voltar
           </button>
-          
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="fq-page-title">
-              {warRoom.name}
-            </h2>
-            {warRoom.roomType === "board" ? (
-              <RoomTypeBadge type="board" permanent />
-            ) : (
-              <RoomTypeBadge type="war_room" />
-            )}
-            {project && (
-              <span className="fq-badge text-[10px] bg-indigo-500/10 text-indigo-300">
-                Projeto
-              </span>
-            )}
-            <SeverityBadge severity={warRoom.severity} size="md" />
-            <div className="flex items-center gap-1.5 fq-filter-chip">
-              <span className="text-neutral-500 text-[11px]">ID</span>
-              <span className="text-neutral-200 select-all" title={roomId}>{shortId(roomId)}</span>
-              <button
-                type="button"
-                onClick={() => {
-                  navigator.clipboard.writeText(roomId);
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 2000);
-                }}
-                className="fq-btn-icon !p-0.5"
-                title="Copiar ID da Sala"
-              >
-                {copied ? <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-              </button>
-              {copied && <span className="text-[11px] text-emerald-400">Copiado</span>}
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <h2 className="truncate font-display text-xl font-semibold tracking-tight text-neutral-100">
+                {warRoom.name}
+              </h2>
+              {warRoom.roomType === "board" ? (
+                <RoomTypeBadge type="board" permanent />
+              ) : (
+                <RoomTypeBadge type="war_room" />
+              )}
             </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3 text-[13px] text-neutral-500">
-            <span>{warRoom.squad}</span>
-            <span className="text-neutral-700">·</span>
-            <span>{warRoom.project}</span>
-            {warRoom.roomType !== "board" && warRoom.date && (
-              <>
-                <span className="text-neutral-700">·</span>
-                <span>
-                  {warRoom.date}
-                  {warRoom.periodEnd ? ` → ${warRoom.periodEnd}` : ""}
-                </span>
-              </>
-            )}
+            <p className="text-[13px] text-neutral-500 mt-0.5">
+              <span className="tabular-nums text-neutral-200 font-medium">{openCount}</span> abertos
+              <span className="text-neutral-700"> · </span>
+              {warRoom.squad}
+              {warRoom.project ? (
+                <>
+                  <span className="text-neutral-700"> · </span>
+                  {warRoom.project}
+                </>
+              ) : null}
+            </p>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
-          <div className="fq-tab-group">
+        <div className="flex flex-wrap items-center gap-2">
+          {profile && (
             <button
-              onClick={() => setActiveTab("kanban")}
-              className={`fq-segment flex items-center gap-1.5 !text-xs ${activeTab === "kanban" ? "fq-segment--active" : ""}`}
+              type="button"
+              onClick={() => setOwnerFilter(ownerFilter === profile.id ? "all" : profile.id)}
+              className={`fq-btn-ghost text-sm ${
+                ownerFilter === profile.id ? "!bg-white/[0.08] !border-white/20 text-neutral-100" : ""
+              }`}
             >
-              <Kanban className="w-3.5 h-3.5" />
-              Kanban
+              Meus cards
             </button>
-            <button
-              onClick={() => setActiveTab("analytics")}
-              className={`fq-segment flex items-center gap-1.5 !text-xs ${activeTab === "analytics" ? "fq-segment--active" : ""}`}
-            >
-              <TrendingUp className="w-3.5 h-3.5" />
-              Relatórios
-            </button>
-            <button
-              onClick={() => setActiveTab("ai_report")}
-              className={`fq-segment flex items-center gap-1.5 !text-xs ${activeTab === "ai_report" ? "fq-segment--active" : ""}`}
-            >
-              <Brain className="w-3.5 h-3.5" />
-              IA Report
-            </button>
-          </div>
-
-          {canWriteBugs(profile?.role) && (
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                onClick={() => openCreateCardModal()}
-                className="fq-btn-primary text-sm"
-              >
-                <Plus className="w-4 h-4" />
-                Novo card
-              </button>
-              <button
-                type="button"
-                onClick={() => openCreateCardModal("requirement")}
-                className="fq-btn-secondary text-sm"
-              >
-                Requisito
-              </button>
-              <button
-                type="button"
-                onClick={() => openCreateCardModal("ihc")}
-                className="fq-btn-secondary text-sm"
-              >
-                IHC
-              </button>
-              <button
-                type="button"
-                onClick={() => openCreateCardModal("product")}
-                className="fq-btn-secondary text-sm"
-              >
-                Produto
-              </button>
-            </div>
           )}
+          {canWriteBugs(profile?.role) && (
+            <button onClick={() => openCreateCardModal()} className="fq-btn-primary text-sm">
+              <Plus className="w-4 h-4" />
+              Novo card
+            </button>
+          )}
+          {canManageThisRoom && (
+            <button
+              type="button"
+              onClick={() => setAdminOpen((open) => !open)}
+              className={`fq-btn-ghost text-sm ${adminOpen ? "!bg-white/[0.08] text-neutral-100" : ""}`}
+            >
+              <Settings className="w-4 h-4" />
+              Administrar
+            </button>
+          )}
+          <div className="relative" ref={roomMoreRef}>
+            <button
+              type="button"
+              onClick={() => setRoomMoreOpen((open) => !open)}
+              className="fq-btn-ghost text-sm"
+              aria-expanded={roomMoreOpen}
+            >
+              <MoreHorizontal className="w-4 h-4" />
+              Mais
+            </button>
+            {roomMoreOpen && (
+              <div
+                className="absolute right-0 top-full mt-1.5 w-52 rounded-lg border z-40 py-1"
+                style={{ backgroundColor: "var(--color-fq-elevated)", borderColor: "var(--color-fq-border)" }}
+              >
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-neutral-200 hover:bg-white/[0.05]"
+                  onClick={() => {
+                    setActiveTab("kanban");
+                    setRoomMoreOpen(false);
+                  }}
+                >
+                  <Kanban className="w-3.5 h-3.5 text-neutral-500" />
+                  Kanban
+                </button>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-neutral-200 hover:bg-white/[0.05]"
+                  onClick={() => {
+                    setActiveTab("analytics");
+                    setRoomMoreOpen(false);
+                  }}
+                >
+                  <TrendingUp className="w-3.5 h-3.5 text-neutral-500" />
+                  Relatórios
+                </button>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-neutral-200 hover:bg-white/[0.05]"
+                  onClick={() => {
+                    setActiveTab("ai_report");
+                    setRoomMoreOpen(false);
+                  }}
+                >
+                  <Brain className="w-3.5 h-3.5 text-neutral-500" />
+                  Relatório IA
+                </button>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-neutral-200 hover:bg-white/[0.05]"
+                  onClick={() => {
+                    navigator.clipboard.writeText(roomId);
+                    setCopied(true);
+                    toast("ID copiado.", { kind: "success" });
+                    setTimeout(() => setCopied(false), 2000);
+                    setRoomMoreOpen(false);
+                  }}
+                >
+                  {copied ? <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-neutral-500" />}
+                  Copiar ID
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Admin / members panel */}
-      {(profile?.role === "admin" || warRoom.createdBy === profile?.id || canInviteToRoom(profile?.role)) && (
+      {activeTab !== "kanban" && (
+        <div className="flex items-center justify-between rounded-lg border border-white/[0.06] px-3 py-2">
+          <span className="text-sm text-neutral-400">
+            {activeTab === "analytics" ? "Relatórios desta sala" : "Relatório de IA"}
+          </span>
+          <button type="button" className="fq-btn-ghost text-sm" onClick={() => setActiveTab("kanban")}>
+            Voltar ao kanban
+          </button>
+        </div>
+      )}
+
+      {adminOpen && canManageThisRoom && (
         <div className="fq-admin-bar shrink-0">
           <div className="flex items-center gap-3">
             <Sliders className="w-5 h-5 text-neutral-400" />
@@ -506,14 +540,14 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                   }}
                   className="bg-transparent text-neutral-100 focus:outline-none border-none text-xs font-semibold cursor-pointer"
                 >
-                  <option value="active">ATIVO</option>
-                  <option value="paused">PAUSADO</option>
-                  <option value="ended">ENCERRADO</option>
+                  <option value="active">Ativo</option>
+                  <option value="paused">Pausado</option>
+                  <option value="ended">Encerrado</option>
                 </select>
               </div>
             )}
 
-            <label className="fq-filter-chip cursor-pointer select-none font-mono font-semibold text-neutral-300">
+            <label className="fq-filter-chip cursor-pointer select-none text-neutral-300">
               <input
                 type="checkbox"
                 checked={!!warRoom.guestAccessDisabled}
@@ -526,7 +560,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
                 }}
                 className="rounded border-neutral-700 text-neutral-300 bg-transparent focus:ring-0 cursor-pointer"
               />
-              Bloquear Acesso Convidado (Guest)
+              Bloquear convidados
             </label>
 
             <button
@@ -553,8 +587,8 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
 
           {profile?.role === "admin" && warRoom.roomType === "board" && (
             <div className="w-full basis-full pt-3 mt-1 border-t border-white/[0.06]">
-              <p className="text-[10px] font-mono font-bold text-neutral-500 uppercase tracking-wider mb-2">
-                Colunas do Kanban
+              <p className="text-[12px] font-medium text-neutral-500 mb-2">
+                Colunas do kanban
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 {kanbanColumns.map((col) => (
@@ -618,6 +652,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
         </div>
       )}
 
+      {activeTab === "kanban" && (
       <div className="fq-filter-bar fq-kanban-toolbar">
         <div className="flex-1 w-full relative">
           <input
@@ -637,10 +672,10 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
               onChange={(e) => setEnvFilter(e.target.value)}
               className="bg-transparent text-neutral-200 focus:outline-none border-none text-xs font-medium cursor-pointer"
             >
-              <option value="all">TODOS</option>
-              <option value="production">PROD</option>
-              <option value="homologation">HMG</option>
-              <option value="dev">DEV</option>
+              <option value="all">Todos</option>
+              <option value="production">{ENVIRONMENT_LABELS.production}</option>
+              <option value="homologation">{ENVIRONMENT_LABELS.homologation}</option>
+              <option value="dev">{ENVIRONMENT_LABELS.dev}</option>
             </select>
           </div>
 
@@ -651,10 +686,10 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
               onChange={(e) => setTypeFilter(e.target.value)}
               className="bg-transparent text-neutral-200 focus:outline-none border-none text-xs font-medium cursor-pointer"
             >
-              <option value="all">TODOS</option>
+              <option value="all">Todos</option>
               {BUG_TYPE_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
-                  {opt.label.toUpperCase()}
+                  {opt.label}
                 </option>
               ))}
             </select>
@@ -667,12 +702,12 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
               onChange={(e) => setSeverityFilter(e.target.value)}
               className="bg-transparent text-neutral-200 focus:outline-none border-none text-xs font-medium cursor-pointer"
             >
-              <option value="all">TODAS</option>
-              <option value="blocker">BLOCKER</option>
-              <option value="critical">CRÍTICO</option>
-              <option value="high">ALTO</option>
-              <option value="medium">MÉDIO</option>
-              <option value="low">BAIXO</option>
+              <option value="all">Todas</option>
+              <option value="blocker">Blocker</option>
+              <option value="critical">Crítico</option>
+              <option value="high">Alto</option>
+              <option value="medium">Médio</option>
+              <option value="low">Baixo</option>
             </select>
           </div>
 
@@ -683,27 +718,16 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({ roomId, onBack }) 
               onChange={(e) => setOwnerFilter(e.target.value)}
               className="bg-transparent text-neutral-200 focus:outline-none border-none text-xs font-medium cursor-pointer"
             >
-              <option value="all">TODOS</option>
-              <option value="unassigned">SEM RESPONSÁVEL</option>
+              <option value="all">Todos</option>
+              <option value="unassigned">Sem responsável</option>
               {developersAssigned.map(d => (
                 <option key={d.id} value={d.id}>{d.name}</option>
               ))}
             </select>
           </div>
-
-          {profile && (
-            <button
-              type="button"
-              onClick={() => setOwnerFilter(ownerFilter === profile.id ? "all" : profile.id)}
-              className={`fq-filter-chip font-mono text-[10px] ${
-                ownerFilter === profile.id ? "!bg-white/[0.08] !border-white/20 text-neutral-100" : ""
-              }`}
-            >
-              MEUS CARDS
-            </button>
-          )}
         </div>
       </div>
+      )}
 
       {/* RENDER ACTIVE TAP CONTENT */}
 

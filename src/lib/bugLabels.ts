@@ -90,8 +90,31 @@ export function getBugTypeLabel(type: BugType): string {
 }
 
 export function getSeverityConfig(severity: SeverityLevel): BadgeConfig {
-  return SEVERITY_CONFIG[severity];
+  return SEVERITY_CONFIG[severity] ?? SEVERITY_CONFIG.medium;
 }
+
+export function getSeverityStripeClass(severity: SeverityLevel): string {
+  switch (severity) {
+    case "blocker":
+      return "bg-red-600";
+    case "critical":
+      return "bg-red-500";
+    case "high":
+      return "bg-orange-500";
+    case "medium":
+      return "bg-yellow-500";
+    case "low":
+      return "bg-sky-500";
+    default:
+      return "bg-neutral-500";
+  }
+}
+
+export const ENVIRONMENT_LABELS: Record<string, string> = {
+  production: "Produção",
+  homologation: "Homologação",
+  dev: "Dev",
+};
 
 export function getSeverityLabel(severity: SeverityLevel): string {
   return SEVERITY_CONFIG[severity].label;

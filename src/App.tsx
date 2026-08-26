@@ -5,6 +5,7 @@ import { Onboarding } from "./components/Onboarding";
 import { Dashboard } from "./components/Dashboard";
 import { WarRoomDetail } from "./components/WarRoomDetail";
 import { AdminBoardViews } from "./components/AdminBoardViews";
+import { AdminUsersPage } from "./components/AdminUsersPage";
 import { LogOut, Lock, User, Bell } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useModalA11y } from "./hooks/useModalA11y";
@@ -12,14 +13,14 @@ import { joinWarRoom, markAllNotificationsRead, markNotificationRead } from "./l
 import { subscribeNotifications } from "./lib/supabase";
 import { AppNotification } from "./types";
 import { ToastProvider } from "./context/ToastContext";
-import { adminBoardViewsPath, dashboardPath, pushPath, roomPath } from "./lib/routes";
+import { adminBoardViewsPath, adminUsersPath, dashboardPath, pushPath, roomPath } from "./lib/routes";
 import { formatRoleLabel } from "./lib/format";
 import { SquadSelect } from "./components/SquadSelect";
 
 function AppContent() {
   const { user, profile, loading, passwordRecovery, updateProfile, changePassword, completePasswordRecovery, logout } = useAuth();
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
-  const [adminPage, setAdminPage] = useState<"board-views" | null>(null);
+  const [adminPage, setAdminPage] = useState<"board-views" | "users" | null>(null);
   const [adminProjectId, setAdminProjectId] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -36,6 +37,11 @@ function AppContent() {
       setAdminPage("board-views");
       const params = new URLSearchParams(window.location.search);
       setAdminProjectId(params.get("project"));
+      return;
+    }
+    if (path === "/admin/users") {
+      setAdminPage("users");
+      setAdminProjectId(null);
       return;
     }
     setAdminPage(null);
@@ -161,8 +167,14 @@ function AppContent() {
     pushPath(dashboardPath());
   };
 
-  const handleOpenAdminPage = (path: "/admin/board-views", projectId?: string) => {
+  const handleOpenAdminPage = (path: "/admin/board-views" | "/admin/users", projectId?: string) => {
     setSelectedRoomId(null);
+    if (path === "/admin/users") {
+      setAdminPage("users");
+      setAdminProjectId(null);
+      pushPath(adminUsersPath());
+      return;
+    }
     setAdminPage("board-views");
     setAdminProjectId(projectId ?? null);
     pushPath(adminBoardViewsPath(projectId));
@@ -345,7 +357,9 @@ function AppContent() {
 
       {/* Primary viewport switch container */}
       <main className="flex min-h-0 flex-1 flex-col">
-        {adminPage === "board-views" && profile?.role === "admin" ? (
+        {adminPage === "users" && profile?.role === "admin" ? (
+          <AdminUsersPage onBack={handleBackToDashboard} />
+        ) : adminPage === "board-views" && profile?.role === "admin" ? (
           <AdminBoardViews onBack={handleBackToDashboard} initialProjectId={adminProjectId} />
         ) : selectedRoomId ? (
           <WarRoomDetail 

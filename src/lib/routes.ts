@@ -12,6 +12,10 @@ export function adminBoardViewsPath(projectId?: string | null): string {
     : "/admin/board-views";
 }
 
+export function adminUsersPath(): string {
+  return "/admin/users";
+}
+
 export function pushPath(path: string): void {
   const url = path.startsWith("http") ? path : `${window.location.origin}${path}`;
   window.history.pushState({ path: url }, "", url);

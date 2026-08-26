@@ -1,13 +1,12 @@
 import React from "react";
 import { Bug, KanbanColumn, UserRole } from "../types";
 import { BugTypeTag } from "./BugTypeTag";
-import { SeverityBadge } from "./BugBadges";
-import { evidenceLabel } from "../lib/evidence";
+import { evidenceLabel, isImageEvidence } from "../lib/evidence";
 import { canWriteBugs } from "../lib/permissions";
 import { formatOpenAge, isSlaBreached } from "../lib/cardAge";
 import { displayColumnLabel, resolveBugColumnId } from "../lib/kanbanColumns";
-import { Clock, User } from "lucide-react";
-import { shortId } from "../lib/format";
+import { getSeverityConfig, getSeverityStripeClass } from "../lib/bugLabels";
+import { Clock, Link2, Paperclip, User } from "lucide-react";
 
 interface KanbanBoardProps {
   columns: KanbanColumn[];
@@ -63,6 +62,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
               ) : (
                 list.map((bug) => {
                   const sla = isSlaBreached(bug);
+                  const severity = getSeverityConfig(bug.criticism);
                   return (
                     <div
                       key={bug.id}
@@ -71,77 +71,79 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                       onClick={() => onOpenBug(bug)}
                       className={`group fq-kanban-card ${sla ? "ring-1 ring-red-500/40" : ""}`}
                     >
-                      {(bug.criticism === "blocker" || sla) && (
-                        <div className="absolute top-0 left-0 w-full h-0.5 bg-red-500" />
-                      )}
+                      <span
+                        className={`absolute left-0 top-0 h-full w-1 ${getSeverityStripeClass(bug.criticism)}`}
+                        title={severity.label}
+                      />
 
-                      <div>
-                        <div className="flex justify-between items-start gap-1.5 mb-2">
-                          <div className="flex flex-wrap items-center gap-1">
-                            <BugTypeTag type={bug.type} />
-                            <SeverityBadge severity={bug.criticism} />
-                            {sla && bug.status !== "validated" && (
-                              <span className="text-[10px] font-semibold text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded-full">
-                                SLA
-                              </span>
-                            )}
-                          </div>
-                          <span className="fq-kanban-card-meta max-w-[88px] shrink-0" title={bug.id}>
-                            {shortId(bug.id)}
-                          </span>
-                        </div>
-
+                      <div className="pl-1.5 min-w-0">
                         <h4 className="fq-kanban-card-title" title={bug.title}>
                           {bug.title}
                         </h4>
 
-                        <div className="flex gap-1.5 items-center flex-wrap pt-2">
-                          {bug.tags?.length > 0 &&
-                            bug.tags.slice(0, 3).map((tag) => (
-                              <span
-                                key={tag}
-                                className="text-[9px] text-neutral-400 bg-white/[0.04] border border-white/[0.06] py-0.5 px-1.5 rounded"
-                              >
-                                #{tag}
-                              </span>
-                            ))}
-                          {bug.tags && bug.tags.length > 3 && (
-                            <span className="text-[9px] text-neutral-600">+{bug.tags.length - 3}</span>
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          <BugTypeTag type={bug.type} />
+                          {sla && (
+                            <span className="text-[10px] font-semibold text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded-full">
+                              Atrasado
+                            </span>
                           )}
                           {bug.evidenceUrl && (
-                            <span className="fq-badge bg-white/[0.04] text-neutral-400 border-white/[0.06] text-[9px] font-mono py-0.5 px-1.5">
-                              {evidenceLabel(bug.evidenceUrl) === "image" ? "📸" : "🔗"}
-                            </span>
+                            isImageEvidence(bug.evidenceUrl) ? (
+                              <img
+                                src={bug.evidenceUrl}
+                                alt="Evidência"
+                                className="h-7 w-10 rounded object-cover border border-white/[0.08]"
+                              />
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[11px] text-neutral-400">
+                                {evidenceLabel(bug.evidenceUrl) === "link" ? (
+                                  <Link2 className="w-3 h-3" />
+                                ) : (
+                                  <Paperclip className="w-3 h-3" />
+                                )}
+                                Evidência
+                              </span>
+                            )
                           )}
                         </div>
                       </div>
 
-                      <div className="pt-2 border-t border-white/[0.06] flex justify-between items-center text-[12px] text-neutral-500 gap-2">
-                        <div className="flex items-center gap-1 min-w-0">
-                          <User className="w-3 h-3 text-neutral-500 shrink-0" />
-                          <span className="fq-kanban-card-meta" title={bug.ownerName || "Sem responsável"}>
+                      <div className="pl-1.5 pt-2 border-t border-white/[0.06] flex justify-between items-center gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <User className="w-3.5 h-3.5 text-neutral-500 shrink-0" />
+                          <span
+                            className={`truncate text-[13px] ${bug.ownerName ? "text-neutral-200" : "text-neutral-500"}`}
+                            title={bug.ownerName || "Sem responsável"}
+                          >
                             {bug.ownerName || "Sem responsável"}
                           </span>
                         </div>
-                        <span className={`flex items-center gap-0.5 text-[11px] shrink-0 ${sla ? "text-red-400 font-semibold" : "text-neutral-500"}`}>
-                          <Clock className="w-3 h-3" />
+                        <span
+                          className={`flex items-center gap-1 text-[12px] shrink-0 tabular-nums ${
+                            sla ? "text-red-400 font-semibold" : "text-neutral-400"
+                          }`}
+                        >
+                          <Clock className="w-3.5 h-3.5" />
                           {formatOpenAge(bug.createdAt)}
                         </span>
                       </div>
 
                       {canWriteBugs(role) && isCoarsePointer && (
                         <select
-                          className="mt-2 w-full fq-select !text-[10px] !py-1"
+                          className="mt-2 w-full fq-select !text-[12px] !py-1"
                           value={resolveBugColumnId(bug, columns)}
                           onClick={(e) => e.stopPropagation()}
                           onChange={(e) => {
                             e.stopPropagation();
-                            const column = columns.find((c) => c.id === e.target.value);
-                            if (column) onMoveToColumn(bug, column);
+                            const next = columns.find((col) => col.id === e.target.value);
+                            if (next) onMoveToColumn(bug, next);
                           }}
                         >
                           {columns.map((col) => (
-                            <option key={col.id} value={col.id}>{displayColumnLabel(col)}</option>
+                            <option key={col.id} value={col.id}>
+                              {displayColumnLabel(col)}
+                            </option>
                           ))}
                         </select>
                       )}
