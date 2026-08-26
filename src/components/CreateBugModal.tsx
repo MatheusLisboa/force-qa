@@ -49,6 +49,7 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
   const [bugPrototypeFile, setBugPrototypeFile] = useState<File | null>(null);
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
+  const [moreDetails, setMoreDetails] = useState(false);
   const [duplicateAlert, setDuplicateAlert] = useState<{
     isDuplicate: boolean;
     explanation: string;
@@ -71,6 +72,7 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
     setBugPrototypeFile(null);
     setDuplicateAlert(null);
     setFormError("");
+    setMoreDetails(false);
   }, [presetType]);
 
   const closeAndReset = useCallback(() => {
@@ -189,7 +191,7 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="fq-modal fq-modal--lg fq-modal--tall h-[88vh]"
+        className="fq-modal fq-modal--md fq-modal--tall max-h-[90vh]"
       >
         <div className="fq-modal-header !mb-0 shrink-0">
           <h3 id="bug-create-modal-title" className="fq-modal-title">
@@ -199,75 +201,114 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
         </div>
 
         <form onSubmit={handleReportBug} className="flex min-h-0 flex-1 flex-col">
-          <div className="flex-1 overflow-y-auto my-4 pr-1 space-y-4 text-xs text-neutral-400">
+          <div className="flex-1 overflow-y-auto my-4 pr-1 space-y-4 text-sm text-neutral-400">
             {formError && <div className="fq-alert-error text-xs">{formError}</div>}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-4">
-                <div>
-                  <label className="fq-label fq-label--xs">Título do Card *</label>
-                  <input
-                    required
-                    type="text"
-                    className="fq-input"
-                    placeholder="Ex: Erro 500 ao confirmar transação PIX"
-                    value={bugTitle}
-                    onChange={(e) => setBugTitle(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="fq-label fq-label--xs">Descrição</label>
-                  <textarea
-                    rows={5}
-                    className="fq-textarea font-sans"
-                    placeholder="Passos, logs e comportamento observado..."
-                    value={bugDesc}
-                    onChange={(e) => setBugDesc(e.target.value)}
-                  />
-                </div>
-                {duplicateAlert && (
-                  <div className={`p-3 border rounded-md text-[11px] leading-relaxed ${
-                    duplicateAlert.isDuplicate
-                      ? "bg-yellow-950/20 border-yellow-500/30 text-yellow-400"
-                      : "bg-green-950/10 border-green-500/20 text-green-400"
-                  }`}>
-                    <span className="font-mono font-bold block uppercase mb-1">Duplicata</span>
-                    {duplicateAlert.explanation} (Confiança: {duplicateAlert.confidenceScore}%)
-                  </div>
-                )}
-              </div>
+            <div>
+              <label className="fq-label fq-label--xs">Título *</label>
+              <input
+                required
+                type="text"
+                className="fq-input"
+                placeholder="Ex: Erro 500 ao confirmar transação PIX"
+                value={bugTitle}
+                onChange={(e) => setBugTitle(e.target.value)}
+              />
+            </div>
 
-              <div className="space-y-4">
+            <div>
+              <label className="fq-label fq-label--xs">Severidade</label>
+              <select value={bugCrit} onChange={(e) => setBugCrit(e.target.value as SeverityLevel)} className="fq-input">
+                <option value="blocker">Blocker</option>
+                <option value="critical">Crítico</option>
+                <option value="high">Alto</option>
+                <option value="medium">Médio</option>
+                <option value="low">Baixo</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="fq-label fq-label--xs">Evidência (imagem ou link)</label>
+              <input
+                type="url"
+                className="fq-input text-[13px] mb-2"
+                placeholder="https://..."
+                value={bugEvidenceLink}
+                onChange={(e) => {
+                  setBugEvidenceLink(e.target.value);
+                  if (e.target.value.trim()) {
+                    setBugEvidence(null);
+                    setBugEvidenceFile(null);
+                  }
+                }}
+              />
+              <div className="fq-upload-zone space-y-2">
+                <Upload className="w-6 h-6 text-neutral-500 mx-auto" />
+                <span className="block text-[12px] text-neutral-400">Ou envie imagem (PNG/JPG, máx. 2MB)</span>
+                <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, "evidence")} className="absolute inset-0 opacity-0 cursor-pointer" />
+              </div>
+              {(bugEvidence || bugEvidenceLink.trim()) && (
+                <div className="fq-attachment-chip">
+                  <CheckCircle className="w-4 h-4 text-green-500 shrink-0" />
+                  <span className="text-[12px] text-neutral-400 truncate">
+                    {bugEvidence ? "Imagem anexada" : `Link: ${bugEvidenceLink.trim()}`}
+                  </span>
+                  <button type="button" onClick={() => { setBugEvidence(null); setBugEvidenceFile(null); setBugEvidenceLink(""); }} className="ml-auto text-[12px] text-red-400 hover:underline">
+                    Excluir
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="fq-label fq-label--xs">O que aconteceu</label>
+              <textarea
+                rows={3}
+                className="fq-textarea font-sans"
+                placeholder="Passos, logs e comportamento observado..."
+                value={bugDesc}
+                onChange={(e) => setBugDesc(e.target.value)}
+              />
+            </div>
+            {duplicateAlert && (
+              <div className={`p-3 border rounded-md text-[12px] leading-relaxed ${
+                duplicateAlert.isDuplicate
+                  ? "bg-yellow-950/20 border-yellow-500/30 text-yellow-400"
+                  : "bg-green-950/10 border-green-500/20 text-green-400"
+              }`}>
+                {duplicateAlert.explanation} ({duplicateAlert.confidenceScore}%)
+              </div>
+            )}
+
+            <button
+              type="button"
+              className="text-[13px] text-neutral-400 hover:text-neutral-200"
+              onClick={() => setMoreDetails((open) => !open)}
+            >
+              {moreDetails ? "Menos detalhes" : "Mais detalhes"}
+            </button>
+
+            {moreDetails && (
+              <div className="space-y-4 pt-1">
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="fq-label fq-label--xs">Criticidade</label>
-                    <select value={bugCrit} onChange={(e) => setBugCrit(e.target.value as SeverityLevel)} className="fq-input font-bold">
-                      <option value="blocker">Blocker</option>
-                      <option value="critical">Crítico</option>
-                      <option value="high">Alto</option>
-                      <option value="medium">Médio</option>
-                      <option value="low">Baixo</option>
-                    </select>
-                  </div>
                   <div>
                     <label className="fq-label fq-label--xs">Ambiente</label>
-                    <select value={bugEnv} onChange={(e) => setBugEnv(e.target.value as "production" | "homologation" | "dev")} className="fq-input font-bold">
-                      <option value="production">PROD</option>
-                      <option value="homologation">HMG</option>
-                      <option value="dev">DEV</option>
+                    <select value={bugEnv} onChange={(e) => setBugEnv(e.target.value as "production" | "homologation" | "dev")} className="fq-input">
+                      <option value="production">Produção</option>
+                      <option value="homologation">Homologação</option>
+                      <option value="dev">Dev</option>
                     </select>
                   </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="fq-label fq-label--xs">Tipo</label>
                     <select value={bugType} onChange={(e) => setBugType(e.target.value as BugType)} className="fq-select">
                       {BUG_TYPE_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>{opt.emoji} {opt.label}</option>
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
                       ))}
                     </select>
                   </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="fq-label fq-label--xs">Prioridade</label>
                     <select value={bugPriority} onChange={(e) => setBugPriority(e.target.value as BugPriority)} className="fq-select">
@@ -277,70 +318,34 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
                       <option value="low">Baixa</option>
                     </select>
                   </div>
+                  <div>
+                    <label className="fq-label fq-label--xs">URL relacionada</label>
+                    <input type="url" className="fq-input text-[13px]" placeholder="https://..." value={bugUrl} onChange={(e) => setBugUrl(e.target.value)} />
+                  </div>
                 </div>
-
-                <div>
-                  <label className="fq-label fq-label--xs">URL relacionada</label>
-                  <input type="url" className="fq-input font-mono text-[11px]" placeholder="https://..." value={bugUrl} onChange={(e) => setBugUrl(e.target.value)} />
-                </div>
-
                 <div>
                   <label className="fq-label fq-label--xs">Tags (separadas por vírgula)</label>
-                  <input className="fq-input font-mono text-[11px]" value={bugTagsInput} onChange={(e) => setBugTagsInput(e.target.value)} placeholder="pix, checkout" />
+                  <input className="fq-input text-[13px]" value={bugTagsInput} onChange={(e) => setBugTagsInput(e.target.value)} placeholder="pix, checkout" />
                 </div>
-
-                <div>
-                  <label className="fq-label fq-label--xs">Evidência (imagem ou link)</label>
-                  <input
-                    type="url"
-                    className="fq-input font-mono text-[11px] mb-2"
-                    placeholder="https://..."
-                    value={bugEvidenceLink}
-                    onChange={(e) => {
-                      setBugEvidenceLink(e.target.value);
-                      if (e.target.value.trim()) {
-                        setBugEvidence(null);
-                        setBugEvidenceFile(null);
-                      }
-                    }}
-                  />
-                  <div className="fq-upload-zone space-y-2">
-                    <Upload className="w-6 h-6 text-neutral-500 mx-auto" />
-                    <span className="block text-[10px] font-semibold text-neutral-400">Ou envie imagem (PNG/JPG, máx. 2MB)</span>
-                    <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, "evidence")} className="absolute inset-0 opacity-0 cursor-pointer" />
-                  </div>
-                  {(bugEvidence || bugEvidenceLink.trim()) && (
-                    <div className="fq-attachment-chip">
-                      <CheckCircle className="w-4 h-4 text-green-500 shrink-0" />
-                      <span className="text-[10px] font-mono text-neutral-400 uppercase truncate">
-                        {bugEvidence ? "Imagem anexada" : `Link: ${bugEvidenceLink.trim()}`}
-                      </span>
-                      <button type="button" onClick={() => { setBugEvidence(null); setBugEvidenceFile(null); setBugEvidenceLink(""); }} className="ml-auto text-[10px] font-mono text-red-400 hover:underline">
-                        Excluir
-                      </button>
-                    </div>
-                  )}
-                </div>
-
                 <div>
                   <label className="fq-label fq-label--xs">Protótipo (opcional)</label>
                   <div className="fq-upload-zone space-y-2">
                     <Upload className="w-6 h-6 text-neutral-500 mx-auto opacity-70" />
-                    <span className="block text-[10px] font-semibold text-neutral-400">Referência visual (PNG/JPG, máx. 2MB)</span>
+                    <span className="block text-[12px] text-neutral-400">Referência visual (PNG/JPG, máx. 2MB)</span>
                     <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, "prototype")} className="absolute inset-0 opacity-0 cursor-pointer" />
                   </div>
                   {bugPrototype && (
                     <div className="fq-attachment-chip">
                       <CheckCircle className="w-4 h-4 text-green-500" />
-                      <span className="text-[10px] font-mono text-neutral-400 uppercase">Protótipo anexado</span>
-                      <button type="button" onClick={() => { setBugPrototype(null); setBugPrototypeFile(null); }} className="ml-auto text-[10px] font-mono text-red-400 hover:underline">
+                      <span className="text-[12px] text-neutral-400">Protótipo anexado</span>
+                      <button type="button" onClick={() => { setBugPrototype(null); setBugPrototypeFile(null); }} className="ml-auto text-[12px] text-red-400 hover:underline">
                         Excluir
                       </button>
                     </div>
                   )}
                 </div>
               </div>
-            </div>
+            )}
           </div>
 
           <div className="fq-modal-footer">

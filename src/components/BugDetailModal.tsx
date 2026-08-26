@@ -5,19 +5,16 @@ import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 import { Bug, BugComment, ActivityLog, BugStatus } from "../types";
 import { isImageEvidence } from "../lib/evidence";
-import { truncateForLog, getStatusLabel } from "../lib/bugLabels";
+import { truncateForLog, getStatusLabel, ENVIRONMENT_LABELS } from "../lib/bugLabels";
 import { BugTypeTag } from "./BugTypeTag";
 import { SeverityBadge, StatusBadge } from "./BugBadges";
 import { useModalA11y } from "../hooks/useModalA11y";
 import { canArchiveBugs, canAssignBugs, canWriteBugs } from "../lib/permissions";
 import { 
   X, 
-  Terminal, 
   Send, 
-  Clock, 
   UserPlus, 
   CheckCircle, 
-  RefreshCw, 
   Globe, 
   Tag, 
   Grid,
@@ -244,32 +241,82 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
   };
 
   return (
-    <div className="fq-modal-overlay">
+    <div className="fq-drawer-overlay" onClick={onClose}>
       <motion.div 
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="bug-detail-modal-title"
         tabIndex={-1}
-        initial={{ opacity: 0, scale: 0.98, y: 10 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.98 }}
-        className="fq-modal fq-modal--xl fq-modal--tall h-[92vh] overflow-hidden flex flex-col !p-0"
+        initial={{ opacity: 0, x: 24 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: 24 }}
+        onClick={(e) => e.stopPropagation()}
+        className="fq-drawer"
       >
-        <h2 id="bug-detail-modal-title" className="sr-only">
-          Detalhe do incidente: {activeBug.title}
-        </h2>
-        {/* Header toolbar */}
-        <div className="flex justify-between items-center border-b px-4 py-4 lg:px-5"
+        <div className="flex justify-between items-start gap-3 border-b px-4 py-3"
           style={{ borderColor: "var(--color-fq-border-subtle)", backgroundColor: "var(--color-fq-surface)" }}
         >
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="p-1 px-2.5 fq-badge bg-white/[0.04] text-neutral-500 border-white/[0.06] font-mono text-[10px] font-bold">
-              ID: {activeBug.id}
-            </span>
-            <BugTypeTag type={activeBug.type} size="md" />
-            <SeverityBadge severity={activeBug.criticism} size="md" />
-            <StatusBadge status={activeBug.status} size="md" />
+          <div className="min-w-0 flex-1">
+            {isEditingTitle ? (
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  maxLength={200}
+                  className="w-full fq-input text-base font-semibold"
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSaveTitle}
+                    disabled={savingField === "title" || !editTitle.trim()}
+                    className="fq-btn-primary text-[12px] py-1.5"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    Salvar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditTitle(activeBug.title);
+                      setIsEditingTitle(false);
+                    }}
+                    className="fq-btn-ghost text-[12px] py-1.5"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-start gap-2 group/title">
+                <h2 id="bug-detail-modal-title" className="text-base font-semibold text-neutral-100 leading-tight flex-1">
+                  {activeBug.title}
+                </h2>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingTitle(true)}
+                    className="p-1.5 text-neutral-500 hover:text-neutral-200 hover:bg-white/[0.06] rounded-md opacity-0 group-hover/title:opacity-100 transition"
+                    title="Editar título"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            )}
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <BugTypeTag type={activeBug.type} size="md" />
+              <SeverityBadge severity={activeBug.criticism} size="md" />
+              <StatusBadge status={activeBug.status} size="md" />
+            </div>
+            <p className="mt-1.5 text-[12px] text-neutral-500">
+              {activeBug.createdByName}
+              <span className="text-neutral-700"> · </span>
+              {ENVIRONMENT_LABELS[activeBug.environment] || activeBug.environment}
+            </p>
           </div>
 
           <div className="flex items-center gap-2">
@@ -302,72 +349,16 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
           </div>
         </div>
 
-        {/* Workspace body columns hierarchy scrolling container */}
-        <div className="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-12">
-          {/* Column 1: Bug details & screenshot evidences */}
-          <div className="lg:col-span-5 fq-detail-panel fq-detail-panel-bordered">
-            <div>
-              {isEditingTitle ? (
-                <div className="space-y-2">
-                  <input
-                    type="text"
-                    value={editTitle}
-                    onChange={(e) => setEditTitle(e.target.value)}
-                    maxLength={200}
-                    className="w-full fq-input text-lg font-semibold"
-                    autoFocus
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={handleSaveTitle}
-                      disabled={savingField === "title" || !editTitle.trim()}
-                      className="fq-btn-primary text-[12px] py-1.5"
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                      Salvar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditTitle(activeBug.title);
-                        setIsEditingTitle(false);
-                      }}
-                      className="fq-btn-ghost text-[12px] py-1.5"
-                    >
-                      Cancelar
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-start gap-2 group/title">
-                  <h2 className="text-xl font-semibold text-neutral-100 leading-tight flex-1">
-                    {activeBug.title}
-                  </h2>
-                  {canEdit && (
-                    <button
-                      type="button"
-                      onClick={() => setIsEditingTitle(true)}
-                      className="p-1.5 text-neutral-500 hover:text-neutral-200 hover:bg-white/[0.06] rounded-md opacity-0 group-hover/title:opacity-100 transition"
-                      title="Editar título"
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-              )}
-              <div className="flex flex-wrap items-center gap-4 text-xs font-mono text-neutral-500 mt-3 border-b border-white/[0.06] pb-4">
-                <span>HUNTER: <span className="text-neutral-300">{activeBug.createdByName}</span></span>
-                <span>•</span>
-                <span>ENV: <span className="text-neutral-300 uppercase">{activeBug.environment === "homologation" ? "HMG" : activeBug.environment === "production" ? "PROD" : "DEV"}</span></span>
-              </div>
-            </div>
+        <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex-1 overflow-y-auto">
+          <div className="fq-detail-panel space-y-4">
+            <p className="text-[12px] font-medium text-neutral-400">O que é</p>
 
             {/* Description text block */}
             <div className="fq-panel">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-mono text-neutral-500 uppercase flex items-center gap-1.5">
-                  <FileText className="w-3.5 h-3.5" /> DESCRIÇÃO
+                <span className="text-[12px] text-neutral-500 flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5" /> Descrição
                 </span>
                 {canEdit && !isEditingDescription && (
                   <button
@@ -418,40 +409,43 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
               )}
             </div>
 
-            {/* Structured details meta card */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="fq-panel">
-                <span className="text-[10px] font-mono text-neutral-500 uppercase flex items-center gap-1.5 mb-2">
-                  <Globe className="w-3.5 h-3.5" /> URL / Plataforma Afetada
+            <details className="rounded-lg border border-white/[0.06] p-3">
+              <summary className="cursor-pointer text-[13px] text-neutral-400">Mais detalhes</summary>
+              <div className="mt-3 space-y-3">
+              <div className="grid grid-cols-1 gap-3">
+              <div className="fq-panel !p-3">
+                <span className="text-[12px] text-neutral-500 flex items-center gap-1.5 mb-2">
+                  <Globe className="w-3.5 h-3.5" /> URL
                 </span>
-                <span className="text-xs font-mono text-violet-400 break-all bg-violet-500/10 px-2 py-1.5 rounded block border border-violet-500/15">
-                  {activeBug.affectedUrl || "Nenhuma URL especificada"}
+                <span className="text-xs text-neutral-300 break-all">
+                  {activeBug.affectedUrl || "Nenhuma URL"}
                 </span>
               </div>
 
-              <div className="fq-panel">
-                <span className="text-[10px] font-mono text-neutral-500 uppercase flex items-center gap-1.5 mb-2">
-                  <Grid className="w-3.5 h-3.5" /> Build / Versão do Sistema
+              <div className="fq-panel !p-3">
+                <span className="text-[12px] text-neutral-500 flex items-center gap-1.5 mb-2">
+                  <Grid className="w-3.5 h-3.5" /> Build
                 </span>
-                <span className="text-xs font-mono text-neutral-300 bg-white/[0.04] px-2 py-1.5 rounded block border border-white/[0.06]">
-                  {activeBug.buildVersion || "Nenhum ID de build inserido"}
+                <span className="text-xs text-neutral-300">
+                  {activeBug.buildVersion || "—"}
                 </span>
               </div>
             </div>
 
-            {/* Tags layout list */}
             {activeBug.tags && activeBug.tags.length > 0 && (
               <div className="flex items-center gap-2">
                 <Tag className="w-3.5 h-3.5 text-neutral-500" />
-                <div className="flex gap-2.5">
+                <div className="flex gap-2.5 flex-wrap">
                   {activeBug.tags.map(tag => (
-                    <span key={tag} className="fq-badge bg-white/[0.04] text-neutral-400 border-white/[0.06] font-mono uppercase">
+                    <span key={tag} className="fq-badge bg-white/[0.04] text-neutral-400 border-white/[0.06]">
                       #{tag}
                     </span>
                   ))}
                 </div>
               </div>
             )}
+              </div>
+            </details>
 
             {/* Screenshot evidence and prototype comparative render panel */}
             {(activeBug.evidenceUrl || activeBug.prototypeUrl) && (
@@ -459,10 +453,10 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {activeBug.evidenceUrl && (
                     <div className="space-y-2">
-                      <span className="text-[10px] font-mono text-neutral-500 uppercase flex items-center gap-1.5 font-bold">
+                      <span className="text-[12px] text-neutral-500 font-medium">
                         {isImageEvidence(activeBug.evidenceUrl)
-                          ? "📸 Evidência do Bug Encontrado"
-                          : "🔗 Link de Evidência"}
+                          ? "Evidência"
+                          : "Link de evidência"}
                       </span>
                       {isImageEvidence(activeBug.evidenceUrl) ? (
                         <div 
@@ -500,8 +494,8 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
 
                   {activeBug.prototypeUrl && (
                     <div className="space-y-2">
-                      <span className="text-[10px] font-mono text-neutral-500 uppercase flex items-center gap-1.5 font-bold">
-                        🎨 Protótipo de Referência (Figma)
+                      <span className="text-[12px] text-neutral-500 font-medium">
+                        Protótipo
                       </span>
                       <div 
                         onClick={() => {
@@ -528,16 +522,16 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
           </div>
 
           {/* Column 2: Status controls, assign and audit logging sidebar */}
-          <div className="lg:col-span-3 fq-detail-panel fq-detail-panel-bordered flex flex-col">
+          <div className="fq-detail-panel space-y-4 border-t border-white/[0.06]">
             <div>
-              <h3 className="fq-panel-title">
-                Painel do card
-              </h3>
+              <p className="text-[12px] font-medium text-neutral-400 mb-3">
+                O que fazer
+              </p>
               
               {/* Responsibility owner section */}
               <div className="space-y-4">
                 <div>
-                  <span className="fq-label fq-label--inline !mb-1.5">RESPONSABILIDADE:</span>
+                  <span className="fq-label fq-label--inline !mb-1.5">Responsável</span>
                   {activeBug.ownerId ? (
                     <div className="flex items-center justify-between p-3 fq-panel">
                       <div className="flex items-center gap-2.5">
@@ -553,12 +547,12 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
                   ) : (
                     <div className="p-4 fq-panel border-dashed text-center">
                       <AlertCircle className="w-5 h-5 text-red-400 mx-auto mb-1.5" />
-                      <span className="block text-xs text-neutral-200 font-medium mb-2">Sem responsável ativo</span>
+                      <span className="block text-xs text-neutral-200 font-medium mb-2">Sem responsável</span>
                       <button
                         onClick={handleClaimTask}
-                        className="fq-btn-secondary w-full text-[10px] font-mono font-bold uppercase"
+                        className="fq-btn-secondary w-full text-xs"
                       >
-                        Assumir Correção (Claim)
+                        Assumir
                       </button>
                     </div>
                   )}
@@ -568,15 +562,15 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
                 {canAssignBugs(profile?.role) && (
                   <div>
                     <span className="fq-label fq-label--inline !mb-1.5 gap-1">
-                      <UserPlus className="w-3.5 h-3.5" /> ATRIBUIR RESPONSÁVEL:
+                      <UserPlus className="w-3.5 h-3.5" /> Atribuir
                     </span>
                     <select
                       onChange={handleAssignOwner}
                       className="fq-select text-xs"
                     >
-                      <option value="">Selecione um membro do squad...</option>
+                      <option value="">Membro do squad...</option>
                       {users.map(u => (
-                        <option key={u.id} value={u.id}>{u.name} ({u.role.toUpperCase()})</option>
+                        <option key={u.id} value={u.id}>{u.name}</option>
                       ))}
                     </select>
                   </div>
@@ -610,12 +604,9 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
               </div>
             </div>
 
-            <div className="flex-1 flex flex-col min-h-[150px]">
-              <span className="fq-panel-title">
-                Histórico
-              </span>
-
-              <div className="space-y-2 overflow-y-auto max-h-[220px] pr-1">
+            <details className="rounded-lg border border-white/[0.06] p-3">
+              <summary className="cursor-pointer text-[13px] text-neutral-400">Histórico</summary>
+              <div className="mt-3 space-y-2 max-h-[180px] overflow-y-auto pr-1">
                 {activityLogs.map((log) => {
                   const isEditLog =
                     log.type === "title_edit" || log.type === "description_edit";
@@ -644,28 +635,20 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
                   );
                 })}
               </div>
-            </div>
+            </details>
           </div>
 
-          {/* Column 3: Live real-time comments section */}
-          <div className="lg:col-span-4 fq-detail-panel flex flex-col justify-between h-full min-h-[350px] lg:min-h-0"
-            style={{ backgroundColor: "rgba(255,255,255,0.02)" }}
-          >
-            <div className="flex flex-col flex-1 overflow-hidden">
-              <span className="fq-panel-title flex items-center justify-between">
-                <span>Comentários e Notas ({comments.length})</span>
-                <span className="fq-badge bg-white/[0.06] text-neutral-400 border-white/[0.08] normal-case tracking-normal">Anotações do Bug</span>
+          <div className="fq-detail-panel space-y-3 border-t border-white/[0.06]">
+            <div>
+              <span className="text-[12px] font-medium text-neutral-400">
+                Comentários ({comments.length})
               </span>
 
-              {/* Chat list bubble cards replaced by professional logs */}
-              <div className="flex-1 space-y-3 overflow-y-auto pr-1 pb-4 max-h-[365px] lg:max-h-[580px] scrollbar-thin scrollbar-thumb-neutral-800 scrollbar-track-transparent">
+              <div className="mt-3 space-y-3">
                 {comments.length === 0 ? (
-                  <div className="text-center py-12">
-                    <Terminal className="w-8 h-8 text-neutral-700 mx-auto mb-2" />
-                    <p className="text-neutral-500 text-xs font-mono leading-relaxed">
-                      Nenhuma anotação registrada ainda neste incidente.
-                    </p>
-                  </div>
+                  <p className="text-neutral-500 text-sm">
+                    Nenhuma nota ainda.
+                  </p>
                 ) : (
                   comments.map((com) => {
                     const initials = com.userName ? com.userName.slice(0, 2).toUpperCase() : "??";
@@ -695,12 +678,12 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
             </div>
 
             {/* Comment post form inputs wrapper - styled as a clear textarea and submission button */}
-            <form onSubmit={handlePostComment} className="pt-4 border-t border-white/[0.06] flex flex-col gap-3">
+            <form onSubmit={handlePostComment} className="shrink-0 border-t border-white/[0.06] p-4 flex flex-col gap-2">
               <textarea
                 required
-                rows={5}
+                rows={2}
                 className="fq-textarea text-sm leading-relaxed"
-                placeholder="Escreva uma nota técnica detalhada, comentários ou atualização de progresso operacional para este incidente..."
+                placeholder="Escreva um comentário..."
                 value={newComment}
                 onChange={(e) => setNewComment(e.target.value)}
               />
@@ -708,14 +691,15 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
                 <button
                   type="submit"
                   disabled={submittingComment || !newComment.trim()}
-                  className="fq-btn-primary text-[11px] font-mono font-bold"
+                  className="fq-btn-primary text-xs"
                 >
                   <Send className="w-3 h-3" />
-                  SALVAR COMENTÁRIO
+                  Enviar
                 </button>
               </div>
             </form>
           </div>
+        </div>
         </div>
       </motion.div>
 

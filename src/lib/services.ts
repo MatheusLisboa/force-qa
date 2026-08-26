@@ -6,6 +6,7 @@ import {
   toWarRoom,
   findWarRoomByIdOrName,
 } from "./supabase";
+import { parseRoomInvite } from "./routes";
 import {
   WarRoom,
   Bug,
@@ -323,8 +324,8 @@ async function joinWarRoomViaApi(input: string): Promise<string> {
 }
 
 export async function joinWarRoom(input: string): Promise<string> {
-  const trimmed = input.trim();
-  if (!trimmed) throw new Error("Informe o ID ou o nome da sala.");
+  const trimmed = parseRoomInvite(input);
+  if (!trimmed) throw new Error("Cole o link da sala, o ID ou o nome.");
 
   const { data: sessionData } = await supabase.auth.getSession();
   const userId = sessionData.session?.user.id;
@@ -357,7 +358,7 @@ export async function joinWarRoom(input: string): Promise<string> {
     try {
       return await joinWarRoomViaApi(trimmed);
     } catch {
-      throw new Error("Sala não encontrada. Confira o ID.");
+      throw new Error("Sala não encontrada. Confira o link.");
     }
   }
 
@@ -543,6 +544,22 @@ export async function createComment(
     type: "comment",
     description: `Adicionou um comentário: "${commentData.text.length > 30 ? commentData.text.substring(0, 30) + "..." : commentData.text}"`,
   });
+
+  const { data: bugRow } = await supabase
+    .from("bugs")
+    .select("owner_id, title")
+    .eq("id", commentData.bugId)
+    .maybeSingle();
+  if (bugRow?.owner_id && bugRow.owner_id !== commentData.userId) {
+    await createNotification({
+      userId: bugRow.owner_id as string,
+      type: "comment",
+      title: `${userName} comentou no seu card`,
+      body: (bugRow.title as string) || commentData.text.slice(0, 80),
+      warRoomId: commentData.warRoomId,
+      bugId: commentData.bugId,
+    });
+  }
 }
 
 // -------------------------

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { joinWarRoom } from "../lib/services";
 import { subscribeWarRooms, subscribeAllBugs, subscribeProjects, subscribeAllBoardViews } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
@@ -13,19 +13,43 @@ import {
   MoreHorizontal,
   UserPlus,
   Download,
-  Key,
+  Link2,
 } from "lucide-react";
 import { AnimatePresence } from "motion/react";
 import { RoomStatusBadge, RoomTypeBadge } from "./BugBadges";
 import { canManageSpaces as roleCanManageSpaces } from "../lib/permissions";
-import { dashboardPulse } from "../lib/dashboardPulse";
+import {
+  comparePulseActivity,
+  dashboardPulse,
+  PulseKind,
+  pulseMatchesCounts,
+} from "../lib/dashboardPulse";
+import { roomInviteUrl } from "../lib/routes";
 import { CreateWarRoomModal } from "./CreateWarRoomModal";
 import { CreateProjectModal } from "./CreateProjectModal";
 
 interface DashboardProps {
-  onSelectRoom: (roomId: string) => void;
+  onSelectRoom: (roomId: string, pulse?: PulseKind) => void;
   onOpenAdminPage?: (path: "/admin/board-views" | "/admin/users", projectId?: string) => void;
 }
+
+type SpaceRow = {
+  key: string;
+  roomId: string;
+  name: string;
+  squad: string;
+  projectLabel?: string;
+  kind: "war_room" | "board";
+  status?: WarRoom["status"];
+  dateLine?: string;
+  viewCount?: number;
+};
+
+const PULSE_HINT: Record<Exclude<PulseKind, "all">, string> = {
+  open: "Salas com cards abertos, as mais quentes primeiro.",
+  blockers: "Salas com blocker. Clique de novo para ver todas.",
+  overdue: "Salas com card atrasado. Clique de novo para ver todas.",
+};
 
 export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminPage }) => {
   const { profile } = useAuth();
@@ -35,6 +59,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
   const [allBoardViews, setAllBoardViews] = useState<BoardView[]>([]);
   const [allBugs, setAllBugs] = useState<Bug[]>([]);
   const [myCardsOnly, setMyCardsOnly] = useState(false);
+  const [pulseFilter, setPulseFilter] = useState<PulseKind>("all");
   const [isWarRoomModalOpen, setIsWarRoomModalOpen] = useState(false);
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -73,33 +98,82 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
   const scopedBugs = allBugs.filter((bug) => !myCardsOnly || bug.ownerId === profile?.id);
   const pulse = dashboardPulse(scopedBugs);
 
+  const spaces = useMemo<SpaceRow[]>(() => {
+    const viewCountByProject = allBoardViews.reduce<Record<string, number>>((acc, view) => {
+      if (view.projectId && view.isActive) {
+        acc[view.projectId] = (acc[view.projectId] || 0) + 1;
+      }
+      return acc;
+    }, {});
+    const warRoomRows: SpaceRow[] = warRooms
+      .filter((room) => (room.roomType || "war_room") === "war_room")
+      .map((room) => ({
+        key: `room-${room.id}`,
+        roomId: room.id,
+        name: room.name,
+        squad: room.squad,
+        projectLabel: room.project,
+        kind: "war_room",
+        status: room.status,
+        dateLine: room.date
+          ? `${room.date}${room.periodEnd ? ` → ${room.periodEnd}` : ""}`
+          : undefined,
+      }));
+
+    const projectRows: SpaceRow[] = projects.map((project) => ({
+      key: `project-${project.id}`,
+      roomId: project.warRoomId,
+      name: project.name,
+      squad: project.squad,
+      kind: "board",
+      viewCount: viewCountByProject[project.id] || 0,
+    }));
+
+    return [...warRoomRows, ...projectRows];
+  }, [warRooms, projects, allBoardViews]);
+
   const spaceQueryNorm = spaceQuery.trim().toLowerCase();
-  const matchesSpaceQuery = (...values: Array<string | undefined>) =>
-    !spaceQueryNorm ||
-    values.some((value) => (value || "").toLowerCase().includes(spaceQueryNorm));
-
-  const displayedWarRooms = warRooms
-    .filter((room) => (room.roomType || "war_room") === "war_room")
-    .filter((room) => matchesSpaceQuery(room.name, room.project, room.squad, room.id));
-
-  const displayedProjects = projects.filter((project) =>
-    matchesSpaceQuery(project.name, project.squad, project.warRoomId)
-  );
-
-  const viewCountByProject = allBoardViews.reduce<Record<string, number>>((acc, view) => {
-    if (view.projectId && view.isActive) {
-      acc[view.projectId] = (acc[view.projectId] || 0) + 1;
-    }
-    return acc;
-  }, {});
+  const displayedSpaces = spaces
+    .filter((space) => {
+      if (!spaceQueryNorm) return true;
+      return [space.name, space.squad, space.projectLabel, space.roomId]
+        .some((value) => (value || "").toLowerCase().includes(spaceQueryNorm));
+    })
+    .map((space) => {
+      const roomBugs = scopedBugs.filter((bug) => bug.warRoomId === space.roomId);
+      return { space, roomPulse: dashboardPulse(roomBugs) };
+    })
+    .filter(({ roomPulse }) => pulseMatchesCounts(roomPulse, pulseFilter))
+    .sort((a, b) => {
+      const byActivity = comparePulseActivity(a.roomPulse, b.roomPulse);
+      if (byActivity !== 0) return byActivity;
+      return a.space.name.localeCompare(b.space.name, "pt-BR");
+    });
 
   const canManageSpaces = roleCanManageSpaces(profile?.role);
   const hasSpaces = warRooms.length > 0 || projects.length > 0;
 
-  const copyShareLink = (roomId: string, event: React.MouseEvent) => {
+  const copyInvite = (roomId: string, event: React.MouseEvent) => {
     event.stopPropagation();
-    navigator.clipboard.writeText(`${window.location.origin}/?room=${roomId}`);
-    toast("Link copiado.", { kind: "success" });
+    navigator.clipboard.writeText(roomInviteUrl(roomId));
+    toast("Convite copiado.", { kind: "success" });
+  };
+
+  const selectPulse = (kind: Exclude<PulseKind, "all">) => {
+    const next: PulseKind = pulseFilter === kind ? "all" : kind;
+    setPulseFilter(next);
+    if (next === "all") return;
+
+    const matching = spaces
+      .map((space) => ({
+        space,
+        roomPulse: dashboardPulse(scopedBugs.filter((bug) => bug.warRoomId === space.roomId)),
+      }))
+      .filter(({ roomPulse }) => pulseMatchesCounts(roomPulse, next));
+
+    if (matching.length === 1 && (next === "blockers" || next === "overdue")) {
+      onSelectRoom(matching[0].space.roomId, next);
+    }
   };
 
   const handleEnterRoomById = async (event: React.FormEvent) => {
@@ -150,32 +224,43 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
     setMoreOpen(false);
   };
 
-  const renderSpaceCard = (room: WarRoom) => {
-    const roomBugs = allBugs.filter((bug) => bug.warRoomId === room.id);
-    const roomPulse = dashboardPulse(roomBugs);
-    const isBoard = room.roomType === "board";
-
+  const renderSpaceCard = (space: SpaceRow, roomPulse: ReturnType<typeof dashboardPulse>) => {
     return (
-      <div key={room.id} onClick={() => onSelectRoom(room.id)} className="group fq-card-interactive">
+      <div
+        key={space.key}
+        onClick={() => onSelectRoom(space.roomId, pulseFilter === "all" ? undefined : pulseFilter)}
+        className="group fq-card-interactive"
+      >
         <div className="flex justify-between items-start gap-3">
-          <h4 className="text-[15px] font-semibold text-neutral-100 tracking-tight truncate" title={room.name}>
-            {room.name}
+          <h4 className="text-[15px] font-semibold text-neutral-100 tracking-tight truncate" title={space.name}>
+            {space.name}
           </h4>
-          {isBoard ? <RoomTypeBadge type="board" /> : <RoomStatusBadge status={room.status} />}
+          {space.kind === "board" ? (
+            <RoomTypeBadge type="board" permanent />
+          ) : (
+            <RoomStatusBadge status={space.status || "active"} />
+          )}
         </div>
         <div className="mt-2 text-[12px] text-neutral-500">
-          {room.project}
-          <span className="text-neutral-700"> · </span>
-          {room.squad}
+          {space.projectLabel ? (
+            <>
+              {space.projectLabel}
+              <span className="text-neutral-700"> · </span>
+            </>
+          ) : null}
+          {space.squad}
+          {space.kind === "board" && space.viewCount != null ? (
+            <>
+              <span className="text-neutral-700"> · </span>
+              {space.viewCount} {space.viewCount === 1 ? "view" : "views"}
+            </>
+          ) : null}
         </div>
-        {!isBoard && room.date && (
-          <div className="mt-1 text-[12px] text-neutral-500">
-            {room.date}
-            {room.periodEnd ? ` → ${room.periodEnd}` : ""}
-          </div>
+        {space.dateLine && (
+          <div className="mt-1 text-[12px] text-neutral-500">{space.dateLine}</div>
         )}
         <div className="mt-4 pt-3.5 border-t border-white/[0.06] flex justify-between items-center">
-          <div className="flex gap-5 text-[12px] text-neutral-500">
+          <div className="flex gap-4 text-[12px] text-neutral-500">
             <span>
               <span className="tabular-nums text-neutral-100 font-semibold">{roomPulse.open}</span> abertos
             </span>
@@ -184,47 +269,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
                 <span className="tabular-nums font-semibold">{roomPulse.blockers}</span> blockers
               </span>
             )}
+            {roomPulse.overdue > 0 && (
+              <span className="text-amber-400">
+                <span className="tabular-nums font-semibold">{roomPulse.overdue}</span> atrasados
+              </span>
+            )}
           </div>
           <div className="flex gap-1.5 items-center">
-            <button onClick={(e) => copyShareLink(room.id, e)} className="fq-btn-icon !p-1.5" title="Copiar link">
-              <Share2 className="w-3.5 h-3.5" />
-            </button>
-            <span className="text-[12px] text-neutral-500 group-hover:text-teal-300 transition flex items-center gap-1">
-              Abrir <ExternalLink className="w-3 h-3" />
-            </span>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const renderProjectCard = (proj: Project) => {
-    const roomPulse = dashboardPulse(allBugs.filter((bug) => bug.warRoomId === proj.warRoomId));
-    const viewCount = viewCountByProject[proj.id] || 0;
-
-    return (
-      <div key={proj.id} onClick={() => onSelectRoom(proj.warRoomId)} className="group fq-card-interactive">
-        <div className="flex justify-between items-start gap-3">
-          <h4 className="text-[15px] font-semibold text-neutral-100 tracking-tight truncate" title={proj.name}>
-            {proj.name}
-          </h4>
-          <RoomTypeBadge type="board" permanent />
-        </div>
-        <div className="mt-2 text-[13px] text-neutral-500">
-          {proj.squad}
-          <span className="text-neutral-700"> · </span>
-          {viewCount} {viewCount === 1 ? "view" : "views"}
-        </div>
-        <div className="mt-4 pt-3.5 border-t border-white/[0.06] flex justify-between items-center">
-          <span className="text-[12px] text-neutral-500">
-            <span className="tabular-nums text-neutral-100 font-semibold">{roomPulse.open}</span> abertos
-          </span>
-          <div className="flex gap-1.5 items-center">
-            <button
-              onClick={(e) => copyShareLink(proj.warRoomId, e)}
-              className="fq-btn-icon !p-1.5"
-              title="Copiar link"
-            >
+            <button onClick={(e) => copyInvite(space.roomId, e)} className="fq-btn-icon !p-1.5" title="Copiar convite">
               <Share2 className="w-3.5 h-3.5" />
             </button>
             <span className="text-[12px] text-neutral-500 group-hover:text-teal-300 transition flex items-center gap-1">
@@ -324,8 +376,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
                       setMoreOpen(false);
                     }}
                   >
-                    <Key className="w-3.5 h-3.5 text-neutral-500" />
-                    Abrir por ID
+                    <Link2 className="w-3.5 h-3.5 text-neutral-500" />
+                    Entrar com o link
                   </button>
                 )}
               </div>
@@ -335,23 +387,44 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
       </div>
 
       <div className="grid grid-cols-3 gap-3">
-        <div className="fq-metric-card !flex-col !items-start !gap-1">
+        <button
+          type="button"
+          onClick={() => selectPulse("open")}
+          className={`fq-metric-card fq-metric-card--button !flex-col !items-start !gap-1 ${
+            pulseFilter === "open" ? "fq-metric-card--active" : ""
+          }`}
+        >
           <span className="text-[12px] text-neutral-500">Abertos</span>
           <h2 className="text-xl font-semibold text-neutral-100 tabular-nums">{pulse.open}</h2>
-        </div>
-        <div className="fq-metric-card !flex-col !items-start !gap-1">
+        </button>
+        <button
+          type="button"
+          onClick={() => selectPulse("blockers")}
+          className={`fq-metric-card fq-metric-card--button !flex-col !items-start !gap-1 ${
+            pulseFilter === "blockers" ? "fq-metric-card--active" : ""
+          }`}
+        >
           <span className="text-[12px] text-neutral-500">Blockers</span>
           <h2 className={`text-xl font-semibold tabular-nums ${pulse.blockers > 0 ? "text-red-400" : "text-neutral-100"}`}>
             {pulse.blockers}
           </h2>
-        </div>
-        <div className="fq-metric-card !flex-col !items-start !gap-1">
+        </button>
+        <button
+          type="button"
+          onClick={() => selectPulse("overdue")}
+          className={`fq-metric-card fq-metric-card--button !flex-col !items-start !gap-1 ${
+            pulseFilter === "overdue" ? "fq-metric-card--active" : ""
+          }`}
+        >
           <span className="text-[12px] text-neutral-500">Atrasados</span>
           <h2 className={`text-xl font-semibold tabular-nums ${pulse.overdue > 0 ? "text-amber-400" : "text-neutral-100"}`}>
             {pulse.overdue}
           </h2>
-        </div>
+        </button>
       </div>
+      {pulseFilter !== "all" && (
+        <p className="text-[12px] text-neutral-500 -mt-3">{PULSE_HINT[pulseFilter]}</p>
+      )}
       {myCardsOnly && (
         <p className="text-[12px] text-neutral-500 -mt-3">Números filtrados pelos cards atribuídos a você.</p>
       )}
@@ -377,7 +450,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
             type="text"
             required
             autoFocus
-            placeholder="ID de uma sala que você já pode ver"
+            placeholder="Cole o link da sala"
             className="fq-input flex-1"
             value={enterRoomIdInput}
             onChange={(e) => setEnterRoomIdInput(e.target.value)}
@@ -398,7 +471,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
           <h4 className="text-neutral-200 font-medium text-[15px]">Você não tem boards</h4>
           <p className="text-neutral-500 text-sm mt-1 max-w-sm mx-auto">
             {profile?.isGuest
-              ? "Cole o ID da sala no menu Mais para entrar como convidado."
+              ? "Cole o link da sala para entrar como convidado."
               : canManageSpaces
                 ? "Crie uma war room ou um projeto para começar."
                 : "Peça a um admin para marcar o acesso em Usuários."}
@@ -409,40 +482,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
               className="fq-btn-primary text-sm mt-4"
               onClick={() => setEnterIdOpen(true)}
             >
-              Abrir por ID
+              Entrar com o link
             </button>
           )}
         </div>
+      ) : displayedSpaces.length === 0 ? (
+        <p className="text-sm text-neutral-500">
+          {spaceQuery || pulseFilter !== "all"
+            ? "Nenhuma sala corresponde a esse filtro."
+            : "Nenhuma sala neste momento."}
+        </p>
       ) : (
-        <>
-          <div>
-            <h3 className="fq-section-title">
-              War rooms ({displayedWarRooms.length})
-            </h3>
-            {displayedWarRooms.length === 0 ? (
-              <p className="text-sm text-neutral-500 mb-8">
-                {spaceQuery ? "Nenhuma war room corresponde à busca." : "Nenhuma war room neste momento."}
-              </p>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-                {displayedWarRooms.map(renderSpaceCard)}
-              </div>
-            )}
+        <div>
+          <h3 className="fq-section-title">
+            Salas ({displayedSpaces.length})
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {displayedSpaces.map(({ space, roomPulse }) => renderSpaceCard(space, roomPulse))}
           </div>
-
-          <div>
-            <h3 className="fq-section-title">Projetos ({displayedProjects.length})</h3>
-            {displayedProjects.length === 0 ? (
-              <p className="text-sm text-neutral-500">
-                {spaceQuery ? "Nenhum projeto corresponde à busca." : "Nenhum projeto permanente ainda."}
-              </p>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {displayedProjects.map(renderProjectCard)}
-              </div>
-            )}
-          </div>
-        </>
+        </div>
       )}
 
       <AnimatePresence>

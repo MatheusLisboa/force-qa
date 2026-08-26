@@ -1,9 +1,29 @@
 import { getSupabaseAdmin } from "./auth";
 
-export async function validateGuestRoom(input: string): Promise<{ id: string; name: string }> {
+function extractRoomToken(input: string): string {
   const trimmed = input.trim();
+  try {
+    const url = new URL(trimmed);
+    const room = url.searchParams.get("room");
+    if (room) return room.trim();
+  } catch {
+    /* not an absolute URL */
+  }
+  const match = trimmed.match(/[?&]room=([^&]+)/i);
+  if (match) {
+    try {
+      return decodeURIComponent(match[1]).trim();
+    } catch {
+      return match[1].trim();
+    }
+  }
+  return trimmed;
+}
+
+export async function validateGuestRoom(input: string): Promise<{ id: string; name: string }> {
+  const trimmed = extractRoomToken(input);
   if (!trimmed) {
-    throw Object.assign(new Error("Informe o ID ou o nome da sala."), { status: 400 });
+    throw Object.assign(new Error("Cole o link da sala, o ID ou o nome."), { status: 400 });
   }
 
   const admin = getSupabaseAdmin();
@@ -21,9 +41,9 @@ export async function validateGuestRoom(input: string): Promise<{ id: string; na
 }
 
 export async function joinRoom(userId: string, input: string, isGuest: boolean): Promise<string> {
-  const trimmed = input.trim();
+  const trimmed = extractRoomToken(input);
   if (!trimmed) {
-    throw Object.assign(new Error("Informe o ID ou o nome da sala."), { status: 400 });
+    throw Object.assign(new Error("Cole o link da sala, o ID ou o nome."), { status: 400 });
   }
 
   const admin = getSupabaseAdmin();

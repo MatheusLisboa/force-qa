@@ -14,12 +14,16 @@ import { subscribeNotifications } from "./lib/supabase";
 import { AppNotification } from "./types";
 import { ToastProvider } from "./context/ToastContext";
 import { adminBoardViewsPath, adminUsersPath, dashboardPath, pushPath, roomPath } from "./lib/routes";
+import { parsePulseKind, PulseKind } from "./lib/dashboardPulse";
 import { formatRoleLabel } from "./lib/format";
 import { SquadSelect } from "./components/SquadSelect";
 
 function AppContent() {
   const { user, profile, loading, passwordRecovery, updateProfile, changePassword, completePasswordRecovery, logout } = useAuth();
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+  const [roomPulse, setRoomPulse] = useState<PulseKind>("all");
+  const [focusBugId, setFocusBugId] = useState<string | null>(null);
+  const [focusBugAt, setFocusBugAt] = useState(0);
   const [adminPage, setAdminPage] = useState<"board-views" | "users" | null>(null);
   const [adminProjectId, setAdminProjectId] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -127,21 +131,31 @@ function AppContent() {
     return subscribeNotifications(user.id, setNotifications);
   }, [user?.id]);
 
-  const openRoom = useCallback(async (roomId: string) => {
+  const openRoom = useCallback(async (roomId: string, pulse: PulseKind = "all", bugId?: string | null) => {
     setJoinError("");
+    setFocusBugId(bugId || null);
+    setFocusBugAt(Date.now());
+    if (selectedRoomId === roomId) {
+      setRoomPulse(pulse);
+      pushPath(roomPath(roomId, pulse, bugId));
+      return;
+    }
     try {
       const joined = await joinWarRoom(roomId);
       setSelectedRoomId(joined);
-      pushPath(roomPath(joined));
+      setRoomPulse(pulse);
+      pushPath(roomPath(joined, pulse, bugId));
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Não foi possível abrir a sala.";
       setJoinError(message);
     }
-  }, []);
+  }, [selectedRoomId]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const roomFromUrl = params.get("room");
+    const pulseFromUrl = parsePulseKind(params.get("pulse"));
+    const cardFromUrl = params.get("card");
     if (
       roomFromUrl &&
       user &&
@@ -150,16 +164,19 @@ function AppContent() {
       joinAttemptRef.current !== roomFromUrl
     ) {
       joinAttemptRef.current = roomFromUrl;
-      void openRoom(roomFromUrl);
+      void openRoom(roomFromUrl, pulseFromUrl, cardFromUrl);
     }
   }, [user, profile, openRoom, selectedRoomId]);
 
-  const handleSelectRoom = (roomId: string) => {
-    void openRoom(roomId);
+  const handleSelectRoom = (roomId: string, pulse?: PulseKind) => {
+    void openRoom(roomId, pulse ?? "all");
   };
 
   const handleBackToDashboard = () => {
     setSelectedRoomId(null);
+    setRoomPulse("all");
+    setFocusBugId(null);
+    setFocusBugAt(0);
     setAdminPage(null);
     setAdminProjectId(null);
     joinAttemptRef.current = null;
@@ -316,7 +333,7 @@ function AppContent() {
                       onClick={async () => {
                         await markNotificationRead(item.id);
                         setNotifOpen(false);
-                        if (item.warRoomId) void openRoom(item.warRoomId);
+                        if (item.warRoomId) void openRoom(item.warRoomId, "all", item.bugId);
                       }}
                     >
                       <span className="block font-medium text-neutral-100">{item.title}</span>
@@ -364,6 +381,9 @@ function AppContent() {
         ) : selectedRoomId ? (
           <WarRoomDetail 
             roomId={selectedRoomId} 
+            initialPulse={roomPulse}
+            initialBugId={focusBugId}
+            initialBugAt={focusBugAt}
             onBack={handleBackToDashboard} 
           />
         ) : (

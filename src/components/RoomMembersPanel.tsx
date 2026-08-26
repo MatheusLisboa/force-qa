@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { UserPlus, X } from "lucide-react";
+import { X } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { subscribeUsers } from "../lib/supabase";
@@ -21,8 +21,8 @@ export const RoomMembersPanel: React.FC<RoomMembersPanelProps> = ({ roomId }) =>
   const { toast } = useToast();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [memberIds, setMemberIds] = useState<string[]>([]);
-  const [selectedUserId, setSelectedUserId] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
+  const [memberQuery, setMemberQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -50,15 +50,27 @@ export const RoomMembersPanel: React.FC<RoomMembersPanelProps> = ({ roomId }) =>
     () => users.filter((user) => !memberIds.includes(user.id) && !user.isGuest),
     [users, memberIds]
   );
+  const memberQueryNorm = memberQuery.trim().toLowerCase();
+  const candidateMatches = useMemo(
+    () =>
+      candidates
+        .filter((user) => {
+          if (!memberQueryNorm) return false;
+          return [user.name, user.email, user.squad].some((value) =>
+            (value || "").toLowerCase().includes(memberQueryNorm)
+          );
+        })
+        .slice(0, 8),
+    [candidates, memberQueryNorm]
+  );
 
-  const handleAddSelected = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedUserId || !profile?.id || busy) return;
+  const handleAddUser = async (userId: string) => {
+    if (!userId || !profile?.id || busy) return;
     setBusy(true);
     setMessage("");
     try {
-      await addRoomMember(roomId, selectedUserId, profile.id);
-      setSelectedUserId("");
+      await addRoomMember(roomId, userId, profile.id);
+      setMemberQuery("");
       await reloadMembers();
       setMessage("Usuário adicionado à sala.");
     } catch (err: unknown) {
@@ -106,11 +118,11 @@ export const RoomMembersPanel: React.FC<RoomMembersPanelProps> = ({ roomId }) =>
   return (
     <div className="w-full basis-full pt-3 mt-1 border-t border-white/[0.06] space-y-3">
       <div>
-        <p className="text-[10px] font-mono font-bold text-neutral-500 uppercase tracking-wider mb-1">
+        <p className="text-[12px] font-medium text-neutral-400 mb-1">
           Quem acessa esta sala
         </p>
-        <p className="text-[11px] text-neutral-500 leading-relaxed">
-          Só quem estiver nesta lista vê o board. Admins também definem isso em Usuários, por pessoa.
+        <p className="text-[12px] text-neutral-500 leading-relaxed">
+          Busque a pessoa pelo nome e adicione. Admins também fazem isso em Usuários.
         </p>
       </div>
 
@@ -138,25 +150,36 @@ export const RoomMembersPanel: React.FC<RoomMembersPanelProps> = ({ roomId }) =>
         )}
       </div>
 
-      <div className="flex flex-wrap items-end gap-2">
-        <form onSubmit={handleAddSelected} className="flex items-center gap-2">
-          <select
-            value={selectedUserId}
-            onChange={(e) => setSelectedUserId(e.target.value)}
-            className="fq-select text-xs !py-1.5 w-52"
-          >
-            <option value="">Selecionar usuário…</option>
-            {candidates.map((user) => (
-              <option key={user.id} value={user.id}>
-                {user.name} ({user.email})
-              </option>
-            ))}
-          </select>
-          <button type="submit" disabled={!selectedUserId || busy} className="fq-btn-secondary text-xs !py-1.5">
-            <UserPlus className="w-3.5 h-3.5" />
-            Adicionar
-          </button>
-        </form>
+      <div className="space-y-2">
+        <div className="space-y-1.5">
+          <input
+            type="search"
+            value={memberQuery}
+            onChange={(e) => setMemberQuery(e.target.value)}
+            placeholder="Buscar pessoa para adicionar"
+            className="fq-input !py-1.5 !text-xs"
+          />
+          {memberQueryNorm && (
+            <div className="rounded-md border border-white/[0.06] overflow-hidden">
+              {candidateMatches.length === 0 ? (
+                <p className="px-3 py-2 text-[12px] text-neutral-500">Ninguém com esse nome fora da sala.</p>
+              ) : (
+                candidateMatches.map((user) => (
+                  <button
+                    key={user.id}
+                    type="button"
+                    disabled={busy}
+                    className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[13px] text-neutral-300 hover:bg-white/[0.05]"
+                    onClick={() => void handleAddUser(user.id)}
+                  >
+                    <span className="truncate">{user.name}</span>
+                    <span className="shrink-0 text-[11px] text-neutral-500 truncate max-w-[40%]">{user.email}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
 
         <form onSubmit={handleInviteEmail} className="flex items-center gap-2">
           <input
@@ -164,9 +187,9 @@ export const RoomMembersPanel: React.FC<RoomMembersPanelProps> = ({ roomId }) =>
             placeholder="ou e-mail já cadastrado"
             value={inviteEmail}
             onChange={(e) => setInviteEmail(e.target.value)}
-            className="fq-input !py-1.5 !text-xs w-44"
+            className="fq-input !py-1.5 !text-xs flex-1 min-w-0"
           />
-          <button type="submit" disabled={busy || !inviteEmail.trim()} className="fq-btn-secondary text-xs !py-1.5">
+          <button type="submit" disabled={busy || !inviteEmail.trim()} className="fq-btn-secondary text-xs !py-1.5 shrink-0">
             {busy ? "..." : "Convidar"}
           </button>
         </form>

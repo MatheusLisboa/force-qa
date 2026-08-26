@@ -391,6 +391,10 @@
     border-color: var(--color-fq-border-subtle);
   }
 
+  .fq-action-label {
+    @apply hidden sm:inline;
+  }
+
   .fq-page-eyebrow {
     @apply text-[13px] text-neutral-500;
   }
@@ -407,6 +411,31 @@
     @apply relative flex items-center gap-3 overflow-hidden rounded-lg p-4;
     background-color: var(--color-fq-surface);
     border: 1px solid var(--color-fq-border);
+  }
+
+  .fq-metric-card--button {
+    @apply w-full cursor-pointer text-left transition;
+  }
+
+  .fq-metric-card--button:hover {
+    background-color: var(--color-fq-elevated);
+  }
+
+  .fq-metric-card--active {
+    border-color: rgba(255, 255, 255, 0.22);
+    background-color: var(--color-fq-elevated);
+  }
+
+  .fq-drawer-overlay {
+    @apply fixed inset-0 z-50 flex justify-end;
+    background-color: rgba(0, 0, 0, 0.45);
+  }
+
+  .fq-drawer {
+    @apply relative flex h-full w-full max-w-[440px] flex-col overflow-hidden;
+    background-color: var(--color-fq-surface);
+    border-left: 1px solid var(--color-fq-border);
+    box-shadow: -16px 0 48px rgba(0, 0, 0, 0.4);
   }
 
   .fq-metric-icon {
@@ -879,6 +908,26 @@
   font-size: 16px;
   line-height: 1;
   padding: 0 0.15rem;
+}
+
+@media (max-width: 640px) {
+  .fq-page--operational {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+    padding-top: 0.75rem;
+  }
+
+  .fq-kanban-column {
+    flex-basis: min(16.5rem, 82vw);
+  }
+
+  .fq-drawer {
+    max-width: none;
+  }
+
+  .fq-metric-card {
+    padding: 0.75rem;
+  }
 }
 
 @media (pointer: coarse) {

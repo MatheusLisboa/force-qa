@@ -27,12 +27,7 @@ const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
   { value: "viewer", label: "Viewer" },
 ];
 
-function toggleId(ids: string[], id: string, checked: boolean): string[] {
-  if (checked) return ids.includes(id) ? ids : [...ids, id];
-  return ids.filter((item) => item !== id);
-}
-
-function RoomAccessCheckboxes({
+function RoomAccessPicker({
   rooms,
   selectedIds,
   onChange,
@@ -41,26 +36,78 @@ function RoomAccessCheckboxes({
   selectedIds: string[];
   onChange: (ids: string[]) => void;
 }) {
+  const [query, setQuery] = useState("");
+  const selected = rooms.filter((room) => selectedIds.includes(room.id));
+  const queryNorm = query.trim().toLowerCase();
+  const matches = rooms
+    .filter((room) => room?.id && !selectedIds.includes(room.id))
+    .filter((room) => {
+      if (!queryNorm) return false;
+      return [room.name, room.project, room.squad].some((value) =>
+        (value || "").toLowerCase().includes(queryNorm)
+      );
+    })
+    .slice(0, 8);
+
   if (!Array.isArray(rooms) || rooms.length === 0) {
     return <p className="text-[13px] text-neutral-500">Nenhum board cadastrado ainda.</p>;
   }
 
   return (
-    <div className="max-h-56 overflow-y-auto space-y-1.5 rounded-md border border-white/[0.06] p-2">
-      {rooms.filter((room) => room?.id).map((room) => (
-        <label key={room.id} className="flex items-center gap-2 text-sm text-neutral-300 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={selectedIds.includes(room.id)}
-            onChange={(e) => onChange(toggleId(selectedIds, room.id, e.target.checked))}
-            className="rounded border-neutral-700 text-teal-400 bg-transparent focus:ring-0"
-          />
-          <span className="truncate">{room.name}</span>
-          <span className="ml-auto shrink-0 text-[11px] text-neutral-500">
-            {room.roomType === "board" ? "board" : "sala"}
-          </span>
-        </label>
-      ))}
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-1.5 min-h-[1.75rem]">
+        {selected.length === 0 ? (
+          <p className="text-[13px] text-neutral-500">Nenhum board ainda. Busque o nome ou adicione na sala.</p>
+        ) : (
+          selected.map((room) => (
+            <span
+              key={room.id}
+              className="inline-flex items-center gap-1 rounded-md border border-white/[0.08] bg-white/[0.03] pl-2 pr-1 py-0.5 text-[12px] text-neutral-200"
+            >
+              <span className="truncate max-w-[160px]">{room.name}</span>
+              <button
+                type="button"
+                className="fq-btn-icon !p-0.5 hover:text-red-400"
+                onClick={() => onChange(selectedIds.filter((id) => id !== room.id))}
+                aria-label={`Remover ${room.name}`}
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          ))
+        )}
+      </div>
+      <input
+        type="search"
+        className="fq-input text-sm"
+        placeholder="Buscar sala ou board para adicionar"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+      />
+      {queryNorm && (
+        <div className="rounded-md border border-white/[0.06] overflow-hidden">
+          {matches.length === 0 ? (
+            <p className="px-3 py-2 text-[13px] text-neutral-500">Nenhuma sala com esse nome.</p>
+          ) : (
+            matches.map((room) => (
+              <button
+                key={room.id}
+                type="button"
+                className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-neutral-200 hover:bg-white/[0.05]"
+                onClick={() => {
+                  onChange([...selectedIds, room.id]);
+                  setQuery("");
+                }}
+              >
+                <span className="truncate">{room.name}</span>
+                <span className="shrink-0 text-[11px] text-neutral-500">
+                  {room.roomType === "board" ? "board" : "sala"}
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -85,6 +132,7 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
   const [newUserRoomIds, setNewUserRoomIds] = useState<string[]>([]);
   const [rooms, setRooms] = useState<WarRoom[]>([]);
   const [roomIdsByUser, setRoomIdsByUser] = useState<Record<string, string[]>>({});
+  const [userQuery, setUserQuery] = useState("");
 
   useEffect(() => {
     const unsubUsers = subscribeUsers(setUsersList);
@@ -187,6 +235,15 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
     }
   };
 
+  const userQueryNorm = userQuery.trim().toLowerCase();
+  const visibleUsers = usersList.filter((usr) => {
+    if (!usr?.id) return false;
+    if (!userQueryNorm) return true;
+    return [usr.name, usr.email, usr.squad, usr.role].some((value) =>
+      (value || "").toLowerCase().includes(userQueryNorm)
+    );
+  });
+
   const handleDeleteUser = async (userId: string) => {
     if (!window.confirm("Remover este usuário do Auth e do ForceQA? A ação é permanente.")) {
       return;
@@ -213,7 +270,7 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
           </p>
           <h1 className="fq-page-title mt-1">Usuários</h1>
           <p className="text-neutral-500 text-sm mt-1">
-            Cadastre pessoas e marque quais boards cada uma pode ver.
+            Cadastre pessoas. O acesso ao board também pode ser dado em Administrar, na sala.
           </p>
         </div>
       </div>
@@ -226,7 +283,7 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
           <div>
             <h2 className="text-[15px] font-semibold text-neutral-100">Novo usuário</h2>
             <p className="text-neutral-500 text-[13px] mt-0.5 leading-relaxed">
-              Cria a conta e o perfil. Marque abaixo os boards de acesso.
+              Cria a conta e o perfil. Busque o board se já souber o acesso.
             </p>
           </div>
 
@@ -285,7 +342,7 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
             </div>
             <div>
               <label className="fq-label fq-label--xs">Acesso aos boards</label>
-              <RoomAccessCheckboxes rooms={rooms} selectedIds={newUserRoomIds} onChange={setNewUserRoomIds} />
+              <RoomAccessPicker rooms={rooms} selectedIds={newUserRoomIds} onChange={setNewUserRoomIds} />
             </div>
             <button type="submit" disabled={isCreatingUser} className="fq-btn-primary w-full">
               {isCreatingUser ? "Cadastrando..." : "Cadastrar usuário"}
@@ -299,17 +356,27 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
               Pessoas ({usersList.length})
             </h2>
             <p className="text-neutral-500 text-[13px] mt-0.5">
-              Edite para marcar os boards. Excluir remove também a conta no Auth.
+              Edite a pessoa. Boards: busque pelo nome. Excluir remove também a conta no Auth.
             </p>
           </div>
 
+          <input
+            type="search"
+            className="fq-input text-sm"
+            placeholder="Buscar por nome, e-mail ou squad"
+            value={userQuery}
+            onChange={(e) => setUserQuery(e.target.value)}
+          />
+
           <div className="space-y-2">
-            {usersList.length === 0 ? (
+            {visibleUsers.length === 0 ? (
               <div className="fq-empty-state py-10">
-                <span className="text-sm text-neutral-500">Carregando usuários...</span>
+                <span className="text-sm text-neutral-500">
+                  {usersList.length === 0 ? "Carregando usuários..." : "Ninguém corresponde à busca."}
+                </span>
               </div>
             ) : (
-              usersList.filter((usr) => usr?.id).map((usr) => {
+              visibleUsers.map((usr) => {
                 const isEditing = editingUserId === usr.id;
                 if (isEditing) {
                   return (
@@ -368,7 +435,7 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
                       </div>
                       <div>
                         <label className="fq-label fq-label--xs !mb-1">Boards e salas</label>
-                        <RoomAccessCheckboxes
+                        <RoomAccessPicker
                           rooms={rooms}
                           selectedIds={editingRoomIds}
                           onChange={setEditingRoomIds}
