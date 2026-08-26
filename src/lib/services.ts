@@ -4,6 +4,7 @@ import {
   OperationType,
   toUserProfile,
   toWarRoom,
+  findWarRoomByIdOrName,
 } from "./supabase";
 import {
   WarRoom,
@@ -308,7 +309,30 @@ export async function archiveBug(
   );
 }
 
-export async function joinWarRoom(input: string): Promise<string> {
+function isIgnorableMembershipError(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return true;
+  const code = error.code || "";
+  const message = (error.message || "").toLowerCase();
+  return (
+    code === "23505" ||
+    code === "42P01" ||
+    code === "PGRST205" ||
+    message.includes("room_members") && message.includes("does not exist")
+  );
+}
+
+async function ensureRoomMembership(roomId: string, userId: string): Promise<void> {
+  const { error } = await supabase.from("room_members").insert({
+    war_room_id: roomId,
+    user_id: userId,
+    added_by: userId,
+  });
+  if (error && !isIgnorableMembershipError(error)) {
+    console.warn("ensureRoomMembership:", error);
+  }
+}
+
+async function joinWarRoomViaApi(input: string): Promise<string> {
   const response = await authFetch("/api/rooms/join", {
     method: "POST",
     body: JSON.stringify({ input }),
@@ -318,6 +342,39 @@ export async function joinWarRoom(input: string): Promise<string> {
   }
   const data = await response.json();
   return data.roomId as string;
+}
+
+export async function joinWarRoom(input: string): Promise<string> {
+  const trimmed = input.trim();
+  if (!trimmed) throw new Error("Informe o ID ou o nome da sala.");
+
+  const { data: sessionData } = await supabase.auth.getSession();
+  const userId = sessionData.session?.user.id;
+  if (!userId) throw new Error("Sessão expirada. Faça login novamente.");
+
+  const visible = await findWarRoomByIdOrName(trimmed);
+  if (visible) {
+    await ensureRoomMembership(visible.id, userId);
+    return visible.id;
+  }
+
+  const { error } = await supabase.from("room_members").insert({
+    war_room_id: trimmed,
+    user_id: userId,
+    added_by: userId,
+  });
+  if (!error || error.code === "23505") {
+    return trimmed;
+  }
+  if (error.code === "23503") {
+    throw new Error("Sala não encontrada. Confira o ID.");
+  }
+
+  try {
+    return await joinWarRoomViaApi(trimmed);
+  } catch {
+    throw new Error(error.message || "Não foi possível entrar na sala.");
+  }
 }
 
 export async function inviteToRoom(roomId: string, email: string): Promise<{ invited: boolean; alreadyMember: boolean }> {

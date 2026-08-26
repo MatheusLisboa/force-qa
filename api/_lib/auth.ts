@@ -61,3 +61,17 @@ export function httpErrorStatus(error: unknown, fallback = 500): number {
   }
   return fallback;
 }
+
+export function readJsonBody(body: unknown): Record<string, unknown> {
+  if (!body) return {};
+  if (typeof body === "string") {
+    try {
+      const parsed = JSON.parse(body) as unknown;
+      return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
+    } catch {
+      return {};
+    }
+  }
+  if (typeof body === "object") return body as Record<string, unknown>;
+  return {};
+}

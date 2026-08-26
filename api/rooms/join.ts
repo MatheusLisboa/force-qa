@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { httpErrorStatus, requireUser } from "../_lib/auth";
+import { httpErrorStatus, readJsonBody, requireUser } from "../_lib/auth";
 import { joinRoom } from "../_lib/rooms";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -10,9 +10,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const authed = await requireUser(req.headers.authorization);
+    const body = readJsonBody(req.body);
     const roomId = await joinRoom(
       authed.user.id,
-      String(req.body?.input || req.body?.roomId || ""),
+      String(body.input || body.roomId || ""),
       authed.isGuest
     );
     return res.status(200).json({ roomId });
