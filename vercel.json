@@ -2,6 +2,11 @@
   "buildCommand": "npm run build:vercel",
   "outputDirectory": "dist",
   "framework": null,
+  "functions": {
+    "api/**/*.cjs": {
+      "includeFiles": "api/package.json"
+    }
+  },
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
