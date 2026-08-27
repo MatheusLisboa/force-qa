@@ -18,6 +18,7 @@ import {
   getStatusConfig,
 } from "../lib/bugLabels";
 import { slugifyBoardViewName } from "../lib/boardViews";
+import { useConfirm } from "../context/ConfirmContext";
 
 interface AdminBoardViewsProps {
   onBack: () => void;
@@ -167,6 +168,7 @@ function FilterPreview({ filters }: { filters: BoardViewFilters }) {
 }
 
 export const AdminBoardViews: React.FC<AdminBoardViewsProps> = ({ onBack, initialProjectId }) => {
+  const { confirm } = useConfirm();
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(initialProjectId ?? null);
   const [views, setViews] = useState<BoardView[]>([]);
@@ -311,7 +313,13 @@ export const AdminBoardViews: React.FC<AdminBoardViewsProps> = ({ onBack, initia
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (!window.confirm(`Excluir a visão "${name}"?`)) return;
+    const ok = await confirm({
+      title: "Excluir visão",
+      message: `A visão "${name}" será removida deste projeto.`,
+      confirmLabel: "Excluir",
+      danger: true,
+    });
+    if (!ok) return;
     setSaving(true);
     setError("");
     setSuccess("");

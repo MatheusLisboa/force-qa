@@ -13,6 +13,7 @@ import { joinWarRoom, markAllNotificationsRead, markNotificationRead } from "./l
 import { subscribeNotifications } from "./lib/supabase";
 import { AppNotification } from "./types";
 import { ToastProvider } from "./context/ToastContext";
+import { ConfirmProvider } from "./context/ConfirmContext";
 import { adminBoardViewsPath, adminUsersPath, dashboardPath, pushPath, roomPath } from "./lib/routes";
 import { parsePulseKind, PulseKind } from "./lib/dashboardPulse";
 import { formatRoleLabel } from "./lib/format";
@@ -531,7 +532,9 @@ export default function App() {
   return (
     <AuthProvider>
       <ToastProvider>
-        <AppContent />
+        <ConfirmProvider>
+          <AppContent />
+        </ConfirmProvider>
       </ToastProvider>
     </AuthProvider>
   );

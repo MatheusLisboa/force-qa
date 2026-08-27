@@ -442,6 +442,68 @@
     box-shadow: -16px 0 48px rgba(0, 0, 0, 0.4);
   }
 
+  .fq-room-split {
+    @apply flex min-h-0 flex-col gap-4 lg:flex-row lg:items-start;
+  }
+
+  .fq-room-board {
+    @apply min-w-0 flex-1 overflow-x-auto;
+  }
+
+  .fq-card-panel-shell {
+    @apply w-full lg:sticky lg:top-4 lg:w-[24rem] lg:shrink-0;
+  }
+
+  .fq-card-panel {
+    @apply relative flex h-full w-full max-w-[440px] flex-col overflow-hidden;
+    background-color: var(--color-fq-surface);
+    border-left: 1px solid var(--color-fq-border);
+  }
+
+  @media (max-width: 1023px) {
+    .fq-card-panel-shell {
+      @apply fixed inset-0 z-50 flex justify-end;
+      background-color: rgba(0, 0, 0, 0.45);
+    }
+
+    .fq-card-panel {
+      box-shadow: -16px 0 48px rgba(0, 0, 0, 0.4);
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .fq-card-panel {
+      @apply max-w-none rounded-xl border;
+      height: calc(100dvh - 6.5rem);
+      max-height: calc(100dvh - 6.5rem);
+      border-color: var(--color-fq-border);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+    }
+  }
+
+  .fq-chip-row {
+    @apply grid grid-cols-3 gap-2;
+  }
+
+  .fq-chip {
+    @apply rounded-md border py-1.5 text-center text-xs font-medium transition cursor-pointer;
+    border-color: var(--color-fq-border);
+    color: var(--color-fq-text-secondary);
+    background-color: transparent;
+  }
+
+  .fq-chip:hover {
+    border-color: rgba(255, 255, 255, 0.16);
+    background-color: rgba(255, 255, 255, 0.03);
+    color: var(--color-fq-text-primary);
+  }
+
+  .fq-chip--on {
+    border-color: rgba(45, 212, 191, 0.4);
+    background-color: var(--color-fq-accent-muted);
+    color: #99f6e4;
+  }
+
   .fq-metric-icon {
     @apply shrink-0 rounded-md p-2;
   }
@@ -880,6 +942,11 @@
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
   }
 
+  .fq-kanban-card--selected {
+    border-color: rgba(45, 212, 191, 0.55);
+    box-shadow: 0 0 0 1px rgba(45, 212, 191, 0.25);
+  }
+
   /* Bug detail panels */
   .fq-detail-panel {
     @apply space-y-5 p-5 lg:p-6;
@@ -926,6 +993,17 @@
     background-color: rgba(139, 92, 246, 0.08);
     border: 1px solid rgba(139, 92, 246, 0.15);
   }
+}
+
+.fq-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background-color: rgba(0, 0, 0, 0.6);
 }
 
 .fq-toast-stack {
@@ -982,6 +1060,10 @@
   }
 
   .fq-drawer {
+    max-width: none;
+  }
+
+  .fq-card-panel {
     max-width: none;
   }
 

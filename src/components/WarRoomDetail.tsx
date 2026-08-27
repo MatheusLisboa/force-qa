@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import { subscribeWarRoom, subscribeBugsByRoom, subscribeBoardViews, subscribeProjectByWarRoomId } from "../lib/supabase";
 import { updateBugField, updateWarRoom, deleteWarRoom } from "../lib/services";
 import { useToast } from "../context/ToastContext";
+import { useConfirm } from "../context/ConfirmContext";
 import { useAuth } from "../context/AuthContext";
 import { WarRoom, Bug, BugType, BoardView, Project, KanbanColumn } from "../types";
 import { BugDetailModal } from "./BugDetailModal";
@@ -57,6 +58,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
 }) => {
   const { profile } = useAuth();
   const { toast } = useToast();
+  const { confirm } = useConfirm();
   const [copied, setCopied] = useState(false);
   const [warRoom, setWarRoom] = useState<WarRoom | null>(null);
   const [bugs, setBugs] = useState<Bug[]>([]);
@@ -371,9 +373,13 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
   const handleRemoveKanbanColumn = async (columnId: string) => {
     const column = kanbanColumns.find((c) => c.id === columnId);
     if (!column || column.builtin || isSavingColumns) return;
-    if (!window.confirm(`Remover a coluna "${displayColumnLabel(column)}"? Cards nela voltarão para a coluna padrão do status.`)) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Remover coluna",
+      message: `Cards em "${displayColumnLabel(column)}" voltarão para a coluna padrão do status.`,
+      confirmLabel: "Remover",
+      danger: true,
+    });
+    if (!ok) return;
 
     const next = kanbanColumns.filter((c) => c.id !== columnId);
     setIsSavingColumns(true);
@@ -596,9 +602,13 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
 
             <button
               onClick={async () => {
-                if (!window.confirm("Excluir esta sala? Cards e histórico serão removidos. Esta ação não pode ser desfeita.")) {
-                  return;
-                }
+                const ok = await confirm({
+                  title: "Excluir sala",
+                  message: "Cards e histórico serão removidos. Esta ação não pode ser desfeita.",
+                  confirmLabel: "Excluir sala",
+                  danger: true,
+                });
+                if (!ok) return;
                 try {
                   await deleteWarRoom(roomId);
                   onBack();
@@ -795,17 +805,31 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
       {/* RENDER ACTIVE TAP CONTENT */}
 
       {activeTab === "kanban" && (
-        <KanbanBoard
-          columns={kanbanColumns}
-          bugsByColumn={bugsByColumn}
-          role={profile?.role}
-          isCoarsePointer={isCoarsePointer}
-          onDragStart={handleDragStart}
-          onDragOver={handleDragOver}
-          onDrop={handleDrop}
-          onOpenBug={setSelectedBug}
-          onMoveToColumn={handleMoveToColumn}
-        />
+        <div className="fq-room-split">
+          <div className="fq-room-board">
+            <KanbanBoard
+              columns={kanbanColumns}
+              bugsByColumn={bugsByColumn}
+              role={profile?.role}
+              isCoarsePointer={isCoarsePointer}
+              selectedBugId={selectedBug?.id}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDrop={handleDrop}
+              onOpenBug={setSelectedBug}
+              onMoveToColumn={handleMoveToColumn}
+            />
+          </div>
+          <AnimatePresence>
+            {selectedBug && (
+              <BugDetailModal
+                docked
+                bug={selectedBug}
+                onClose={() => setSelectedBug(null)}
+              />
+            )}
+          </AnimatePresence>
+        </div>
       )}
 
       {activeTab === "ai_report" && (
@@ -875,10 +899,9 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
         )}
       </AnimatePresence>
 
-      {/* TICKET GRANULAR DEEP INSPECTOR MODAL */}
       <AnimatePresence>
-        {selectedBug && (
-          <BugDetailModal 
+        {selectedBug && activeTab !== "kanban" && (
+          <BugDetailModal
             bug={selectedBug}
             onClose={() => setSelectedBug(null)}
           />

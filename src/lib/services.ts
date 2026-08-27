@@ -22,6 +22,7 @@ import { DEFAULT_KANBAN_COLUMNS } from "./kanbanColumns";
 import { slugifyBoardViewName } from "./boardViews";
 import { authFetch, readApiError } from "./apiClient";
 import { diffRoomAccess } from "./roomAccess";
+import { normalizeArea } from "./squads";
 
 function cleanUndefined<T extends object>(obj: T): T {
   const result = { ...obj } as Record<string, unknown>;
@@ -41,7 +42,7 @@ function warRoomToRow(data: Omit<WarRoom, "id" | "createdAt">, customId: string)
     id: customId,
     name: data.name,
     project: data.project,
-    squad: data.squad,
+    squad: normalizeArea(data.squad),
     date: data.date,
     period_end: data.periodEnd || "",
     description: data.description,
@@ -99,7 +100,7 @@ export async function createProject(data: {
   const warRoomId = await createBoard({
     name,
     project: name,
-    squad: data.squad.trim(),
+    squad: normalizeArea(data.squad),
     description: data.description.trim(),
     severity: "medium",
     createdBy: data.createdBy,
@@ -111,7 +112,7 @@ export async function createProject(data: {
     .insert({
       name,
       slug,
-      squad: data.squad.trim(),
+      squad: normalizeArea(data.squad),
       description: data.description.trim() || "",
       war_room_id: warRoomId,
       created_by: data.createdBy,
@@ -132,7 +133,7 @@ export async function updateProject(
     payload.name = fields.name.trim();
     payload.slug = slugifyBoardViewName(fields.name);
   }
-  if (fields.squad !== undefined) payload.squad = fields.squad.trim();
+  if (fields.squad !== undefined) payload.squad = normalizeArea(fields.squad);
   if (fields.description !== undefined) payload.description = fields.description.trim();
 
   const { error } = await supabase.from("projects").update(payload).eq("id", id);
@@ -602,7 +603,7 @@ export async function updateUserProfile(
   const payload: Record<string, unknown> = {};
   if (fields.name !== undefined) payload.name = fields.name;
   if (fields.role !== undefined) payload.role = fields.role;
-  if (fields.squad !== undefined) payload.squad = fields.squad;
+  if (fields.squad !== undefined) payload.squad = normalizeArea(fields.squad);
 
   const { error } = await supabase.from("users").update(payload).eq("id", userId);
   if (error) handleDbError(error, OperationType.UPDATE, `users/${userId}`);

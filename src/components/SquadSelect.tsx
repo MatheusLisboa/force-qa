@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { SQUAD_PRESETS } from "../lib/squads";
+import { isKnownSquad, normalizeArea, SQUAD_PRESETS } from "../lib/squads";
 
 interface SquadSelectProps {
   value: string;
@@ -16,8 +16,9 @@ export const SquadSelect: React.FC<SquadSelectProps> = ({
   className = "fq-input",
   id,
 }) => {
-  const isPreset = SQUAD_PRESETS.includes(value as (typeof SQUAD_PRESETS)[number]);
-  const [mode, setMode] = useState<"preset" | "custom">(isPreset || !value ? "preset" : "custom");
+  const displayValue = normalizeArea(value);
+  const isPreset = !displayValue || isKnownSquad(displayValue);
+  const [mode, setMode] = useState<"preset" | "custom">(isPreset ? "preset" : "custom");
 
   if (mode === "custom") {
     return (
@@ -50,7 +51,7 @@ export const SquadSelect: React.FC<SquadSelectProps> = ({
       id={id}
       required={required}
       className={className}
-      value={value}
+      value={displayValue}
       onChange={(e) => {
         const next = e.target.value;
         if (next === "__custom__") {

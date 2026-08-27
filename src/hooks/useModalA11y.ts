@@ -3,6 +3,8 @@ import { RefObject, useEffect, useRef } from "react";
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+const closeStack: Array<() => void> = [];
+
 function getFocusableElements(container: HTMLElement | null): HTMLElement[] {
   if (!container) return [];
   return Array.from(
@@ -30,24 +32,31 @@ function trapFocus(event: KeyboardEvent, container: HTMLElement) {
 export function useModalA11y(
   isOpen: boolean,
   onClose: () => void,
-  dialogRef: RefObject<HTMLElement | null>
+  dialogRef: RefObject<HTMLElement | null>,
+  options?: { trapFocus?: boolean }
 ) {
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const trap = options?.trapFocus !== false;
 
   useEffect(() => {
     if (!isOpen) return;
 
     const previouslyFocused = document.activeElement as HTMLElement | null;
+    const closer = () => onCloseRef.current();
+    closeStack.push(closer);
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      const isTop = closeStack[closeStack.length - 1] === closer;
+      if (!isTop) return;
+
       if (event.key === "Escape") {
         event.preventDefault();
-        onCloseRef.current();
+        closer();
         return;
       }
 
-      if (event.key === "Tab") {
+      if (event.key === "Tab" && trap) {
         trapFocus(event, dialogRef.current as HTMLElement);
       }
     };
@@ -55,6 +64,7 @@ export function useModalA11y(
     document.addEventListener("keydown", handleKeyDown);
 
     const frame = requestAnimationFrame(() => {
+      if (!trap) return;
       const focusable = getFocusableElements(dialogRef.current);
       if (focusable.length > 0) {
         focusable[0].focus();
@@ -66,7 +76,9 @@ export function useModalA11y(
     return () => {
       cancelAnimationFrame(frame);
       document.removeEventListener("keydown", handleKeyDown);
-      previouslyFocused?.focus();
+      const index = closeStack.lastIndexOf(closer);
+      if (index >= 0) closeStack.splice(index, 1);
+      if (trap) previouslyFocused?.focus();
     };
-  }, [isOpen, dialogRef]);
+  }, [isOpen, dialogRef, trap]);
 }

@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { joinWarRoom } from "../lib/services";
-import { subscribeWarRooms, subscribeAllBugs, subscribeProjects, subscribeAllBoardViews } from "../lib/supabase";
+import { subscribeWarRooms, subscribeDashboardPulse, subscribeProjects, subscribeAllBoardViews, fetchDashboardExportBugs } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
-import { WarRoom, Bug, Project, BoardView } from "../types";
+import { WarRoom, Project, BoardView } from "../types";
 import {
   Clock,
   LayoutGrid,
@@ -21,6 +21,7 @@ import { canManageSpaces as roleCanManageSpaces } from "../lib/permissions";
 import {
   comparePulseActivity,
   dashboardPulse,
+  PulseBug,
   PulseKind,
   pulseMatchesCounts,
 } from "../lib/dashboardPulse";
@@ -57,7 +58,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
   const [warRooms, setWarRooms] = useState<WarRoom[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [allBoardViews, setAllBoardViews] = useState<BoardView[]>([]);
-  const [allBugs, setAllBugs] = useState<Bug[]>([]);
+  const [allBugs, setAllBugs] = useState<PulseBug[]>([]);
   const [myCardsOnly, setMyCardsOnly] = useState(false);
   const [pulseFilter, setPulseFilter] = useState<PulseKind>("all");
   const [isWarRoomModalOpen, setIsWarRoomModalOpen] = useState(false);
@@ -76,7 +77,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
       setLoading(false);
     });
     const unsubscribeProjects = subscribeProjects(setProjects);
-    const unsubscribeBugs = subscribeAllBugs(setAllBugs);
+    const unsubscribeBugs = subscribeDashboardPulse(setAllBugs);
     const unsubscribeViews = subscribeAllBoardViews(null, setAllBoardViews);
     return () => {
       unsubscribeRooms();
@@ -192,36 +193,43 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
     }
   };
 
-  const handleExportCSV = () => {
-    const csvRows: string[][] = [
-      ["Relatorio de cards"],
-      [`Gerado em: ${new Date().toLocaleString()}`],
-      [],
-      ["ID", "Titulo", "Status", "Severidade", "Tipo", "Ambiente", "Responsavel", "Criado em"],
-    ];
-    scopedBugs.forEach((bug) => {
-      csvRows.push([
-        bug.id,
-        bug.title,
-        bug.status,
-        bug.criticism,
-        bug.type || "",
-        bug.environment || "",
-        bug.ownerName || "Sem responsavel",
-        bug.createdAt ? new Date(bug.createdAt).toLocaleString() : "",
-      ]);
-    });
-    const csvContent = csvRows
-      .map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","))
-      .join("\n");
-    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "forceqa_cards.csv";
-    link.click();
-    URL.revokeObjectURL(url);
-    setMoreOpen(false);
+  const handleExportCSV = async () => {
+    try {
+      const rows = await fetchDashboardExportBugs();
+      const scoped = rows.filter((bug) => !myCardsOnly || bug.ownerId === profile?.id);
+      const csvRows: string[][] = [
+        ["Relatorio de cards"],
+        [`Gerado em: ${new Date().toLocaleString()}`],
+        [],
+        ["ID", "Titulo", "Status", "Severidade", "Tipo", "Ambiente", "Responsavel", "Criado em"],
+      ];
+      scoped.forEach((bug) => {
+        csvRows.push([
+          bug.id,
+          bug.title,
+          bug.status,
+          bug.criticism,
+          bug.type || "",
+          bug.environment || "",
+          bug.ownerName || "Sem responsavel",
+          bug.createdAt ? new Date(bug.createdAt).toLocaleString() : "",
+        ]);
+      });
+      const csvContent = csvRows
+        .map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","))
+        .join("\n");
+      const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "forceqa_cards.csv";
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Não foi possível exportar o CSV.", { kind: "error" });
+    } finally {
+      setMoreOpen(false);
+    }
   };
 
   const renderSpaceCard = (space: SpaceRow, roomPulse: ReturnType<typeof dashboardPulse>) => {

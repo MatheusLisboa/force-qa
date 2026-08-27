@@ -3,12 +3,14 @@ import { motion } from "motion/react";
 import { CheckCircle, Sparkles, Upload } from "lucide-react";
 import { useModalA11y } from "../hooks/useModalA11y";
 import { useToast } from "../context/ToastContext";
+import { useConfirm } from "../context/ConfirmContext";
 import { useAuth } from "../context/AuthContext";
 import { createBug, fetchAIDuplicateCheck } from "../lib/services";
 import { uploadEvidenceFile } from "../lib/evidence";
 import { canWriteBugs } from "../lib/permissions";
-import { BUG_TYPE_OPTIONS } from "../lib/bugLabels";
+import { BUG_TYPE_OPTIONS, ENVIRONMENT_LABELS } from "../lib/bugLabels";
 import { Bug, BugPriority, BugType, SeverityLevel } from "../types";
+import { SeverityPicker } from "./SeverityPicker";
 
 interface CreateBugModalProps {
   open: boolean;
@@ -27,13 +29,14 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
 }) => {
   const { profile } = useAuth();
   const { toast } = useToast();
+  const { confirm } = useConfirm();
   const dialogRef = useRef<HTMLDivElement>(null);
   useModalA11y(open, onClose, dialogRef);
 
   const [bugTitle, setBugTitle] = useState("");
   const [bugDesc, setBugDesc] = useState("");
   const [bugCrit, setBugCrit] = useState<SeverityLevel>("medium");
-  const [bugEnv, setBugEnv] = useState<"production" | "homologation" | "dev">("production");
+  const [bugEnv, setBugEnv] = useState<"production" | "homologation" | "dev">("homologation");
   const [bugType, setBugType] = useState<BugType>(presetType);
 
   useEffect(() => {
@@ -60,7 +63,7 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
     setBugTitle("");
     setBugDesc("");
     setBugCrit("medium");
-    setBugEnv("production");
+    setBugEnv("homologation");
     setBugType(presetType);
     setBugPriority("medium");
     setBugUrl("");
@@ -120,9 +123,11 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
         );
         setDuplicateAlert(triage);
         if (triage.isDuplicate && (triage.confidenceScore ?? 0) >= 70) {
-          const proceed = window.confirm(
-            `Possível duplicata (${triage.confidenceScore}%): ${triage.explanation}\n\nCriar o card mesmo assim?`
-          );
+          const proceed = await confirm({
+            title: "Possível duplicata",
+            message: `${triage.explanation} (${triage.confidenceScore}%). Criar o card mesmo assim?`,
+            confirmLabel: "Criar mesmo assim",
+          });
           if (!proceed) {
             setFormSubmitting(false);
             return;
@@ -191,7 +196,7 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="fq-modal fq-modal--md fq-modal--tall max-h-[90vh]"
+        className="fq-modal fq-modal--md max-h-[90vh]"
       >
         <div className="fq-modal-header !mb-0 shrink-0">
           <h3 id="bug-create-modal-title" className="fq-modal-title">
@@ -218,13 +223,23 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
 
             <div>
               <label className="fq-label fq-label--xs">Severidade</label>
-              <select value={bugCrit} onChange={(e) => setBugCrit(e.target.value as SeverityLevel)} className="fq-input">
-                <option value="blocker">Blocker</option>
-                <option value="critical">Crítico</option>
-                <option value="high">Alto</option>
-                <option value="medium">Médio</option>
-                <option value="low">Baixo</option>
-              </select>
+              <SeverityPicker value={bugCrit} onChange={setBugCrit} />
+            </div>
+
+            <div>
+              <label className="fq-label fq-label--xs">Ambiente</label>
+              <div className="fq-chip-row">
+                {(["homologation", "dev", "production"] as const).map((env) => (
+                  <button
+                    key={env}
+                    type="button"
+                    className={`fq-chip ${bugEnv === env ? "fq-chip--on" : ""}`}
+                    onClick={() => setBugEnv(env)}
+                  >
+                    {ENVIRONMENT_LABELS[env]}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div>
@@ -292,14 +307,6 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
               <div className="space-y-4 pt-1">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="fq-label fq-label--xs">Ambiente</label>
-                    <select value={bugEnv} onChange={(e) => setBugEnv(e.target.value as "production" | "homologation" | "dev")} className="fq-input">
-                      <option value="production">Produção</option>
-                      <option value="homologation">Homologação</option>
-                      <option value="dev">Dev</option>
-                    </select>
-                  </div>
-                  <div>
                     <label className="fq-label fq-label--xs">Tipo</label>
                     <select value={bugType} onChange={(e) => setBugType(e.target.value as BugType)} className="fq-select">
                       {BUG_TYPE_OPTIONS.map((opt) => (
@@ -307,8 +314,6 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
                       ))}
                     </select>
                   </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="fq-label fq-label--xs">Prioridade</label>
                     <select value={bugPriority} onChange={(e) => setBugPriority(e.target.value as BugPriority)} className="fq-select">
@@ -318,10 +323,10 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
                       <option value="low">Baixa</option>
                     </select>
                   </div>
-                  <div>
-                    <label className="fq-label fq-label--xs">URL relacionada</label>
-                    <input type="url" className="fq-input text-[13px]" placeholder="https://..." value={bugUrl} onChange={(e) => setBugUrl(e.target.value)} />
-                  </div>
+                </div>
+                <div>
+                  <label className="fq-label fq-label--xs">URL relacionada</label>
+                  <input type="url" className="fq-input text-[13px]" placeholder="https://..." value={bugUrl} onChange={(e) => setBugUrl(e.target.value)} />
                 </div>
                 <div>
                   <label className="fq-label fq-label--xs">Tags (separadas por vírgula)</label>

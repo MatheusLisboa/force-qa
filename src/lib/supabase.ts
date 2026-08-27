@@ -10,6 +10,8 @@ import {
   AppNotification,
 } from "../types";
 import { applyRealtimeChange, isIncompleteRow, RealtimeEvent } from "./realtime";
+import { PulseBug } from "./dashboardPulse";
+import { normalizeArea } from "./squads";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -47,7 +49,7 @@ export function toUserProfile(row: Record<string, unknown>): UserProfile {
     name: row.name as string,
     email: row.email as string,
     role: row.role as UserProfile["role"],
-    squad: (row.squad as string) || "",
+    squad: normalizeArea((row.squad as string) || ""),
     avatarUrl: (row.avatar_url as string) || undefined,
     isGuest: Boolean(row.is_guest),
     createdAt: row.created_at as string,
@@ -59,7 +61,7 @@ export function toWarRoom(row: Record<string, unknown>): WarRoom {
     id: row.id as string,
     name: row.name as string,
     project: row.project as string,
-    squad: row.squad as string,
+    squad: normalizeArea((row.squad as string) || ""),
     date: row.date as string,
     periodEnd: (row.period_end as string) || undefined,
     description: row.description as string,
@@ -148,7 +150,7 @@ export function toProject(row: Record<string, unknown>): Project {
     id: row.id as string,
     name: row.name as string,
     slug: row.slug as string,
-    squad: row.squad as string,
+    squad: normalizeArea((row.squad as string) || ""),
     description: (row.description as string) || "",
     warRoomId: row.war_room_id as string,
     createdAt: row.created_at as string,
@@ -198,6 +200,19 @@ export function handleDbError(
 type Unsubscribe = () => void;
 
 export const DASHBOARD_BUGS_LIMIT = 1500;
+export const DASHBOARD_EXPORT_LIMIT = 5000;
+
+export function toPulseBug(row: Record<string, unknown>): PulseBug {
+  return {
+    id: row.id as string,
+    warRoomId: row.war_room_id as string,
+    status: row.status as PulseBug["status"],
+    criticism: row.criticism as PulseBug["criticism"],
+    createdAt: row.created_at as string,
+    ownerId: (row.owner_id as string) || null,
+    archived: Boolean(row.archived),
+  };
+}
 
 function subscribeMappedList<T>(options: {
   table: string;
@@ -317,28 +332,59 @@ export function subscribeWarRooms(
   });
 }
 
-export function subscribeAllBugs(callback: (bugs: Bug[]) => void): Unsubscribe {
+export function subscribeDashboardPulse(callback: (bugs: PulseBug[]) => void): Unsubscribe {
   return subscribeMappedList({
     table: "bugs",
-    channelName: "bugs-all-live",
+    channelName: "bugs-pulse-live",
     fetchRows: async () => {
       const { data, error } = await supabase
         .from("bugs")
-        .select(
-          "id, war_room_id, title, criticism, status, owner_id, owner_name, environment, type, priority, created_at, updated_at, created_by, created_by_name, resolved_at, reopen_count, archived"
-        )
+        .select("id, war_room_id, status, criticism, created_at, owner_id, archived")
         .eq("archived", false)
         .order("created_at", { ascending: false })
         .limit(DASHBOARD_BUGS_LIMIT);
       if (error) throw error;
-      return (data || []).map(toBug);
+      return (data || []).map(toPulseBug);
     },
-    mapRow: toBug,
+    mapRow: toPulseBug,
     getId: (bug) => bug.id,
     onChange: callback,
     matches: (bug) => !bug.archived,
-    requiredKeys: ["id", "war_room_id", "title"],
+    requiredKeys: ["id", "war_room_id", "status", "criticism", "created_at"],
   });
+}
+
+export type DashboardExportBug = {
+  id: string;
+  title: string;
+  status: string;
+  criticism: string;
+  type: string;
+  environment: string;
+  ownerId: string | null;
+  ownerName: string | null;
+  createdAt: string;
+};
+
+export async function fetchDashboardExportBugs(): Promise<DashboardExportBug[]> {
+  const { data, error } = await supabase
+    .from("bugs")
+    .select("id, title, status, criticism, type, environment, owner_id, owner_name, created_at, archived")
+    .eq("archived", false)
+    .order("created_at", { ascending: false })
+    .limit(DASHBOARD_EXPORT_LIMIT);
+  if (error) throw error;
+  return (data || []).map((row) => ({
+    id: row.id as string,
+    title: (row.title as string) || "",
+    status: (row.status as string) || "",
+    criticism: (row.criticism as string) || "",
+    type: (row.type as string) || "",
+    environment: (row.environment as string) || "",
+    ownerId: (row.owner_id as string) || null,
+    ownerName: (row.owner_name as string) || null,
+    createdAt: (row.created_at as string) || "",
+  }));
 }
 
 export function subscribeUsers(

@@ -18,6 +18,7 @@ interface KanbanBoardProps {
   onDrop: (e: React.DragEvent, columnId: string) => void;
   onOpenBug: (bug: Bug) => void;
   onMoveToColumn: (bug: Bug, column: KanbanColumn) => void;
+  selectedBugId?: string;
 }
 
 export const KanbanBoard: React.FC<KanbanBoardProps> = ({
@@ -30,6 +31,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   onDrop,
   onOpenBug,
   onMoveToColumn,
+  selectedBugId,
 }) => {
   const canDrag = canWriteBugs(role) && !isCoarsePointer;
 
@@ -69,7 +71,9 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                       draggable={canDrag}
                       onDragStart={(e) => onDragStart(e, bug.id)}
                       onClick={() => onOpenBug(bug)}
-                      className={`group fq-kanban-card ${sla ? "ring-1 ring-red-500/40" : ""}`}
+                      className={`group fq-kanban-card ${sla ? "ring-1 ring-red-500/40" : ""} ${
+                        selectedBugId === bug.id ? "fq-kanban-card--selected" : ""
+                      }`}
                     >
                       <span
                         className={`absolute left-0 top-0 h-full w-1 ${getSeverityStripeClass(bug.criticism)}`}

@@ -2,6 +2,9 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { build } from "esbuild";
 
+// Overwrites api/**/*.js. Tiny stubs stay in git so Vercel's functions glob
+// matches before build. Do not commit the generated bundles.
+
 const entries = [
   "api-src/admin/create-user.ts",
   "api-src/admin/delete-user.ts",

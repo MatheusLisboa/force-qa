@@ -12,6 +12,7 @@ import {
 import { UserProfile, UserRole, WarRoom } from "../types";
 import { RoleBadge } from "./BugBadges";
 import { SquadSelect } from "./SquadSelect";
+import { useConfirm } from "../context/ConfirmContext";
 
 interface AdminUsersPageProps {
   onBack: () => void;
@@ -114,6 +115,7 @@ function RoomAccessPicker({
 
 export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
   const { adminCreateUser, profile } = useAuth();
+  const { confirm } = useConfirm();
 
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
@@ -245,9 +247,13 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
   });
 
   const handleDeleteUser = async (userId: string) => {
-    if (!window.confirm("Remover este usuário do Auth e do ForceQA? A ação é permanente.")) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Remover usuário",
+      message: "O usuário sai do Auth e do ForceQA. A ação é permanente.",
+      confirmLabel: "Remover",
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await deleteUserProfile(userId);
       setUserCreationError("");

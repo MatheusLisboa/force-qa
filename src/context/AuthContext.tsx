@@ -9,6 +9,7 @@ import { UserProfile, UserRole } from "../types";
 import { SIGNUP_ROLES } from "../lib/permissions";
 import { joinWarRoom } from "../lib/services";
 import { authFetch, readApiError } from "../lib/apiClient";
+import { normalizeArea } from "../lib/squads";
 
 interface AuthContextType {
   user: User | null;
@@ -49,7 +50,7 @@ async function saveProfile(profile: UserProfile): Promise<void> {
     name: profile.name,
     email: profile.email,
     role: profile.role,
-    squad: profile.squad,
+    squad: normalizeArea(profile.squad),
     avatar_url: profile.avatarUrl || null,
     is_guest: profile.isGuest ?? false,
     created_at: profile.createdAt || new Date().toISOString(),
@@ -171,7 +172,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       name: name.trim(),
       email: trimmedEmail,
       role: safeRole,
-      squad: squad.trim(),
+      squad: normalizeArea(squad),
       isGuest: false,
       createdAt: new Date().toISOString(),
     };
@@ -267,7 +268,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           data: {
             name: name.trim(),
             role: "viewer",
-            squad: squad.trim(),
+            squad: normalizeArea(squad),
             is_guest: true,
           },
         },
@@ -282,7 +283,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         name: name.trim(),
         email: tempEmail,
         role: "viewer",
-        squad: squad.trim(),
+        squad: normalizeArea(squad),
         isGuest: true,
         createdAt: new Date().toISOString(),
       };
@@ -310,7 +311,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ) => {
     const response = await authFetch("/api/admin/create-user", {
       method: "POST",
-      body: JSON.stringify({ name, email, password, role, squad }),
+      body: JSON.stringify({ name, email, password, role, squad: normalizeArea(squad) }),
     });
 
     if (!response.ok) {
@@ -356,7 +357,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       name,
       email: user.email || "",
       role: safeRole,
-      squad,
+      squad: normalizeArea(squad),
       isGuest: false,
       createdAt: new Date().toISOString(),
     };

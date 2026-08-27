@@ -5,7 +5,12 @@ export type PulseKind = "all" | "open" | "blockers" | "overdue";
 
 export type PulseCounts = { open: number; blockers: number; overdue: number };
 
-export function dashboardPulse(bugs: Bug[]): PulseCounts {
+export type PulseBug = Pick<
+  Bug,
+  "id" | "warRoomId" | "status" | "criticism" | "createdAt" | "ownerId" | "archived"
+>;
+
+export function dashboardPulse(bugs: PulseBug[]): PulseCounts {
   const openBugs = bugs.filter((bug) => bug.status !== "validated");
   return {
     open: openBugs.length,
@@ -19,7 +24,7 @@ export function parsePulseKind(value: string | null | undefined): PulseKind {
   return "all";
 }
 
-export function bugMatchesPulse(bug: Bug, kind: PulseKind): boolean {
+export function bugMatchesPulse(bug: PulseBug, kind: PulseKind): boolean {
   if (kind === "all") return true;
   if (bug.status === "validated") return false;
   if (kind === "open") return true;
@@ -41,7 +46,7 @@ export function comparePulseActivity(a: PulseCounts, b: PulseCounts): number {
 }
 
 /** Up to three facts for the room header (open / blockers / overdue / unassigned). */
-export function roomHeadlineParts(bugs: Bug[]): string[] {
+export function roomHeadlineParts(bugs: PulseBug[]): string[] {
   const pulse = dashboardPulse(bugs);
   const unassigned = bugs.filter((bug) => !bug.ownerId && bug.status !== "validated").length;
   const reopened = bugs.filter((bug) => bug.status === "reopened").length;

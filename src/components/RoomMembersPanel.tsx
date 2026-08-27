@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import { useConfirm } from "../context/ConfirmContext";
 import { subscribeUsers } from "../lib/supabase";
 import {
   addRoomMember,
@@ -19,6 +20,7 @@ interface RoomMembersPanelProps {
 export const RoomMembersPanel: React.FC<RoomMembersPanelProps> = ({ roomId }) => {
   const { profile } = useAuth();
   const { toast } = useToast();
+  const { confirm } = useConfirm();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [memberIds, setMemberIds] = useState<string[]>([]);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -106,7 +108,13 @@ export const RoomMembersPanel: React.FC<RoomMembersPanelProps> = ({ roomId }) =>
   };
 
   const handleRemove = async (userId: string, name: string) => {
-    if (!window.confirm(`Remover ${name} desta sala?`)) return;
+    const ok = await confirm({
+      title: "Remover da sala",
+      message: `${name} perderá o acesso a esta sala.`,
+      confirmLabel: "Remover",
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await removeRoomMember(roomId, userId);
       await reloadMembers();
