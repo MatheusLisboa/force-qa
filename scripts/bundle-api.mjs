@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { unlink } from "node:fs/promises";
+import { rm, unlink } from "node:fs/promises";
 import { build } from "esbuild";
 
 const entries = [
@@ -24,16 +24,19 @@ await Promise.all(
       outfile,
       packages: "external",
       logLevel: "warning",
-      // Vercel exige a function no module.exports, não em .default
       footer: { js: "module.exports = module.exports.default || module.exports;" },
     });
 
     const jsSibling = entry.replace(/\.ts$/, ".js");
     if (existsSync(jsSibling)) await unlink(jsSibling);
-
-    // No deploy, só o .cjs pode viver em /api — .ts e .js CJS brigam com "type": "module".
-    if (process.env.VERCEL) await unlink(entry);
   })
 );
+
+// No deploy a Vercel trata qualquer .ts/.js em /api como function.
+// Ficam só os .cjs (CommonJS explícito), que não brigam com "type": "module".
+if (process.env.VERCEL) {
+  await Promise.all(entries.map((entry) => unlink(entry)));
+  await rm("api/shared", { recursive: true, force: true });
+}
 
 console.log(`Bundled ${entries.length} API functions for Vercel (.cjs).`);
