@@ -2,11 +2,11 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
-import { generateExecutiveReport } from "./api/ai/generate-report";
-import { httpErrorStatus, requireAdmin, requireUser } from "./api/shared/auth";
-import { adminCreateUser, adminDeleteUser } from "./api/shared/adminUsers";
-import { inviteToRoom, joinRoom, validateGuestRoom } from "./api/shared/rooms";
-import { detectDuplicate, suggestBugFields } from "./api/shared/geminiBugs";
+import { generateExecutiveReport } from "./api-src/ai/generate-report";
+import { httpErrorStatus, requireAdmin, requireUser } from "./api-src/shared/auth";
+import { adminCreateUser, adminDeleteUser } from "./api-src/shared/adminUsers";
+import { inviteToRoom, joinRoom, validateGuestRoom } from "./api-src/shared/rooms";
+import { detectDuplicate, suggestBugFields } from "./api-src/shared/geminiBugs";
 
 dotenv.config();
 

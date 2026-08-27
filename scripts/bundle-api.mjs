@@ -1,21 +1,22 @@
-import { existsSync } from "node:fs";
-import { rm, unlink } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
+import path from "node:path";
 import { build } from "esbuild";
 
 const entries = [
-  "api/admin/create-user.ts",
-  "api/admin/delete-user.ts",
-  "api/ai/detect-duplicate.ts",
-  "api/ai/generate-report.ts",
-  "api/ai/suggest-bug-fields.ts",
-  "api/guest/validate-room.ts",
-  "api/rooms/invite.ts",
-  "api/rooms/join.ts",
+  "api-src/admin/create-user.ts",
+  "api-src/admin/delete-user.ts",
+  "api-src/ai/detect-duplicate.ts",
+  "api-src/ai/generate-report.ts",
+  "api-src/ai/suggest-bug-fields.ts",
+  "api-src/guest/validate-room.ts",
+  "api-src/rooms/invite.ts",
+  "api-src/rooms/join.ts",
 ];
 
 await Promise.all(
   entries.map(async (entry) => {
-    const outfile = entry.replace(/\.ts$/, ".cjs");
+    const outfile = "api/" + entry.replace(/^api-src\//, "").replace(/\.ts$/, ".cjs");
+    await mkdir(path.dirname(outfile), { recursive: true });
     await build({
       entryPoints: [entry],
       bundle: true,
@@ -26,17 +27,7 @@ await Promise.all(
       logLevel: "warning",
       footer: { js: "module.exports = module.exports.default || module.exports;" },
     });
-
-    const jsSibling = entry.replace(/\.ts$/, ".js");
-    if (existsSync(jsSibling)) await unlink(jsSibling);
   })
 );
-
-// No deploy a Vercel trata qualquer .ts/.js em /api como function.
-// Ficam só os .cjs (CommonJS explícito), que não brigam com "type": "module".
-if (process.env.VERCEL) {
-  await Promise.all(entries.map((entry) => unlink(entry)));
-  await rm("api/shared", { recursive: true, force: true });
-}
 
 console.log(`Bundled ${entries.length} API functions for Vercel (.cjs).`);
