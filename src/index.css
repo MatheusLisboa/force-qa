@@ -274,6 +274,10 @@
     @apply outline-none ring-2 ring-white/15;
   }
 
+  .fq-btn-icon:disabled {
+    @apply pointer-events-none opacity-30;
+  }
+
   /* Segmented control (tabs) */
   .fq-segmented {
     @apply grid gap-1 rounded-md border p-1;
@@ -731,6 +735,62 @@
     @apply flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs;
     background-color: var(--color-fq-base);
     border-color: var(--color-fq-border);
+  }
+
+  .fq-toggle {
+    @apply rounded-md border px-2.5 py-1 text-[12px] font-medium transition duration-150 cursor-pointer;
+    border-color: var(--color-fq-border);
+    color: var(--color-fq-text-secondary);
+    background-color: transparent;
+  }
+
+  .fq-toggle:hover {
+    border-color: rgba(255, 255, 255, 0.16);
+    background-color: rgba(255, 255, 255, 0.04);
+    color: var(--color-fq-text-primary);
+  }
+
+  .fq-toggle:focus-visible {
+    @apply outline-none ring-2 ring-teal-400/30;
+  }
+
+  .fq-toggle--on {
+    border-color: rgba(45, 212, 191, 0.4);
+    background-color: var(--color-fq-accent-muted);
+    color: #99f6e4;
+  }
+
+  .fq-switch {
+    @apply relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border transition duration-150;
+    background-color: rgba(255, 255, 255, 0.06);
+    border-color: var(--color-fq-border);
+  }
+
+  .fq-switch--on {
+    background-color: rgba(45, 212, 191, 0.35);
+    border-color: rgba(45, 212, 191, 0.5);
+  }
+
+  .fq-switch:focus-visible {
+    @apply outline-none ring-2 ring-teal-400/40;
+  }
+
+  .fq-switch-knob {
+    @apply absolute top-0.5 left-0.5 h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform duration-150;
+  }
+
+  .fq-switch--on .fq-switch-knob {
+    transform: translateX(1rem);
+  }
+
+  .fq-switcher-track {
+    @apply inline-flex max-w-full flex-wrap gap-0.5 rounded-lg p-0.5;
+    background-color: var(--color-fq-base);
+    border: 1px solid var(--color-fq-border);
+  }
+
+  .fq-switcher-track .fq-segment {
+    border: 1px solid transparent;
   }
 
   /* Kanban board — scroll horizontal; altura natural, sem teto de viewport */

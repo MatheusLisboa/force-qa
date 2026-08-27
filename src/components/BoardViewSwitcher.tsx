@@ -17,9 +17,9 @@ export const BoardViewSwitcher: React.FC<BoardViewSwitcherProps> = ({
 }) => {
   if (loading) {
     return (
-      <div className="fq-filter-chip text-xs font-mono text-neutral-500">
-        <LayoutGrid className="w-3.5 h-3.5" />
-        Carregando views...
+      <div className="flex items-center gap-2 text-[13px] text-neutral-500">
+        <span className="fq-spinner !h-4 !w-4" />
+        Carregando visões...
       </div>
     );
   }
@@ -29,29 +29,39 @@ export const BoardViewSwitcher: React.FC<BoardViewSwitcherProps> = ({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="text-[10px] font-mono font-bold uppercase text-neutral-500 tracking-wider flex items-center gap-1">
-        <LayoutGrid className="w-3.5 h-3.5" />
-        View:
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <span className="flex items-center gap-1.5 text-[12px] font-medium text-neutral-500">
+        <LayoutGrid className="w-3.5 h-3.5 text-teal-400" />
+        Visão
       </span>
-      <button
-        type="button"
-        onClick={() => onSelect(null)}
-        className={`fq-segment !text-xs ${activeViewId === null ? "fq-segment--active" : ""}`}
-      >
-        Padrão (todos)
-      </button>
-      {views.map((view) => (
+      <div className="fq-switcher-track" role="tablist" aria-label="Visões do board">
         <button
-          key={view.id}
           type="button"
-          onClick={() => onSelect(view.id)}
-          className={`fq-segment !text-xs ${activeViewId === view.id ? "fq-segment--active" : ""}`}
-          title={view.slug}
+          role="tab"
+          aria-selected={activeViewId === null}
+          onClick={() => onSelect(null)}
+          className={`fq-segment !px-2.5 !py-1.5 !text-[12px] ${
+            activeViewId === null ? "fq-segment--active" : ""
+          }`}
         >
-          {view.name}
+          Todos
         </button>
-      ))}
+        {views.map((view) => (
+          <button
+            key={view.id}
+            type="button"
+            role="tab"
+            aria-selected={activeViewId === view.id}
+            onClick={() => onSelect(view.id)}
+            className={`fq-segment !px-2.5 !py-1.5 !text-[12px] ${
+              activeViewId === view.id ? "fq-segment--active" : ""
+            }`}
+            title={view.name}
+          >
+            {view.name}
+          </button>
+        ))}
+      </div>
     </div>
   );
 };

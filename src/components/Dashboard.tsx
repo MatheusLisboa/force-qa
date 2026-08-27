@@ -249,10 +249,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
             </>
           ) : null}
           {space.squad}
-          {space.kind === "board" && space.viewCount != null ? (
+          {space.kind === "board" && (space.viewCount ?? 0) > 0 ? (
             <>
               <span className="text-neutral-700"> · </span>
-              {space.viewCount} {space.viewCount === 1 ? "view" : "views"}
+              {space.viewCount} {space.viewCount === 1 ? "visão" : "visões"}
             </>
           ) : null}
         </div>
@@ -345,7 +345,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
                       }}
                     >
                       <LayoutGrid className="w-3.5 h-3.5 text-neutral-500" />
-                      Views
+                      Visões
                     </button>
                   </>
                 )}

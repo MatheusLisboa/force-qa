@@ -82,8 +82,8 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
           </button>
         </div>
 
-        <p className="text-xs text-neutral-500 font-mono mb-4">
-          Crie um projeto e, em seguida, configure as visualizações de board em Admin → Board Views.
+        <p className="text-[13px] text-neutral-500 mb-4 leading-relaxed">
+          Depois de criar, você pode salvar visões do Kanban em Mais → Visões.
         </p>
 
         {formError && <div className="fq-alert-error mb-4">{formError}</div>}

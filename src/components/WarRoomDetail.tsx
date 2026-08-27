@@ -672,17 +672,6 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
         </div>
       )}
 
-      {activeTab === "kanban" && project && (
-        <div className="fq-panel py-2.5 px-3 shrink-0">
-          <BoardViewSwitcher
-            views={boardViews}
-            activeViewId={activeBoardViewId}
-            onSelect={handleBoardViewSelect}
-            loading={boardViewsLoading}
-          />
-        </div>
-      )}
-
       {activeTab === "kanban" && (
       <div className="space-y-2">
         <div className="flex items-center gap-2 md:hidden">
@@ -703,7 +692,19 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
             Filtros
           </button>
         </div>
-      <div className={`fq-filter-bar fq-kanban-toolbar ${filtersOpen ? "" : "max-md:hidden"}`}>
+      <div className={`fq-filter-bar fq-kanban-toolbar !flex-col !items-stretch gap-3 ${filtersOpen || (project && (boardViewsLoading || boardViews.length > 0)) ? "" : "max-md:hidden"}`}>
+        {project && (boardViewsLoading || boardViews.length > 0) && (
+          <>
+            <BoardViewSwitcher
+              views={boardViews}
+              activeViewId={activeBoardViewId}
+              onSelect={handleBoardViewSelect}
+              loading={boardViewsLoading}
+            />
+            <div className={`h-px bg-white/[0.06] ${filtersOpen ? "" : "max-md:hidden"}`} />
+          </>
+        )}
+        <div className={`flex flex-col items-stretch gap-3 md:flex-row md:items-center ${filtersOpen ? "" : "max-md:hidden"}`}>
         <div className="flex-1 w-full relative hidden md:block">
           <input
             type="text"
@@ -785,6 +786,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
               ))}
             </select>
           </div>
+        </div>
         </div>
       </div>
       </div>
