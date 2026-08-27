@@ -16,9 +16,16 @@ export async function authFetch(input: string, init: RequestInit = {}): Promise<
 }
 
 export async function readApiError(response: Response, fallback: string): Promise<string> {
-  const errData = await response.json().catch(() => null);
-  const message = extractApiErrorMessage(errData);
-  return message || fallback;
+  const raw = await response.text().catch(() => "");
+  if (raw.includes("FUNCTION_INVOCATION_FAILED")) {
+    return "Falha no servidor. Tente de novo em instantes.";
+  }
+  try {
+    const errData = raw ? JSON.parse(raw) : null;
+    return extractApiErrorMessage(errData) || fallback;
+  } catch {
+    return raw.trim() || fallback;
+  }
 }
 
 function extractApiErrorMessage(errData: unknown): string | null {

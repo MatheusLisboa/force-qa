@@ -3,8 +3,8 @@
   "outputDirectory": "dist",
   "framework": null,
   "functions": {
-    "api/**/*.ts": {
-      "includeFiles": "api/shared/**"
+    "api/**/*.cjs": {
+      "includeFiles": "api/package.json"
     }
   },
   "rewrites": [

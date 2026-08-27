@@ -8,3 +8,4 @@ coverage/
 !.env.example
 api/**/*.js
 api/**/*.js.map
+api/**/*.cjs
