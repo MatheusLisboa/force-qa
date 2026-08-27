@@ -568,7 +568,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
                       onChange={handleAssignOwner}
                       className="fq-select text-xs"
                     >
-                      <option value="">Membro do squad...</option>
+                      <option value="">Escolher pessoa...</option>
                       {users.map(u => (
                         <option key={u.id} value={u.id}>{u.name}</option>
                       ))}

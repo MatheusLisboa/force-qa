@@ -325,7 +325,7 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
                 </div>
                 <div>
                   <label className="fq-label fq-label--xs">Tags (separadas por vírgula)</label>
-                  <input className="fq-input text-[13px]" value={bugTagsInput} onChange={(e) => setBugTagsInput(e.target.value)} placeholder="pix, checkout" />
+                  <input className="fq-input text-[13px]" value={bugTagsInput} onChange={(e) => setBugTagsInput(e.target.value)} placeholder="login, pagamento" />
                 </div>
                 <div>
                   <label className="fq-label fq-label--xs">Protótipo (opcional)</label>

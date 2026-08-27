@@ -131,7 +131,7 @@ export const CreateWarRoomModal: React.FC<CreateWarRoomModalProps> = ({
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="fq-label">Squad Principal *</label>
+              <label className="fq-label">Área *</label>
               <SquadSelect required value={squad} onChange={setSquad} />
             </div>
             <div>

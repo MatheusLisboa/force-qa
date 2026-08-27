@@ -22,7 +22,7 @@ export const Onboarding: React.FC = () => {
       return;
     }
     if (!squad.trim()) {
-      setError("Por favor, preencha a sua squad.");
+      setError("Por favor, preencha a sua área.");
       return;
     }
 
@@ -115,7 +115,7 @@ export const Onboarding: React.FC = () => {
 
             <div>
               <label className="fq-label fq-label--md">
-                Squad Principal
+                Área
               </label>
               <SquadSelect
                 required

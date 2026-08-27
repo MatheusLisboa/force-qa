@@ -336,7 +336,7 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
                 </select>
               </div>
               <div>
-                <label className="fq-label fq-label--xs">Squad</label>
+                <label className="fq-label fq-label--xs">Área</label>
                 <SquadSelect required className="fq-input" value={newUserSquad} onChange={setNewUserSquad} />
               </div>
             </div>
@@ -363,7 +363,7 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
           <input
             type="search"
             className="fq-input text-sm"
-            placeholder="Buscar por nome, e-mail ou squad"
+            placeholder="Buscar por nome, e-mail ou área"
             value={userQuery}
             onChange={(e) => setUserQuery(e.target.value)}
           />
@@ -392,7 +392,7 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
                           />
                         </div>
                         <div>
-                          <label className="fq-label fq-label--xs !mb-1">Squad</label>
+                          <label className="fq-label fq-label--xs !mb-1">Área</label>
                           <SquadSelect
                             required
                             className="fq-input text-sm py-1.5"
@@ -455,7 +455,7 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
                       <div className="text-[12px] text-neutral-500 truncate">{usr.email}</div>
                     </div>
                     <div className="text-right text-[12px] text-neutral-400">
-                      <div>{usr.squad || "Sem squad"}</div>
+                      <div>{usr.squad || "Sem área"}</div>
                       <div className="mt-0.5 text-neutral-500">
                         {(roomIdsByUser[usr.id] || []).length} board(s)
                       </div>

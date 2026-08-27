@@ -1,15 +1,12 @@
-/** Squads operacionais reconhecidas no ForceQA */
+/** Áreas mais comuns no dia a dia de QA. Quem precisar de outro nome usa “Outra”. */
 export const SQUAD_PRESETS = [
+  "QA",
+  "Dev",
+  "Produto",
   "Requisitos",
   "IHC",
-  "Produto",
-  "Squad Core",
-  "Squad Pix",
-  "Squad Checkout",
-  "Dev",
-  "DBA",
   "DevOps",
-  "QA",
+  "DBA",
 ] as const;
 
 export type SquadPreset = (typeof SQUAD_PRESETS)[number];

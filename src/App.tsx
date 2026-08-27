@@ -87,7 +87,7 @@ function AppContent() {
     try {
       if (profileNameInput.trim() !== profile?.name || profileSquadInput.trim() !== profile?.squad) {
         if (!profileNameInput.trim() || !profileSquadInput.trim()) {
-          throw new Error("Nome e Squad são campos obrigatórios.");
+          throw new Error("Nome e área são obrigatórios.");
         }
         await updateProfile({
           name: profileNameInput.trim(),
@@ -453,7 +453,7 @@ function AppContent() {
 
                 <div>
                   <label className="fq-label fq-label--xs">
-                    Sua squad
+                    Sua área
                   </label>
                   <SquadSelect
                     required

@@ -53,7 +53,7 @@ export const LoginScreen: React.FC = () => {
           setEmailLoading(false);
           return;
         }
-        const finalSquad = signUpSquad.trim() || `Squad ${signUpRole.toUpperCase()}`;
+        const finalSquad = signUpSquad.trim() || signUpRole.toUpperCase();
         await signUpUser(signUpName, email, password, signUpRole, finalSquad);
       } else {
         await loginWithEmail(email.trim(), password, false);
@@ -98,7 +98,7 @@ export const LoginScreen: React.FC = () => {
 
     const selectedSquad = guestSquad.trim();
     if (!selectedSquad) {
-      setGuestError("Por favor, informe a qual squad você pertence (ex: dev, dba).");
+      setGuestError("Por favor, informe a sua área (ex: QA, Dev).");
       return;
     }
 
@@ -234,7 +234,7 @@ export const LoginScreen: React.FC = () => {
                         </div>
 
                         <div>
-                          <label className="fq-label">Squad</label>
+                          <label className="fq-label">Área</label>
                           <SquadSelect
                             required={isSignUp}
                             value={signUpSquad}
@@ -368,7 +368,7 @@ export const LoginScreen: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="fq-label">Squad</label>
+                    <label className="fq-label">Área</label>
                     <SquadSelect required value={guestSquad} onChange={setGuestSquad} />
                   </div>
 

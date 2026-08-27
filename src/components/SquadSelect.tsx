@@ -27,7 +27,7 @@ export const SquadSelect: React.FC<SquadSelectProps> = ({
           required={required}
           type="text"
           className={className}
-          placeholder="Nome da squad"
+          placeholder="Nome da área"
           value={value}
           onChange={(e) => onChange(e.target.value)}
         />
@@ -39,7 +39,7 @@ export const SquadSelect: React.FC<SquadSelectProps> = ({
             onChange("");
           }}
         >
-          ← Voltar para lista de squads
+          ← Voltar para a lista
         </button>
       </div>
     );
@@ -61,13 +61,13 @@ export const SquadSelect: React.FC<SquadSelectProps> = ({
         onChange(next);
       }}
     >
-      <option value="">Selecione a squad...</option>
+      <option value="">Selecione a área...</option>
       {SQUAD_PRESETS.map((squad) => (
         <option key={squad} value={squad}>
           {squad}
         </option>
       ))}
-      <option value="__custom__">Outra (personalizada)</option>
+      <option value="__custom__">Outra área</option>
     </select>
   );
 };

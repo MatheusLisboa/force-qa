@@ -436,7 +436,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
           <input
             id="space-search"
             type="search"
-            placeholder="Buscar por nome, projeto ou squad"
+            placeholder="Buscar por nome, projeto ou área"
             className="fq-input pl-9"
             value={spaceQuery}
             onChange={(e) => setSpaceQuery(e.target.value)}

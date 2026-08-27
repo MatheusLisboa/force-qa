@@ -153,7 +153,7 @@ export function aggregateBoardMetrics(warRoom: WarRoom, bugs: Bug[]): BoardRepor
     },
     bySeverity,
     byStatus,
-    bySquad: { [warRoom.squad || "Sem squad"]: bugs.length },
+    bySquad: { [warRoom.squad || "Sem área"]: bugs.length },
     byType,
     byEnvironment,
     topTags,

@@ -102,7 +102,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
           </div>
 
           <div>
-            <label className="fq-label">Squad Responsável *</label>
+            <label className="fq-label">Área *</label>
             <SquadSelect required value={squad} onChange={setSquad} />
           </div>
 
