@@ -15,7 +15,7 @@ const entries = [
 
 await Promise.all(
   entries.map(async (entry) => {
-    const outfile = "api/" + entry.replace(/^api-src\//, "").replace(/\.ts$/, ".cjs");
+    const outfile = "api/" + entry.replace(/^api-src\//, "").replace(/\.ts$/, ".js");
     await mkdir(path.dirname(outfile), { recursive: true });
     await build({
       entryPoints: [entry],
@@ -30,4 +30,4 @@ await Promise.all(
   })
 );
 
-console.log(`Bundled ${entries.length} API functions for Vercel (.cjs).`);
+console.log(`Bundled ${entries.length} API functions for Vercel.`);

@@ -3,7 +3,7 @@
   "outputDirectory": "dist",
   "framework": null,
   "functions": {
-    "api/**/*.cjs": {
+    "api/**/*.js": {
       "includeFiles": "api/package.json"
     }
   },
