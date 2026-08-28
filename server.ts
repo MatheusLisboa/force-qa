@@ -3,8 +3,9 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import { generateExecutiveReport } from "./api-src/ai/generate-report";
-import { httpErrorStatus, requireAdmin, requireUser } from "./api-src/shared/auth";
+import { httpErrorStatus, requireAdmin, requireSuperadmin, requireUser } from "./api-src/shared/auth";
 import { adminCreateUser, adminDeleteUser } from "./api-src/shared/adminUsers";
+import { createOrganizationWithAdmin, resolveActorOrganizationId } from "./api-src/shared/organizations";
 import { inviteToRoom, joinRoom, validateGuestRoom } from "./api-src/shared/rooms";
 import { detectDuplicate, suggestBugFields } from "./api-src/shared/geminiBugs";
 
@@ -24,18 +25,35 @@ function sendError(res: express.Response, error: unknown, fallback: string) {
 app.post("/api/admin/create-user", async (req, res) => {
   try {
     const actor = await requireAdmin(req.headers.authorization);
-    const { name, email, password, role, squad } = req.body;
+    const { name, email, password, role, squad, organizationId: requestedOrgId } = req.body;
+    const organizationId = await resolveActorOrganizationId(actor, requestedOrgId);
     const userId = await adminCreateUser({
       name,
       email,
       password,
       role,
       squad,
-      organizationId: actor.organizationId,
+      organizationId,
     });
     res.json({ success: true, userId });
   } catch (error) {
     sendError(res, error, "Falha ao criar usuário.");
+  }
+});
+
+app.post("/api/admin/create-organization", async (req, res) => {
+  try {
+    await requireSuperadmin(req.headers.authorization);
+    const result = await createOrganizationWithAdmin({
+      name: String(req.body?.name || ""),
+      slug: String(req.body?.slug || ""),
+      adminName: String(req.body?.adminName || ""),
+      adminEmail: String(req.body?.adminEmail || ""),
+      adminPassword: String(req.body?.adminPassword || ""),
+    });
+    res.json({ success: true, ...result });
+  } catch (error) {
+    sendError(res, error, "Falha ao criar organização.");
   }
 });
 

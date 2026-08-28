@@ -154,7 +154,7 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
         (data || [])
           .map(toWarRoom)
           .filter((room) =>
-            belongsToOrganization(room.organizationId, profile?.organizationId, profile?.isSuperadmin)
+            belongsToOrganization(room.organizationId, profile?.organizationId)
           )
       );
     })();
@@ -162,7 +162,7 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
       cancelled = true;
       unsubUsers();
     };
-  }, [profile?.organizationId, profile?.isSuperadmin]);
+  }, [profile?.organizationId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -247,7 +247,7 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
   const userQueryNorm = userQuery.trim().toLowerCase();
   const visibleUsers = usersList.filter((usr) => {
     if (!usr?.id) return false;
-    if (!belongsToOrganization(usr.organizationId, profile?.organizationId, profile?.isSuperadmin)) {
+    if (!belongsToOrganization(usr.organizationId, profile?.organizationId)) {
       return false;
     }
     if (!userQueryNorm) return true;

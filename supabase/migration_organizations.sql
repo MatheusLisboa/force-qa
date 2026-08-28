@@ -3,7 +3,7 @@
 --
 -- Não altera is_admin() nem quem vê salas/usuários.
 -- Carimba organization_id em users, war_rooms, projects e board_views.
--- Para marcar superadmin da plataforma (a UI ainda ignora):
+-- Para marcar superadmin da plataforma (abre a tela Organizações):
 --   UPDATE public.users SET is_superadmin = true WHERE email = 'seu@email';
 
 -- ---------------------------------------------------------------------------

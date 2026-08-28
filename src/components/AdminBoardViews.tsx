@@ -19,6 +19,8 @@ import {
 } from "../lib/bugLabels";
 import { slugifyBoardViewName } from "../lib/boardViews";
 import { useConfirm } from "../context/ConfirmContext";
+import { useAuth } from "../context/AuthContext";
+import { belongsToOrganization } from "../lib/organizations";
 
 interface AdminBoardViewsProps {
   onBack: () => void;
@@ -169,6 +171,7 @@ function FilterPreview({ filters }: { filters: BoardViewFilters }) {
 
 export const AdminBoardViews: React.FC<AdminBoardViewsProps> = ({ onBack, initialProjectId }) => {
   const { confirm } = useConfirm();
+  const { profile } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(initialProjectId ?? null);
   const [views, setViews] = useState<BoardView[]>([]);
@@ -193,15 +196,18 @@ export const AdminBoardViews: React.FC<AdminBoardViewsProps> = ({ onBack, initia
 
   useEffect(() => {
     const unsub = subscribeProjects((rows) => {
-      setProjects(rows);
+      const scoped = rows.filter((project) =>
+        belongsToOrganization(project.organizationId, profile?.organizationId)
+      );
+      setProjects(scoped);
       setSelectedProjectId((current) => {
-        if (current && rows.some((p) => p.id === current)) return current;
-        if (initialProjectId && rows.some((p) => p.id === initialProjectId)) return initialProjectId;
-        return rows[0]?.id ?? null;
+        if (current && scoped.some((p) => p.id === current)) return current;
+        if (initialProjectId && scoped.some((p) => p.id === initialProjectId)) return initialProjectId;
+        return scoped[0]?.id ?? null;
       });
     });
     return unsub;
-  }, [initialProjectId]);
+  }, [initialProjectId, profile?.organizationId]);
 
   useEffect(() => {
     if (!selectedProjectId) {

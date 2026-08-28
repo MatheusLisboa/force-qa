@@ -60,6 +60,14 @@ export async function requireAdmin(authHeader: string | undefined): Promise<Auth
   return authed;
 }
 
+export async function requireSuperadmin(authHeader: string | undefined): Promise<AuthedUser> {
+  const authed = await requireUser(authHeader);
+  if (!authed.isSuperadmin) {
+    throw Object.assign(new Error("Apenas o superadmin pode executar esta operação."), { status: 403 });
+  }
+  return authed;
+}
+
 export function httpErrorStatus(error: unknown, fallback = 500): number {
   if (error && typeof error === "object" && "status" in error && typeof (error as { status: unknown }).status === "number") {
     return (error as { status: number }).status;

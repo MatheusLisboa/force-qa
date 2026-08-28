@@ -173,3 +173,22 @@ export interface Project {
   createdAt: string;
   createdBy: string;
 }
+
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: string;
+}
+
+export interface OrganizationAdmin {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export interface OrganizationOverview extends Organization {
+  userCount: number;
+  roomCount: number;
+  admins: OrganizationAdmin[];
+}

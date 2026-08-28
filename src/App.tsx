@@ -6,6 +6,7 @@ import { Dashboard } from "./components/Dashboard";
 import { WarRoomDetail } from "./components/WarRoomDetail";
 import { AdminBoardViews } from "./components/AdminBoardViews";
 import { AdminUsersPage } from "./components/AdminUsersPage";
+import { AdminOrganizationsPage } from "./components/AdminOrganizationsPage";
 import { LogOut, Lock, User, Bell } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useModalA11y } from "./hooks/useModalA11y";
@@ -14,10 +15,11 @@ import { subscribeNotifications } from "./lib/supabase";
 import { AppNotification } from "./types";
 import { ToastProvider } from "./context/ToastContext";
 import { ConfirmProvider } from "./context/ConfirmContext";
-import { adminBoardViewsPath, adminUsersPath, dashboardPath, pushPath, roomPath } from "./lib/routes";
+import { adminBoardViewsPath, adminOrganizationsPath, adminUsersPath, dashboardPath, pushPath, roomPath } from "./lib/routes";
 import { parsePulseKind, PulseKind } from "./lib/dashboardPulse";
 import { formatRoleLabel } from "./lib/format";
 import { SquadSelect } from "./components/SquadSelect";
+import { canManageOrganizations, canManageUsers } from "./lib/permissions";
 
 function AppContent() {
   const { user, profile, loading, passwordRecovery, updateProfile, changePassword, completePasswordRecovery, logout } = useAuth();
@@ -25,7 +27,7 @@ function AppContent() {
   const [roomPulse, setRoomPulse] = useState<PulseKind>("all");
   const [focusBugId, setFocusBugId] = useState<string | null>(null);
   const [focusBugAt, setFocusBugAt] = useState(0);
-  const [adminPage, setAdminPage] = useState<"board-views" | "users" | null>(null);
+  const [adminPage, setAdminPage] = useState<"board-views" | "users" | "organizations" | null>(null);
   const [adminProjectId, setAdminProjectId] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -46,6 +48,11 @@ function AppContent() {
     }
     if (path === "/admin/users") {
       setAdminPage("users");
+      setAdminProjectId(null);
+      return;
+    }
+    if (path === "/admin/organizations") {
+      setAdminPage("organizations");
       setAdminProjectId(null);
       return;
     }
@@ -185,12 +192,18 @@ function AppContent() {
     pushPath(dashboardPath());
   };
 
-  const handleOpenAdminPage = (path: "/admin/board-views" | "/admin/users", projectId?: string) => {
+  const handleOpenAdminPage = (path: "/admin/board-views" | "/admin/users" | "/admin/organizations", projectId?: string) => {
     setSelectedRoomId(null);
     if (path === "/admin/users") {
       setAdminPage("users");
       setAdminProjectId(null);
       pushPath(adminUsersPath());
+      return;
+    }
+    if (path === "/admin/organizations") {
+      setAdminPage("organizations");
+      setAdminProjectId(null);
+      pushPath(adminOrganizationsPath());
       return;
     }
     setAdminPage("board-views");
@@ -375,9 +388,11 @@ function AppContent() {
 
       {/* Primary viewport switch container */}
       <main className="flex min-h-0 flex-1 flex-col">
-        {adminPage === "users" && profile?.role === "admin" ? (
+        {adminPage === "organizations" && canManageOrganizations(profile?.isSuperadmin) ? (
+          <AdminOrganizationsPage onBack={handleBackToDashboard} />
+        ) : adminPage === "users" && canManageUsers(profile?.role, profile?.isSuperadmin) ? (
           <AdminUsersPage onBack={handleBackToDashboard} />
-        ) : adminPage === "board-views" && profile?.role === "admin" ? (
+        ) : adminPage === "board-views" && canManageUsers(profile?.role, profile?.isSuperadmin) ? (
           <AdminBoardViews onBack={handleBackToDashboard} initialProjectId={adminProjectId} />
         ) : selectedRoomId ? (
           <WarRoomDetail 
@@ -390,7 +405,11 @@ function AppContent() {
         ) : (
           <Dashboard 
             onSelectRoom={handleSelectRoom}
-            onOpenAdminPage={profile?.role === "admin" ? handleOpenAdminPage : undefined}
+            onOpenAdminPage={
+              canManageUsers(profile?.role, profile?.isSuperadmin) || canManageOrganizations(profile?.isSuperadmin)
+                ? handleOpenAdminPage
+                : undefined
+            }
           />
         )}
       </main>

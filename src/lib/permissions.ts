@@ -23,6 +23,10 @@ export function canManageUsers(
   return Boolean(isSuperadmin) || role === "admin";
 }
 
+export function canManageOrganizations(isSuperadmin?: boolean): boolean {
+  return Boolean(isSuperadmin);
+}
+
 export function canAssignBugs(role?: UserRole | string | null): boolean {
   return canWriteBugs(role);
 }

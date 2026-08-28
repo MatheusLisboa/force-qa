@@ -1,13 +1,13 @@
 import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { isSupabaseConfigured } from "../lib/supabase";
-import { getAuthErrorCode, getAuthErrorMessage, isUserAlreadyRegistered } from "../lib/authErrors";
-import { LogIn, AlertTriangle, Mail, UserPlus } from "lucide-react";
+import { getAuthErrorCode, getAuthErrorMessage } from "../lib/authErrors";
+import { LogIn, AlertTriangle, Mail } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { SquadSelect } from "./SquadSelect";
 
 export const LoginScreen: React.FC = () => {
-  const { loginWithEmail, signUpUser, loginAsGuest, requestPasswordReset } = useAuth();
+  const { loginWithEmail, loginAsGuest, requestPasswordReset } = useAuth();
 
   // Tab state
   const [activeTab, setActiveTab] = useState<"email" | "guest">("email");
@@ -15,16 +15,10 @@ export const LoginScreen: React.FC = () => {
   // Email form state
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [isSignUp, setIsSignUp] = useState(false);
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailError, setEmailError] = useState("");
   const [resetSent, setResetSent] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
-
-  // Sign up fields state
-  const [signUpName, setSignUpName] = useState("");
-  const [signUpRole, setSignUpRole] = useState<"qa" | "developer" | "dba" | "devops" | "scrum_master">("qa");
-  const [signUpSquad, setSignUpSquad] = useState("");
 
   // Guest form state
   const [guestName, setGuestName] = useState("");
@@ -47,17 +41,7 @@ export const LoginScreen: React.FC = () => {
     setEmailLoading(true);
     setEmailError("");
     try {
-      if (isSignUp) {
-        if (!signUpName.trim()) {
-          setEmailError("Por favor, informe seu nome completo.");
-          setEmailLoading(false);
-          return;
-        }
-        const finalSquad = signUpSquad.trim() || signUpRole.toUpperCase();
-        await signUpUser(signUpName, email, password, signUpRole, finalSquad);
-      } else {
-        await loginWithEmail(email.trim(), password, false);
-      }
+      await loginWithEmail(email.trim(), password, false);
     } catch (err: unknown) {
       console.error(err);
       const code = getAuthErrorCode(err);
@@ -70,10 +54,6 @@ export const LoginScreen: React.FC = () => {
       } else if (code === "email_not_confirmed" || msg.includes("Email not confirmed")) {
         setEmailError(
           "E-mail não confirmado. Verifique sua caixa de entrada ou desative a confirmação no Supabase."
-        );
-      } else if (isUserAlreadyRegistered(err)) {
-        setEmailError(
-          "Este e-mail já está cadastrado. Entre com sua senha ou recupere o acesso."
         );
       } else if (code === "weak_password" || msg.toLowerCase().includes("password")) {
         setEmailError("Senha fraca. Use no mínimo 6 caracteres.");
@@ -161,7 +141,7 @@ export const LoginScreen: React.FC = () => {
               Entre para continuar
             </h1>
             <p className="text-neutral-400 text-sm max-w-sm mx-auto mb-6 leading-relaxed">
-              Acompanhe bugs, boards e sessões de QA em tempo real.
+              Entre com o e-mail que o admin cadastrou. Convidado usa o ID da sala.
             </p>
           </div>
 
@@ -199,52 +179,6 @@ export const LoginScreen: React.FC = () => {
                 )}
 
                 <form onSubmit={handleEmailSubmit} className="space-y-4">
-                  {isSignUp && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      className="space-y-4 overflow-hidden pt-1 pb-2"
-                    >
-                      <div>
-                        <label className="fq-label">Nome completo</label>
-                        <input
-                          type="text"
-                          required={isSignUp}
-                          className="fq-input font-sans"
-                          placeholder="Ex: Matheus Lisboa"
-                          value={signUpName}
-                          onChange={(e) => setSignUpName(e.target.value)}
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="fq-label">Função</label>
-                          <select
-                            className="fq-select"
-                            value={signUpRole}
-                            onChange={(e) => setSignUpRole(e.target.value as any)}
-                          >
-                            <option value="qa">QA</option>
-                            <option value="developer">Dev</option>
-                            <option value="dba">DBA</option>
-                            <option value="devops">DevOps</option>
-                            <option value="scrum_master">Scrum Master</option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="fq-label">Área</label>
-                          <SquadSelect
-                            required={isSignUp}
-                            value={signUpSquad}
-                            onChange={setSignUpSquad}
-                          />
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-
                   <div>
                     <label className="fq-label">E-mail</label>
                     <div className="relative">
@@ -272,30 +206,28 @@ export const LoginScreen: React.FC = () => {
                     />
                   </div>
 
-                  {!isSignUp && (
-                    <div className="flex justify-end -mt-2">
-                      <button
-                        type="button"
-                        disabled={resetLoading || !email.trim()}
-                        onClick={async () => {
-                          setEmailError("");
-                          setResetSent(false);
-                          setResetLoading(true);
-                          try {
-                            await requestPasswordReset(email);
-                            setResetSent(true);
-                          } catch (err: unknown) {
-                            setEmailError(err instanceof Error ? err.message : "Não foi possível enviar o e-mail de recuperação.");
-                          } finally {
-                            setResetLoading(false);
-                          }
-                        }}
-                        className="text-[11px] text-neutral-400 hover:text-neutral-200 font-mono"
-                      >
-                        {resetLoading ? "Enviando..." : "Esqueci a senha"}
-                      </button>
-                    </div>
-                  )}
+                  <div className="flex justify-end -mt-2">
+                    <button
+                      type="button"
+                      disabled={resetLoading || !email.trim()}
+                      onClick={async () => {
+                        setEmailError("");
+                        setResetSent(false);
+                        setResetLoading(true);
+                        try {
+                          await requestPasswordReset(email);
+                          setResetSent(true);
+                        } catch (err: unknown) {
+                          setEmailError(err instanceof Error ? err.message : "Não foi possível enviar o e-mail de recuperação.");
+                        } finally {
+                          setResetLoading(false);
+                        }
+                      }}
+                      className="text-[11px] text-neutral-400 hover:text-neutral-200 font-mono"
+                    >
+                      {resetLoading ? "Enviando..." : "Esqueci a senha"}
+                    </button>
+                  </div>
 
                   {resetSent && (
                     <p className="text-[11px] text-emerald-400 font-mono">
@@ -310,11 +242,6 @@ export const LoginScreen: React.FC = () => {
                   >
                     {emailLoading ? (
                       <span className="w-5 h-5 border-2 border-zinc-900 border-t-transparent rounded-full animate-spin" />
-                    ) : isSignUp ? (
-                      <>
-                        <UserPlus className="w-4 h-4" />
-                        Criar conta
-                      </>
                     ) : (
                       <>
                         <LogIn className="w-4 h-4" />
@@ -322,19 +249,6 @@ export const LoginScreen: React.FC = () => {
                       </>
                     )}
                   </button>
-
-                  <div className="text-center pt-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsSignUp(!isSignUp);
-                        setEmailError("");
-                      }}
-                      className="text-sm text-teal-300/90 hover:text-teal-200"
-                    >
-                      {isSignUp ? "Já tem conta? Entrar" : "Não tem conta? Criar agora"}
-                    </button>
-                  </div>
                 </form>
               </motion.div>
             )}

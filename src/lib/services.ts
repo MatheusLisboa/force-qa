@@ -17,7 +17,7 @@ import {
   UserProfile,
 } from "../types";
 import type { BoardReportMetrics, AIExecutiveReport } from "./aiReport/types";
-import { BoardView, BoardViewFilters, Project, AppNotification } from "../types";
+import { BoardView, BoardViewFilters, Project, AppNotification, OrganizationOverview } from "../types";
 import { DEFAULT_KANBAN_COLUMNS } from "./kanbanColumns";
 import { slugifyBoardViewName } from "./boardViews";
 import { authFetch, readApiError } from "./apiClient";
@@ -621,6 +621,91 @@ export async function deleteUserProfile(userId: string): Promise<void> {
   if (!response.ok) {
     throw new Error(await readApiError(response, "Erro ao remover usuário."));
   }
+}
+
+export async function fetchOrganizationOverviews(): Promise<OrganizationOverview[]> {
+  const [{ data: orgRows, error: orgError }, { data: userRows, error: userError }, { data: roomRows, error: roomError }] =
+    await Promise.all([
+      supabase.from("organizations").select("id, name, slug, created_at").order("created_at", { ascending: true }),
+      supabase.from("users").select("id, name, email, role, organization_id, is_guest"),
+      supabase.from("war_rooms").select("organization_id"),
+    ]);
+  if (orgError) handleDbError(orgError, OperationType.LIST, "organizations");
+  if (userError) handleDbError(userError, OperationType.LIST, "users");
+  if (roomError) handleDbError(roomError, OperationType.LIST, "war_rooms");
+
+  const users = userRows || [];
+  const rooms = roomRows || [];
+
+  return (orgRows || []).map((row) => {
+    const id = row.id as string;
+    const members = users.filter((user) => user.organization_id === id && !user.is_guest);
+    return {
+      id,
+      name: row.name as string,
+      slug: row.slug as string,
+      createdAt: row.created_at as string,
+      userCount: members.length,
+      roomCount: rooms.filter((room) => room.organization_id === id).length,
+      admins: members
+        .filter((user) => user.role === "admin")
+        .map((user) => ({
+          id: user.id as string,
+          name: (user.name as string) || "",
+          email: (user.email as string) || "",
+        })),
+    };
+  });
+}
+
+export async function createOrganizationWithAdmin(input: {
+  name: string;
+  slug: string;
+  adminName: string;
+  adminEmail: string;
+  adminPassword: string;
+}): Promise<{ organizationId: string; adminUserId: string; slug: string }> {
+  const response = await authFetch("/api/admin/create-organization", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Falha ao criar organização."));
+  }
+  return response.json();
+}
+
+export async function createOrganizationAdmin(input: {
+  organizationId: string;
+  name: string;
+  email: string;
+  password: string;
+}): Promise<string> {
+  const response = await authFetch("/api/admin/create-user", {
+    method: "POST",
+    body: JSON.stringify({
+      name: input.name,
+      email: input.email,
+      password: input.password,
+      role: "admin",
+      squad: "Admin",
+      organizationId: input.organizationId,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Falha ao criar admin."));
+  }
+  const data = await response.json().catch(() => ({}));
+  return String(data.userId || "");
+}
+
+export async function renameOrganization(organizationId: string, name: string): Promise<void> {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    throw new Error("Nome da organização é obrigatório.");
+  }
+  const { error } = await supabase.from("organizations").update({ name: trimmed }).eq("id", organizationId);
+  if (error) handleDbError(error, OperationType.UPDATE, `organizations/${organizationId}`);
 }
 
 // -------------------------

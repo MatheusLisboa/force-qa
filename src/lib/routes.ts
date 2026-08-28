@@ -46,6 +46,12 @@ export function adminUsersPath(): string {
   return "/admin/users";
 }
 
+export function adminOrganizationsPath(): string {
+  return "/admin/organizations";
+}
+
+export type AdminPagePath = "/admin/board-views" | "/admin/users" | "/admin/organizations";
+
 export function pushPath(path: string): void {
   const url = path.startsWith("http") ? path : `${window.location.origin}${path}`;
   window.history.pushState({ path: url }, "", url);

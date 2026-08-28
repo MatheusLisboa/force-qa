@@ -5,6 +5,7 @@ import {
   canInviteToRoom,
   canManageSpaces,
   canManageUsers,
+  canManageOrganizations,
   canWriteBugs,
   SIGNUP_ROLES,
 } from "./permissions";
@@ -27,6 +28,12 @@ describe("permissions", () => {
     expect(canManageUsers("admin")).toBe(true);
     expect(canManageUsers("qa")).toBe(false);
     expect(canManageUsers("qa", true)).toBe(true);
+  });
+
+  it("reserves organizations for superadmin", () => {
+    expect(canManageOrganizations(true)).toBe(true);
+    expect(canManageOrganizations(false)).toBe(false);
+    expect(canManageOrganizations()).toBe(false);
   });
 
   it("aligns invite and archive with space managers", () => {
