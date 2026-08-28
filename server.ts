@@ -4,7 +4,7 @@ import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import { generateExecutiveReport } from "./api-src/ai/generate-report";
 import { clientErrorMessage, httpErrorStatus, requireAdmin, requireSuperadmin, requireUser } from "./api-src/shared/auth";
-import { adminCreateUser, adminDeleteUser } from "./api-src/shared/adminUsers";
+import { adminCreateUser, adminDeleteUser, adminMoveUser } from "./api-src/shared/adminUsers";
 import { createOrganizationWithAdmin, resolveActorOrganizationId } from "./api-src/shared/organizations";
 import { inviteToRoom, joinRoom, validateGuestRoom } from "./api-src/shared/rooms";
 import { detectDuplicate, suggestBugFields } from "./api-src/shared/geminiBugs";
@@ -68,6 +68,20 @@ app.post("/api/admin/delete-user", async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     sendError(res, error, "Falha ao remover usuário.");
+  }
+});
+
+app.post("/api/admin/move-user", async (req, res) => {
+  try {
+    const actor = await requireSuperadmin(req.headers.authorization);
+    await adminMoveUser({
+      isSuperadmin: actor.isSuperadmin,
+      userId: String(req.body?.userId || ""),
+      organizationId: String(req.body?.organizationId || ""),
+    });
+    res.json({ success: true });
+  } catch (error) {
+    sendError(res, error, "Falha ao mover o usuário.");
   }
 });
 

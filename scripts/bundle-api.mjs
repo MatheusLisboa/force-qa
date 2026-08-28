@@ -9,6 +9,7 @@ const entries = [
   "api-src/admin/create-user.ts",
   "api-src/admin/create-organization.ts",
   "api-src/admin/delete-user.ts",
+  "api-src/admin/move-user.ts",
   "api-src/ai/detect-duplicate.ts",
   "api-src/ai/generate-report.ts",
   "api-src/ai/suggest-bug-fields.ts",

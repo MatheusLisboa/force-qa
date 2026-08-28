@@ -1,11 +1,12 @@
-import React, { useEffect, useState } from "react";
-import { ArrowLeft, Check, Edit2, Trash2, UserPlus, X } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, Building2, Check, Edit2, Trash2, UserPlus, X } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { supabase, subscribeUsers, toWarRoom } from "../lib/supabase";
 import {
   deleteUserProfile,
   fetchMembershipPairs,
   fetchUserRoomIds,
+  moveUserToOrganization,
   setUserRoomAccess,
   updateUserProfile,
 } from "../lib/services";
@@ -13,7 +14,8 @@ import { UserProfile, UserRole, WarRoom } from "../types";
 import { RoleBadge } from "./BugBadges";
 import { SquadSelect } from "./SquadSelect";
 import { useConfirm } from "../context/ConfirmContext";
-import { belongsToOrganization } from "../lib/organizations";
+import { filterManagedUsers, roomsForOrganization } from "../lib/adminUsersView";
+import { formatRelativeTime } from "../lib/format";
 
 interface AdminUsersPageProps {
   onBack: () => void;
@@ -117,12 +119,14 @@ function RoomAccessPicker({
 export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
   const { adminCreateUser, profile } = useAuth();
   const { confirm } = useConfirm();
+  const isSuperadmin = Boolean(profile?.isSuperadmin);
 
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
   const [newUserName, setNewUserName] = useState("");
   const [newUserRole, setNewUserRole] = useState<UserRole>("developer");
   const [newUserSquad, setNewUserSquad] = useState("");
+  const [newUserOrganizationId, setNewUserOrganizationId] = useState(profile?.organizationId || "");
   const [isCreatingUser, setIsCreatingUser] = useState(false);
   const [userCreationError, setUserCreationError] = useState("");
   const [userCreationSuccess, setUserCreationSuccess] = useState("");
@@ -131,38 +135,53 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
   const [editingName, setEditingName] = useState("");
   const [editingRole, setEditingRole] = useState<UserRole>("developer");
   const [editingSquad, setEditingSquad] = useState("");
+  const [editingOrganizationId, setEditingOrganizationId] = useState("");
   const [editingRoomIds, setEditingRoomIds] = useState<string[]>([]);
   const [newUserRoomIds, setNewUserRoomIds] = useState<string[]>([]);
   const [rooms, setRooms] = useState<WarRoom[]>([]);
+  const [organizations, setOrganizations] = useState<Array<{ id: string; name: string; slug: string }>>([]);
   const [roomIdsByUser, setRoomIdsByUser] = useState<Record<string, string[]>>({});
   const [userQuery, setUserQuery] = useState("");
+  const [organizationFilter, setOrganizationFilter] = useState("all");
+  const [includeGuests, setIncludeGuests] = useState(!isSuperadmin);
+
+  useEffect(() => {
+    if (profile?.organizationId && !newUserOrganizationId) {
+      setNewUserOrganizationId(profile.organizationId);
+    }
+  }, [profile?.organizationId, newUserOrganizationId]);
 
   useEffect(() => {
     const unsubUsers = subscribeUsers(setUsersList);
     let cancelled = false;
     void (async () => {
-      const { data, error } = await supabase
-        .from("war_rooms")
-        .select("*")
-        .order("created_at", { ascending: false });
+      const [{ data: roomData, error: roomError }, { data: orgData, error: orgError }] = await Promise.all([
+        supabase.from("war_rooms").select("*").order("created_at", { ascending: false }),
+        supabase.from("organizations").select("id, name, slug").order("name", { ascending: true }),
+      ]);
       if (cancelled) return;
-      if (error) {
-        console.error("admin users rooms:", error);
-        return;
+      if (roomError) {
+        console.error("admin users rooms:", roomError);
+      } else {
+        setRooms((roomData || []).map(toWarRoom));
       }
-      setRooms(
-        (data || [])
-          .map(toWarRoom)
-          .filter((room) =>
-            belongsToOrganization(room.organizationId, profile?.organizationId)
-          )
-      );
+      if (orgError) {
+        console.error("admin users orgs:", orgError);
+      } else {
+        setOrganizations(
+          (orgData || []).map((row) => ({
+            id: row.id as string,
+            name: row.name as string,
+            slug: row.slug as string,
+          }))
+        );
+      }
     })();
     return () => {
       cancelled = true;
       unsubUsers();
     };
-  }, [profile?.organizationId]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -182,6 +201,25 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
     };
   }, [usersList.length]);
 
+  const orgNameById = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const org of organizations) map[org.id] = org.name;
+    return map;
+  }, [organizations]);
+
+  const createOrgId = isSuperadmin ? newUserOrganizationId || profile?.organizationId : profile?.organizationId;
+  const roomsForCreate = roomsForOrganization(rooms, createOrgId);
+  const roomsForEdit = roomsForOrganization(rooms, editingOrganizationId || profile?.organizationId);
+
+  const visibleUsers = filterManagedUsers(usersList, {
+    homeOrganizationId: profile?.organizationId,
+    isSuperadmin,
+    organizationFilter: isSuperadmin ? organizationFilter : "all",
+    query: userQuery,
+    includeGuests,
+    organizationNameById: orgNameById,
+  });
+
   const handleAdminCreateUserSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newUserName.trim() || !newUserEmail.trim() || !newUserPassword.trim() || !newUserSquad.trim()) {
@@ -190,6 +228,10 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
     }
     if (newUserPassword.length < 6) {
       setUserCreationError("A senha deve conter no mínimo 6 caracteres.");
+      return;
+    }
+    if (isSuperadmin && !createOrgId) {
+      setUserCreationError("Escolha a organização do usuário.");
       return;
     }
 
@@ -202,7 +244,8 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
         newUserEmail.trim(),
         newUserPassword,
         newUserRole,
-        newUserSquad.trim()
+        newUserSquad.trim(),
+        isSuperadmin ? createOrgId : undefined
       );
       if (userId && profile?.id && newUserRoomIds.length > 0) {
         await setUserRoomAccess(userId, newUserRoomIds, profile.id);
@@ -221,20 +264,33 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
     }
   };
 
-  const handleSaveEdit = async (userId: string) => {
+  const handleSaveEdit = async (usr: UserProfile) => {
     if (!editingName.trim() || !editingSquad.trim()) {
       setUserCreationError("Todos os campos de edição são obrigatórios.");
       return;
     }
+    const nextOrgId = isSuperadmin ? editingOrganizationId : usr.organizationId;
+    if (isSuperadmin && nextOrgId && nextOrgId !== usr.organizationId) {
+      const destination = orgNameById[nextOrgId] || "outra organização";
+      const ok = await confirm({
+        title: "Mover usuário",
+        message: `${usr.name || usr.email} vai para ${destination} e perde o acesso às salas da organização atual.`,
+        confirmLabel: "Mover",
+      });
+      if (!ok) return;
+    }
     try {
-      await updateUserProfile(userId, {
+      if (isSuperadmin && nextOrgId && nextOrgId !== usr.organizationId) {
+        await moveUserToOrganization(usr.id, nextOrgId);
+      }
+      await updateUserProfile(usr.id, {
         name: editingName.trim(),
         role: editingRole,
         squad: editingSquad.trim(),
       });
       if (profile?.id) {
-        await setUserRoomAccess(userId, editingRoomIds, profile.id);
-        setRoomIdsByUser((prev) => ({ ...prev, [userId]: editingRoomIds }));
+        await setUserRoomAccess(usr.id, editingRoomIds, profile.id);
+        setRoomIdsByUser((prev) => ({ ...prev, [usr.id]: editingRoomIds }));
       }
       setEditingUserId(null);
       setUserCreationError("");
@@ -243,18 +299,6 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
       setUserCreationError(message);
     }
   };
-
-  const userQueryNorm = userQuery.trim().toLowerCase();
-  const visibleUsers = usersList.filter((usr) => {
-    if (!usr?.id) return false;
-    if (!belongsToOrganization(usr.organizationId, profile?.organizationId)) {
-      return false;
-    }
-    if (!userQueryNorm) return true;
-    return [usr.name, usr.email, usr.squad, usr.role].some((value) =>
-      (value || "").toLowerCase().includes(userQueryNorm)
-    );
-  });
 
   const handleDeleteUser = async (userId: string) => {
     const ok = await confirm({
@@ -282,11 +326,18 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
             Voltar
           </button>
           <p className="fq-page-eyebrow flex items-center gap-1.5">
-            <UserPlus className="w-3.5 h-3.5 text-teal-400" /> Admin
+            {isSuperadmin ? (
+              <Building2 className="w-3.5 h-3.5 text-teal-400" />
+            ) : (
+              <UserPlus className="w-3.5 h-3.5 text-teal-400" />
+            )}
+            {isSuperadmin ? "Superadmin" : "Admin"}
           </p>
           <h1 className="fq-page-title mt-1">Usuários</h1>
           <p className="text-neutral-500 text-sm mt-1">
-            Cadastre pessoas. O acesso ao board também pode ser dado em Administrar, na sala.
+            {isSuperadmin
+              ? "Todas as organizações, os mais recentes primeiro. Mova a pessoa de tenant por aqui."
+              : "Cadastre pessoas. O acesso ao board também pode ser dado em Administrar, na sala."}
           </p>
         </div>
       </div>
@@ -299,11 +350,33 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
           <div>
             <h2 className="text-[15px] font-semibold text-neutral-100">Novo usuário</h2>
             <p className="text-neutral-500 text-[13px] mt-0.5 leading-relaxed">
-              Cria a conta e o perfil. Busque o board se já souber o acesso.
+              {isSuperadmin
+                ? "Cria a conta já na organização escolhida."
+                : "Cria a conta e o perfil. Busque o board se já souber o acesso."}
             </p>
           </div>
 
           <form onSubmit={handleAdminCreateUserSubmit} className="space-y-4">
+            {isSuperadmin && (
+              <div>
+                <label className="fq-label fq-label--xs">Organização</label>
+                <select
+                  className="fq-select"
+                  required
+                  value={newUserOrganizationId}
+                  onChange={(e) => {
+                    setNewUserOrganizationId(e.target.value);
+                    setNewUserRoomIds([]);
+                  }}
+                >
+                  {organizations.map((org) => (
+                    <option key={org.id} value={org.id}>
+                      {org.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div>
               <label className="fq-label fq-label--xs">Nome completo</label>
               <input
@@ -358,7 +431,7 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
             </div>
             <div>
               <label className="fq-label fq-label--xs">Acesso aos boards</label>
-              <RoomAccessPicker rooms={rooms} selectedIds={newUserRoomIds} onChange={setNewUserRoomIds} />
+              <RoomAccessPicker rooms={roomsForCreate} selectedIds={newUserRoomIds} onChange={setNewUserRoomIds} />
             </div>
             <button type="submit" disabled={isCreatingUser} className="fq-btn-primary w-full">
               {isCreatingUser ? "Cadastrando..." : "Cadastrar usuário"}
@@ -369,17 +442,44 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
         <div className="fq-panel p-5 space-y-4">
           <div>
             <h2 className="text-[15px] font-semibold text-neutral-100">
-              Pessoas ({usersList.length})
+              Pessoas ({visibleUsers.length})
             </h2>
             <p className="text-neutral-500 text-[13px] mt-0.5">
-              Edite a pessoa. Boards: busque pelo nome. Excluir remove também a conta no Auth.
+              {isSuperadmin
+                ? "Recentes no topo. Edite para mudar papel, boards ou organização."
+                : "Edite a pessoa. Boards: busque pelo nome. Excluir remove também a conta no Auth."}
             </p>
           </div>
+
+          {isSuperadmin && (
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                className="fq-select text-sm max-w-xs"
+                value={organizationFilter}
+                onChange={(e) => setOrganizationFilter(e.target.value)}
+              >
+                <option value="all">Todas as organizações</option>
+                {organizations.map((org) => (
+                  <option key={org.id} value={org.id}>
+                    {org.name}
+                  </option>
+                ))}
+              </select>
+              <label className="flex items-center gap-2 text-[13px] text-neutral-400">
+                <input
+                  type="checkbox"
+                  checked={includeGuests}
+                  onChange={(e) => setIncludeGuests(e.target.checked)}
+                />
+                Mostrar convidados
+              </label>
+            </div>
+          )}
 
           <input
             type="search"
             className="fq-input text-sm"
-            placeholder="Buscar por nome, e-mail ou área"
+            placeholder={isSuperadmin ? "Buscar por nome, e-mail, área ou papel" : "Buscar por nome, e-mail ou área"}
             value={userQuery}
             onChange={(e) => setUserQuery(e.target.value)}
           />
@@ -434,7 +534,7 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
                         </div>
                         <div className="flex gap-1.5 pb-[2px]">
                           <button
-                            onClick={() => handleSaveEdit(usr.id)}
+                            onClick={() => void handleSaveEdit(usr)}
                             className="fq-btn-primary text-sm py-1.5 px-2"
                             title="Confirmar"
                           >
@@ -449,10 +549,29 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
                           </button>
                         </div>
                       </div>
+                      {isSuperadmin && (
+                        <div>
+                          <label className="fq-label fq-label--xs !mb-1">Organização</label>
+                          <select
+                            className="fq-select text-sm py-1.5"
+                            value={editingOrganizationId}
+                            onChange={(e) => {
+                              setEditingOrganizationId(e.target.value);
+                              setEditingRoomIds([]);
+                            }}
+                          >
+                            {organizations.map((org) => (
+                              <option key={org.id} value={org.id}>
+                                {org.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                       <div>
                         <label className="fq-label fq-label--xs !mb-1">Boards e salas</label>
                         <RoomAccessPicker
-                          rooms={rooms}
+                          rooms={roomsForEdit}
                           selectedIds={editingRoomIds}
                           onChange={setEditingRoomIds}
                         />
@@ -465,16 +584,28 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
                   <div key={usr.id} className="fq-table-row group">
                     <div className="min-w-0 space-y-0.5">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-neutral-100 text-sm truncate">{usr.name}</span>
+                        <span className="font-semibold text-neutral-100 text-sm truncate">{usr.name || "Sem nome"}</span>
                         <RoleBadge role={usr.role} />
+                        {usr.isGuest && (
+                          <span className="text-[10px] uppercase tracking-wide text-neutral-500">Convidado</span>
+                        )}
+                        {usr.isSuperadmin && (
+                          <span className="text-[10px] uppercase tracking-wide text-teal-400">Superadmin</span>
+                        )}
                       </div>
                       <div className="text-[12px] text-neutral-500 truncate">{usr.email}</div>
+                      {isSuperadmin && (
+                        <div className="text-[12px] text-neutral-400 truncate">
+                          {orgNameById[usr.organizationId] || usr.organizationId}
+                        </div>
+                      )}
                     </div>
                     <div className="text-right text-[12px] text-neutral-400">
                       <div>{usr.squad || "Sem área"}</div>
                       <div className="mt-0.5 text-neutral-500">
                         {(roomIdsByUser[usr.id] || []).length} board(s)
                       </div>
+                      <div className="mt-0.5 text-neutral-500">{formatRelativeTime(usr.createdAt)}</div>
                     </div>
                     <div className="flex items-center justify-end gap-1">
                       <button
@@ -483,6 +614,7 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
                           setEditingName(usr.name || "");
                           setEditingRole(usr.role || "developer");
                           setEditingSquad(usr.squad || "");
+                          setEditingOrganizationId(usr.organizationId);
                           try {
                             setEditingRoomIds(roomIdsByUser[usr.id] || (await fetchUserRoomIds(usr.id)));
                           } catch {

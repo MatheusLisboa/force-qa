@@ -20,7 +20,7 @@ interface AuthContextType {
   loginWithEmail: (email: string, password: string, isSignUp: boolean) => Promise<User>;
   signUpUser: (name: string, email: string, password: string, role: UserRole, squad: string) => Promise<User>;
   loginAsGuest: (name: string, squad: string, warRoomName: string) => Promise<string>;
-  adminCreateUser: (name: string, email: string, password: string, role: UserRole, squad: string) => Promise<string>;
+  adminCreateUser: (name: string, email: string, password: string, role: UserRole, squad: string, organizationId?: string) => Promise<string>;
   changePassword: (newPassword: string) => Promise<void>;
   requestPasswordReset: (email: string) => Promise<void>;
   completePasswordRecovery: (newPassword: string) => Promise<void>;
@@ -313,11 +313,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     email: string,
     password: string,
     role: UserRole,
-    squad: string
+    squad: string,
+    organizationId?: string
   ) => {
     const response = await authFetch("/api/admin/create-user", {
       method: "POST",
-      body: JSON.stringify({ name, email, password, role, squad: normalizeArea(squad) }),
+      body: JSON.stringify({
+        name,
+        email,
+        password,
+        role,
+        squad: normalizeArea(squad),
+        organizationId,
+      }),
     });
 
     if (!response.ok) {

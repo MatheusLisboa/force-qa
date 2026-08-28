@@ -625,6 +625,16 @@ export async function deleteUserProfile(userId: string): Promise<void> {
   }
 }
 
+export async function moveUserToOrganization(userId: string, organizationId: string): Promise<void> {
+  const response = await authFetch("/api/admin/move-user", {
+    method: "POST",
+    body: JSON.stringify({ userId, organizationId }),
+  });
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Erro ao mover usuário."));
+  }
+}
+
 export async function fetchOrganizationOverviews(): Promise<OrganizationOverview[]> {
   const [{ data: orgRows, error: orgError }, { data: userRows, error: userError }, { data: roomRows, error: roomError }] =
     await Promise.all([

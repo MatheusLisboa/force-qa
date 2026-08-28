@@ -291,3 +291,76 @@ export async function adminDeleteUser(
   const { error } = await admin.auth.admin.deleteUser(userId);
   if (error) throw error;
 }
+
+export async function adminMoveUser(params: {
+  isSuperadmin: boolean;
+  userId: string;
+  organizationId: string;
+}): Promise<void> {
+  if (!params.isSuperadmin) {
+    throw Object.assign(new Error("Apenas o superadmin pode mover usuários entre organizações."), {
+      status: 403,
+    });
+  }
+  const userId = params.userId.trim();
+  const organizationId = resolveOrganizationId(params.organizationId);
+  if (!userId) {
+    throw Object.assign(new Error("ID do usuário é obrigatório."), { status: 400 });
+  }
+
+  const admin = getSupabaseAdmin();
+  const { data: org, error: orgError } = await admin
+    .from("organizations")
+    .select("id")
+    .eq("id", organizationId)
+    .maybeSingle();
+  if (orgError) throw wrapThrownError(orgError, "Falha ao verificar a organização.");
+  if (!org) {
+    throw Object.assign(new Error("Organização não encontrada."), { status: 404 });
+  }
+
+  const { data: target, error: lookupError } = await admin
+    .from("users")
+    .select("id, organization_id, is_superadmin")
+    .eq("id", userId)
+    .maybeSingle();
+  if (lookupError) throw wrapThrownError(lookupError, "Falha ao localizar o usuário.");
+  if (!target) {
+    throw Object.assign(new Error("Usuário não encontrado."), { status: 404 });
+  }
+
+  const currentOrg = resolveOrganizationId(target.organization_id);
+  if (currentOrg === organizationId) return;
+
+  const { error: moveError } = await admin
+    .from("users")
+    .update({ organization_id: organizationId })
+    .eq("id", userId);
+  if (moveError) throw wrapThrownError(moveError, "Falha ao mover o usuário.");
+
+  const { data: memberships, error: memberError } = await admin
+    .from("room_members")
+    .select("war_room_id")
+    .eq("user_id", userId);
+  if (memberError) throw wrapThrownError(memberError, "Falha ao ler as salas do usuário.");
+
+  const roomIds = (memberships || []).map((row) => row.war_room_id as string).filter(Boolean);
+  if (roomIds.length === 0) return;
+
+  const { data: foreignRooms, error: roomsError } = await admin
+    .from("war_rooms")
+    .select("id")
+    .in("id", roomIds)
+    .neq("organization_id", organizationId);
+  if (roomsError) throw wrapThrownError(roomsError, "Falha ao filtrar as salas da organização anterior.");
+
+  const toRemove = (foreignRooms || []).map((row) => row.id as string);
+  if (toRemove.length === 0) return;
+
+  const { error: detachError } = await admin
+    .from("room_members")
+    .delete()
+    .eq("user_id", userId)
+    .in("war_room_id", toRemove);
+  if (detachError) throw wrapThrownError(detachError, "Falha ao remover o acesso das salas da organização anterior.");
+}
