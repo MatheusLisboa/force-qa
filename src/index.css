@@ -442,43 +442,53 @@
     box-shadow: -16px 0 48px rgba(0, 0, 0, 0.4);
   }
 
-  .fq-room-split {
-    @apply flex min-h-0 flex-col gap-4 lg:flex-row lg:items-start;
-  }
-
   .fq-room-board {
     @apply min-w-0 flex-1 overflow-x-auto;
   }
 
-  .fq-card-panel-shell {
-    @apply w-full lg:sticky lg:top-4 lg:w-[24rem] lg:shrink-0;
+  .fq-bug-overlay {
+    @apply fixed inset-0 z-50 flex justify-center overflow-y-auto p-3 sm:p-6 backdrop-blur-sm;
+    align-items: flex-start;
+    align-items: safe center;
+    background-color: rgba(0, 0, 0, 0.62);
   }
 
-  .fq-card-panel {
-    @apply relative flex h-full w-full max-w-[440px] flex-col overflow-hidden;
+  .fq-bug-modal {
+    @apply relative my-auto flex w-full max-w-5xl flex-col overflow-hidden rounded-xl;
+    max-height: min(90vh, 920px);
     background-color: var(--color-fq-surface);
-    border-left: 1px solid var(--color-fq-border);
+    border: 1px solid var(--color-fq-border);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
   }
 
-  @media (max-width: 1023px) {
-    .fq-card-panel-shell {
-      @apply fixed inset-0 z-50 flex justify-end;
-      background-color: rgba(0, 0, 0, 0.45);
-    }
-
-    .fq-card-panel {
-      box-shadow: -16px 0 48px rgba(0, 0, 0, 0.4);
-    }
+  .fq-bug-modal-header {
+    @apply flex shrink-0 items-start justify-between gap-3 border-b px-5 py-4;
+    border-color: var(--color-fq-border-subtle);
+    background-color: var(--color-fq-surface);
   }
 
-  @media (min-width: 1024px) {
-    .fq-card-panel {
-      @apply max-w-none rounded-xl border;
-      height: calc(100dvh - 6.5rem);
-      max-height: calc(100dvh - 6.5rem);
-      border-color: var(--color-fq-border);
-      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
-    }
+  .fq-bug-modal-body {
+    @apply flex min-h-0 flex-1 flex-col overflow-y-auto lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:overflow-hidden;
+  }
+
+  .fq-bug-modal-main {
+    @apply space-y-4 p-5 lg:overflow-y-auto;
+  }
+
+  .fq-bug-modal-aside {
+    @apply space-y-4 border-t p-5 lg:overflow-y-auto lg:border-l lg:border-t-0;
+    border-color: var(--color-fq-border-subtle);
+    background-color: var(--color-fq-base);
+  }
+
+  .fq-bug-modal-comment {
+    @apply flex shrink-0 items-end gap-2 border-t p-3 sm:p-4;
+    border-color: var(--color-fq-border-subtle);
+    background-color: var(--color-fq-surface);
+  }
+
+  .fq-bug-modal-comment .fq-textarea {
+    @apply min-h-[44px] flex-1;
   }
 
   .fq-chip-row {
@@ -1059,11 +1069,20 @@
     flex-basis: min(16.5rem, 82vw);
   }
 
-  .fq-drawer {
-    max-width: none;
+  .fq-bug-overlay {
+    padding: 0;
+    align-items: stretch;
   }
 
-  .fq-card-panel {
+  .fq-bug-modal {
+    max-width: none;
+    max-height: 100dvh;
+    height: 100dvh;
+    border-radius: 0;
+    margin: 0;
+  }
+
+  .fq-drawer {
     max-width: none;
   }
 

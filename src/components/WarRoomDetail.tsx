@@ -805,30 +805,19 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
       {/* RENDER ACTIVE TAP CONTENT */}
 
       {activeTab === "kanban" && (
-        <div className="fq-room-split">
-          <div className="fq-room-board">
-            <KanbanBoard
-              columns={kanbanColumns}
-              bugsByColumn={bugsByColumn}
-              role={profile?.role}
-              isCoarsePointer={isCoarsePointer}
-              selectedBugId={selectedBug?.id}
-              onDragStart={handleDragStart}
-              onDragOver={handleDragOver}
-              onDrop={handleDrop}
-              onOpenBug={setSelectedBug}
-              onMoveToColumn={handleMoveToColumn}
-            />
-          </div>
-          <AnimatePresence>
-            {selectedBug && (
-              <BugDetailModal
-                docked
-                bug={selectedBug}
-                onClose={() => setSelectedBug(null)}
-              />
-            )}
-          </AnimatePresence>
+        <div className="fq-room-board">
+          <KanbanBoard
+            columns={kanbanColumns}
+            bugsByColumn={bugsByColumn}
+            role={profile?.role}
+            isCoarsePointer={isCoarsePointer}
+            selectedBugId={selectedBug?.id}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+            onOpenBug={setSelectedBug}
+            onMoveToColumn={handleMoveToColumn}
+          />
         </div>
       )}
 
@@ -900,7 +889,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
       </AnimatePresence>
 
       <AnimatePresence>
-        {selectedBug && activeTab !== "kanban" && (
+        {selectedBug && (
           <BugDetailModal
             bug={selectedBug}
             onClose={() => setSelectedBug(null)}

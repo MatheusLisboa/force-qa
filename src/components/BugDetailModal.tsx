@@ -29,21 +29,6 @@ import { motion, AnimatePresence } from "motion/react";
 interface BugDetailModalProps {
   bug: Bug;
   onClose: () => void;
-  docked?: boolean;
-}
-
-function useMinWidth(px: number) {
-  const [matches, setMatches] = useState(() =>
-    typeof window !== "undefined" ? window.matchMedia(`(min-width: ${px}px)`).matches : false
-  );
-  useEffect(() => {
-    const mql = window.matchMedia(`(min-width: ${px}px)`);
-    const onChange = () => setMatches(mql.matches);
-    mql.addEventListener("change", onChange);
-    setMatches(mql.matches);
-    return () => mql.removeEventListener("change", onChange);
-  }, [px]);
-  return matches;
 }
 
 const STATUS_VALUES: BugStatus[] = [
@@ -55,12 +40,10 @@ const STATUS_VALUES: BugStatus[] = [
   "reopened",
 ];
 
-export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose, docked = false }) => {
+export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) => {
   const { profile } = useAuth();
   const { toast } = useToast();
   const { confirm } = useConfirm();
-  const isDesktop = useMinWidth(1024);
-  const overlayMode = !docked || !isDesktop;
   const [activeBug, setActiveBug] = useState<Bug>(bug);
   const [comments, setComments] = useState<BugComment[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
@@ -82,7 +65,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose, do
     setFullscreenUrl(null);
   }, []);
 
-  useModalA11y(true, onClose, dialogRef, { trapFocus: overlayMode });
+  useModalA11y(true, onClose, dialogRef);
   useModalA11y(isFullscreenEvidence && !!fullscreenUrl, closeEvidenceFullscreen, evidenceDialogRef);
 
   const canEdit = canWriteBugs(profile?.role);
@@ -290,25 +273,21 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose, do
   };
 
   return (
-    <div
-      className={docked ? "fq-card-panel-shell" : "fq-drawer-overlay"}
-      onClick={overlayMode ? onClose : undefined}
-    >
-      <motion.div 
+    <div className="fq-bug-overlay" onClick={onClose}>
+      <motion.div
         ref={dialogRef}
         role="dialog"
-        aria-modal={overlayMode}
+        aria-modal="true"
         aria-labelledby="bug-detail-modal-title"
         tabIndex={-1}
-        initial={{ opacity: 0, x: overlayMode ? 24 : 12 }}
-        animate={{ opacity: 1, x: 0 }}
-        exit={{ opacity: 0, x: overlayMode ? 24 : 12 }}
+        initial={{ opacity: 0, scale: 0.97, y: 16 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.97, y: 16 }}
+        transition={{ duration: 0.18 }}
         onClick={(e) => e.stopPropagation()}
-        className={docked ? "fq-card-panel" : "fq-drawer"}
+        className="fq-bug-modal"
       >
-        <div className="flex justify-between items-start gap-3 border-b px-4 py-3"
-          style={{ borderColor: "var(--color-fq-border-subtle)", backgroundColor: "var(--color-fq-surface)" }}
-        >
+        <div className="fq-bug-modal-header">
           <div className="min-w-0 flex-1">
             {isEditingTitle ? (
               <div className="space-y-2">
@@ -317,7 +296,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose, do
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
                   maxLength={200}
-                  className="w-full fq-input text-base font-semibold"
+                  className="w-full fq-input text-lg font-semibold"
                   autoFocus
                 />
                 <div className="flex gap-2">
@@ -344,7 +323,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose, do
               </div>
             ) : (
               <div className="flex items-start gap-2 group/title">
-                <h2 id="bug-detail-modal-title" className="text-base font-semibold text-neutral-100 leading-tight flex-1">
+                <h2 id="bug-detail-modal-title" className="text-lg font-semibold text-neutral-100 leading-snug flex-1">
                   {activeBug.title}
                 </h2>
                 {canEdit && (
@@ -359,7 +338,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose, do
                 )}
               </div>
             )}
-            <div className="mt-2 flex flex-wrap items-center gap-2">
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
               <BugTypeTag type={activeBug.type} size="md" />
               <SeverityBadge severity={activeBug.criticism} size="md" />
               <StatusBadge status={activeBug.status} size="md" />
@@ -371,7 +350,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose, do
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             {(canArchiveBugs(profile?.role) || activeBug.createdBy === profile?.id) && (
               <button
                 type="button"
@@ -381,7 +360,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose, do
                 Arquivar
               </button>
             )}
-            <button 
+            <button
               onClick={onClose}
               className="fq-btn-icon"
               aria-label="Fechar"
@@ -391,220 +370,221 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose, do
           </div>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex-1 overflow-y-auto">
-            <div className="fq-detail-panel !space-y-3 !py-4">
-              {(activeBug.evidenceUrl || activeBug.prototypeUrl) && (
-                <div className="grid grid-cols-1 gap-3">
-                  {activeBug.evidenceUrl && (
-                    <div className="space-y-1.5">
-                      <span className="text-[12px] text-neutral-500 font-medium">
-                        {isImageEvidence(activeBug.evidenceUrl) ? "Evidência" : "Link de evidência"}
-                      </span>
-                      {isImageEvidence(activeBug.evidenceUrl) ? (
-                        <div onClick={() => openEvidence(activeBug.evidenceUrl!)} className="fq-evidence-thumb group !max-h-[140px]">
-                          <img src={activeBug.evidenceUrl} alt="Evidência do Bug" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-xs text-white font-mono transition">
-                            Ampliar
-                          </div>
+        <div className="fq-bug-modal-body">
+          <div className="fq-bug-modal-main">
+            {(activeBug.evidenceUrl || activeBug.prototypeUrl) && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {activeBug.evidenceUrl && (
+                  <div className="space-y-1.5">
+                    <span className="text-[12px] text-neutral-500 font-medium">
+                      {isImageEvidence(activeBug.evidenceUrl) ? "Evidência" : "Link de evidência"}
+                    </span>
+                    {isImageEvidence(activeBug.evidenceUrl) ? (
+                      <div onClick={() => openEvidence(activeBug.evidenceUrl!)} className="fq-evidence-thumb group !max-h-[220px]">
+                        <img src={activeBug.evidenceUrl} alt="Evidência do Bug" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-xs text-white font-mono transition">
+                          Ampliar
                         </div>
-                      ) : (
-                        <a href={activeBug.evidenceUrl} target="_blank" rel="noopener noreferrer" className="fq-evidence-link group !p-3">
-                          <ExternalLink className="w-4 h-4 text-neutral-400 shrink-0 group-hover:text-neutral-200" />
-                          <span className="text-xs font-mono break-all line-clamp-2">{activeBug.evidenceUrl}</span>
-                        </a>
-                      )}
-                    </div>
-                  )}
-                  {activeBug.prototypeUrl && (
-                    <div className="space-y-1.5">
-                      <span className="text-[12px] text-neutral-500 font-medium">Protótipo</span>
-                      <div onClick={() => openEvidence(activeBug.prototypeUrl!)} className="fq-evidence-thumb group !max-h-[140px]">
-                        <img src={activeBug.prototypeUrl} alt="Protótipo Original" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
                       </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div>
-                <span className="fq-label fq-label--inline !mb-1.5">Responsável</span>
-                {activeBug.ownerId ? (
-                  <div className="flex items-center gap-2.5 p-3 fq-panel !p-3">
-                    <div className="w-8 h-8 rounded-md bg-white/[0.08] border border-white/[0.06] flex items-center justify-center font-bold text-sm text-neutral-300 uppercase">
-                      {activeBug.ownerName?.charAt(0)}
-                    </div>
-                    <span className="text-sm font-semibold text-neutral-100">{activeBug.ownerName}</span>
+                    ) : (
+                      <a href={activeBug.evidenceUrl} target="_blank" rel="noopener noreferrer" className="fq-evidence-link group !p-3">
+                        <ExternalLink className="w-4 h-4 text-neutral-400 shrink-0 group-hover:text-neutral-200" />
+                        <span className="text-xs font-mono break-all line-clamp-2">{activeBug.evidenceUrl}</span>
+                      </a>
+                    )}
                   </div>
-                ) : (
-                  <div className="p-3 fq-panel border-dashed text-center">
-                    <AlertCircle className="w-4 h-4 text-red-400 mx-auto mb-1" />
-                    <span className="block text-xs text-neutral-200 font-medium mb-2">Sem responsável</span>
-                    <button onClick={handleClaimTask} className="fq-btn-secondary w-full text-xs">
-                      Assumir
-                    </button>
+                )}
+                {activeBug.prototypeUrl && (
+                  <div className="space-y-1.5">
+                    <span className="text-[12px] text-neutral-500 font-medium">Protótipo</span>
+                    <div onClick={() => openEvidence(activeBug.prototypeUrl!)} className="fq-evidence-thumb group !max-h-[220px]">
+                      <img src={activeBug.prototypeUrl} alt="Protótipo Original" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                    </div>
                   </div>
                 )}
               </div>
+            )}
 
-              {canAssignBugs(profile?.role) && (
-                <div>
-                  <span className="fq-label fq-label--inline !mb-1.5 gap-1">
-                    <UserPlus className="w-3.5 h-3.5" /> Atribuir
-                  </span>
-                  <select onChange={handleAssignOwner} className="fq-select text-xs" value={activeBug.ownerId || ""}>
-                    <option value="">Escolher pessoa...</option>
-                    {users.map(u => (
-                      <option key={u.id} value={u.id}>{u.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {canEdit && (
-                <div>
-                  <span className="fq-label fq-label--inline !mb-1.5">Status</span>
-                  <select
-                    className="fq-select text-xs"
-                    value={activeBug.status}
-                    onChange={(e) => handleUpdateStatus(e.target.value as BugStatus)}
+            <div className="fq-panel !p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[12px] text-neutral-500 flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5" /> Descrição
+                </span>
+                {canEdit && !isEditingDescription && (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingDescription(true)}
+                    className="p-1 text-neutral-500 hover:text-neutral-200 hover:bg-white/[0.06] rounded-md transition"
+                    title="Editar descrição"
                   >
-                    {STATUS_VALUES.map((statusValue) => (
-                      <option key={statusValue} value={statusValue}>
-                        {getStatusLabel(statusValue)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              <div className="fq-panel !p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[12px] text-neutral-500 flex items-center gap-1.5">
-                    <FileText className="w-3.5 h-3.5" /> Descrição
-                  </span>
-                  {canEdit && !isEditingDescription && (
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+              {isEditingDescription ? (
+                <div className="space-y-2">
+                  <textarea
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    rows={6}
+                    className="w-full fq-textarea text-sm min-h-[120px]"
+                    autoFocus
+                  />
+                  <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => setIsEditingDescription(true)}
-                      className="p-1 text-neutral-500 hover:text-neutral-200 hover:bg-white/[0.06] rounded-md transition"
-                      title="Editar descrição"
+                      onClick={handleSaveDescription}
+                      disabled={savingField === "description"}
+                      className="fq-btn-primary text-[12px] py-1.5"
                     >
-                      <Pencil className="w-3.5 h-3.5" />
+                      <Check className="w-3.5 h-3.5" />
+                      Salvar
                     </button>
-                  )}
-                </div>
-                {isEditingDescription ? (
-                  <div className="space-y-2">
-                    <textarea
-                      value={editDescription}
-                      onChange={(e) => setEditDescription(e.target.value)}
-                      rows={4}
-                      className="w-full fq-textarea text-sm min-h-[96px]"
-                      autoFocus
-                    />
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={handleSaveDescription}
-                        disabled={savingField === "description"}
-                        className="fq-btn-primary text-[12px] py-1.5"
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                        Salvar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditDescription(activeBug.description);
-                          setIsEditingDescription(false);
-                        }}
-                        className="fq-btn-ghost text-[12px] py-1.5"
-                      >
-                        Cancelar
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditDescription(activeBug.description);
+                        setIsEditingDescription(false);
+                      }}
+                      className="fq-btn-ghost text-[12px] py-1.5"
+                    >
+                      Cancelar
+                    </button>
                   </div>
-                ) : (
-                  <p className="text-neutral-300 text-sm whitespace-pre-wrap leading-relaxed">
-                    {activeBug.description || "Nenhuma descrição complementar foi fornecida."}
-                  </p>
-                )}
-              </div>
+                </div>
+              ) : (
+                <p className="text-neutral-300 text-sm whitespace-pre-wrap leading-relaxed">
+                  {activeBug.description || "Nenhuma descrição complementar foi fornecida."}
+                </p>
+              )}
+            </div>
 
-              <div>
-                <span className="text-[12px] font-medium text-neutral-400">
-                  Comentários ({comments.length})
-                </span>
-                <div className="mt-2 space-y-2">
-                  {comments.length === 0 ? (
-                    <p className="text-neutral-500 text-sm">Nenhuma nota ainda.</p>
-                  ) : (
-                    comments.map((com) => {
-                      const initials = com.userName ? com.userName.slice(0, 2).toUpperCase() : "??";
-                      return (
-                        <div key={com.id} className="fq-comment-card">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <div className="w-5 h-5 rounded-md bg-white/[0.08] border border-white/[0.06] flex items-center justify-center text-[10px] font-bold text-neutral-300 uppercase">
-                                {initials}
-                              </div>
-                              <span className="font-mono text-xs font-medium text-neutral-200">
-                                {com.userName}
-                              </span>
+            <div>
+              <span className="text-[12px] font-medium text-neutral-400">
+                Comentários ({comments.length})
+              </span>
+              <div className="mt-2 space-y-2">
+                {comments.length === 0 ? (
+                  <p className="text-neutral-500 text-sm">Nenhuma nota ainda.</p>
+                ) : (
+                  comments.map((com) => {
+                    const initials = com.userName ? com.userName.slice(0, 2).toUpperCase() : "??";
+                    return (
+                      <div key={com.id} className="fq-comment-card">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-5 h-5 rounded-md bg-white/[0.08] border border-white/[0.06] flex items-center justify-center text-[10px] font-bold text-neutral-300 uppercase">
+                              {initials}
                             </div>
-                            <span className="font-mono text-[9px] text-neutral-500">
-                              {com.createdAt ? new Date(com.createdAt).toLocaleString() : ""}
+                            <span className="font-mono text-xs font-medium text-neutral-200">
+                              {com.userName}
                             </span>
                           </div>
-                          <p className="text-xs text-neutral-400 leading-relaxed pl-1 whitespace-pre-wrap">
-                            {com.text}
-                          </p>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              <details className="rounded-lg border border-white/[0.06] p-3">
-                <summary className="cursor-pointer text-[13px] text-neutral-400">Mais detalhes</summary>
-                <div className="mt-3 space-y-3">
-                  <div className="fq-panel !p-3">
-                    <span className="text-[12px] text-neutral-500 flex items-center gap-1.5 mb-2">
-                      <Globe className="w-3.5 h-3.5" /> URL
-                    </span>
-                    <span className="text-xs text-neutral-300 break-all">
-                      {activeBug.affectedUrl || "Nenhuma URL"}
-                    </span>
-                  </div>
-                  <div className="fq-panel !p-3">
-                    <span className="text-[12px] text-neutral-500 flex items-center gap-1.5 mb-2">
-                      <Grid className="w-3.5 h-3.5" /> Build
-                    </span>
-                    <span className="text-xs text-neutral-300">
-                      {activeBug.buildVersion || "—"}
-                    </span>
-                  </div>
-                  {activeBug.tags && activeBug.tags.length > 0 && (
-                    <div className="flex items-center gap-2">
-                      <Tag className="w-3.5 h-3.5 text-neutral-500" />
-                      <div className="flex gap-2.5 flex-wrap">
-                        {activeBug.tags.map(tag => (
-                          <span key={tag} className="fq-badge bg-white/[0.04] text-neutral-400 border-white/[0.06]">
-                            #{tag}
+                          <span className="font-mono text-[9px] text-neutral-500">
+                            {com.createdAt ? new Date(com.createdAt).toLocaleString() : ""}
                           </span>
-                        ))}
+                        </div>
+                        <p className="text-xs text-neutral-400 leading-relaxed pl-1 whitespace-pre-wrap">
+                          {com.text}
+                        </p>
                       </div>
-                    </div>
-                  )}
-                </div>
-              </details>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
 
-              <details className="rounded-lg border border-white/[0.06] p-3">
-                <summary className="cursor-pointer text-[13px] text-neutral-400">Histórico</summary>
-                <div className="mt-3 space-y-2 max-h-[180px] overflow-y-auto pr-1">
-                  {activityLogs.map((log) => {
+          <aside className="fq-bug-modal-aside">
+            <div>
+              <span className="fq-label fq-label--inline !mb-1.5">Responsável</span>
+              {activeBug.ownerId ? (
+                <div className="flex items-center gap-2.5 fq-panel !p-3">
+                  <div className="w-8 h-8 rounded-md bg-white/[0.08] border border-white/[0.06] flex items-center justify-center font-bold text-sm text-neutral-300 uppercase">
+                    {activeBug.ownerName?.charAt(0)}
+                  </div>
+                  <span className="text-sm font-semibold text-neutral-100">{activeBug.ownerName}</span>
+                </div>
+              ) : (
+                <div className="p-3 fq-panel border-dashed text-center">
+                  <AlertCircle className="w-4 h-4 text-red-400 mx-auto mb-1" />
+                  <span className="block text-xs text-neutral-200 font-medium mb-2">Sem responsável</span>
+                  <button onClick={handleClaimTask} className="fq-btn-secondary w-full text-xs">
+                    Assumir
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {canAssignBugs(profile?.role) && (
+              <div>
+                <span className="fq-label fq-label--inline !mb-1.5 gap-1">
+                  <UserPlus className="w-3.5 h-3.5" /> Atribuir
+                </span>
+                <select onChange={handleAssignOwner} className="fq-select text-xs" value={activeBug.ownerId || ""}>
+                  <option value="">Escolher pessoa...</option>
+                  {users.map(u => (
+                    <option key={u.id} value={u.id}>{u.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {canEdit && (
+              <div>
+                <span className="fq-label fq-label--inline !mb-1.5">Status</span>
+                <select
+                  className="fq-select text-xs"
+                  value={activeBug.status}
+                  onChange={(e) => handleUpdateStatus(e.target.value as BugStatus)}
+                >
+                  {STATUS_VALUES.map((statusValue) => (
+                    <option key={statusValue} value={statusValue}>
+                      {getStatusLabel(statusValue)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className="fq-panel !p-3 space-y-3">
+              <div>
+                <span className="text-[12px] text-neutral-500 flex items-center gap-1.5 mb-1.5">
+                  <Globe className="w-3.5 h-3.5" /> URL
+                </span>
+                <span className="text-xs text-neutral-300 break-all">
+                  {activeBug.affectedUrl || "Nenhuma URL"}
+                </span>
+              </div>
+              <div>
+                <span className="text-[12px] text-neutral-500 flex items-center gap-1.5 mb-1.5">
+                  <Grid className="w-3.5 h-3.5" /> Build
+                </span>
+                <span className="text-xs text-neutral-300">
+                  {activeBug.buildVersion || "—"}
+                </span>
+              </div>
+              {activeBug.tags && activeBug.tags.length > 0 && (
+                <div className="flex items-start gap-2">
+                  <Tag className="w-3.5 h-3.5 text-neutral-500 mt-0.5" />
+                  <div className="flex gap-1.5 flex-wrap">
+                    {activeBug.tags.map(tag => (
+                      <span key={tag} className="fq-badge bg-white/[0.04] text-neutral-400 border-white/[0.06]">
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <span className="text-[12px] font-medium text-neutral-400">Histórico</span>
+              <div className="mt-2 space-y-2">
+                {activityLogs.length === 0 ? (
+                  <p className="text-neutral-500 text-sm">Nenhuma atividade ainda.</p>
+                ) : (
+                  activityLogs.map((log) => {
                     const isEditLog = log.type === "title_edit" || log.type === "description_edit";
                     return (
                       <div
@@ -627,39 +607,40 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose, do
                         </div>
                       </div>
                     );
-                  })}
-                </div>
-              </details>
+                  })
+                )}
+              </div>
             </div>
-          </div>
-
-          <form onSubmit={handlePostComment} className="shrink-0 border-t border-white/[0.06] p-3 flex flex-col gap-2">
-            <textarea
-              required
-              rows={2}
-              className="fq-textarea text-sm leading-relaxed"
-              placeholder="Escreva um comentário..."
-              value={newComment}
-              onChange={(e) => setNewComment(e.target.value)}
-            />
-            <div className="flex justify-end">
-              <button
-                type="submit"
-                disabled={submittingComment || !newComment.trim()}
-                className="fq-btn-primary text-xs"
-              >
-                <Send className="w-3 h-3" />
-                Enviar
-              </button>
-            </div>
-          </form>
+          </aside>
         </div>
+
+        <form onSubmit={handlePostComment} className="fq-bug-modal-comment">
+          <textarea
+            required
+            rows={2}
+            className="fq-textarea text-sm leading-relaxed"
+            placeholder="Escreva um comentário..."
+            value={newComment}
+            onChange={(e) => setNewComment(e.target.value)}
+          />
+          <button
+            type="submit"
+            disabled={submittingComment || !newComment.trim()}
+            className="fq-btn-primary text-xs shrink-0"
+          >
+            <Send className="w-3 h-3" />
+            Enviar
+          </button>
+        </form>
       </motion.div>
 
       <AnimatePresence>
         {isFullscreenEvidence && fullscreenUrl && (
-          <div 
-            onClick={closeEvidenceFullscreen}
+          <div
+            onClick={(e) => {
+              e.stopPropagation();
+              closeEvidenceFullscreen();
+            }}
             className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center p-4 cursor-zoom-out"
           >
             <motion.div 

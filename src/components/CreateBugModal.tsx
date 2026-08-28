@@ -53,11 +53,6 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
   const [moreDetails, setMoreDetails] = useState(false);
-  const [duplicateAlert, setDuplicateAlert] = useState<{
-    isDuplicate: boolean;
-    explanation: string;
-    confidenceScore: number;
-  } | null>(null);
 
   const resetForm = useCallback(() => {
     setBugTitle("");
@@ -73,7 +68,6 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
     setBugEvidenceLink("");
     setBugPrototype(null);
     setBugPrototypeFile(null);
-    setDuplicateAlert(null);
     setFormError("");
     setMoreDetails(false);
   }, [presetType]);
@@ -121,7 +115,6 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
           bugDesc,
           existingBugs.map((b) => ({ id: b.id, title: b.title, description: b.description || "" }))
         );
-        setDuplicateAlert(triage);
         if (triage.isDuplicate && (triage.confidenceScore ?? 0) >= 70) {
           const proceed = await confirm({
             title: "Possível duplicata",
@@ -174,7 +167,7 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
         createdByName: profile?.name || "Anônimo",
       }, profile?.id || "unknown", profile?.name || "Anônimo");
 
-      toast("Card criado.", { kind: "success" });
+      toast("Card criado.", { kind: "success", durationMs: 2000 });
       closeAndReset();
     } catch (err: unknown) {
       setFormError(err instanceof Error ? err.message : "Falha ao criar o card.");
@@ -285,16 +278,6 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
                 onChange={(e) => setBugDesc(e.target.value)}
               />
             </div>
-            {duplicateAlert && (
-              <div className={`p-3 border rounded-md text-[12px] leading-relaxed ${
-                duplicateAlert.isDuplicate
-                  ? "bg-yellow-950/20 border-yellow-500/30 text-yellow-400"
-                  : "bg-green-950/10 border-green-500/20 text-green-400"
-              }`}>
-                {duplicateAlert.explanation} ({duplicateAlert.confidenceScore}%)
-              </div>
-            )}
-
             <button
               type="button"
               className="text-[13px] text-neutral-400 hover:text-neutral-200"
