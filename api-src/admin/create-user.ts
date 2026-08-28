@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { adminCreateUser } from "../shared/adminUsers";
-import { httpErrorStatus, readJsonBody, requireAdmin } from "../shared/auth";
+import { clientErrorMessage, httpErrorStatus, readJsonBody, requireAdmin } from "../shared/auth";
 import { resolveActorOrganizationId } from "../shared/organizations";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -26,7 +26,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
     return res.status(200).json({ success: true, userId });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Falha ao criar usuário.";
+    const message = clientErrorMessage(error, "Falha ao criar usuário.");
     console.error("admin/create-user:", error);
     return res.status(httpErrorStatus(error)).json({ error: message });
   }

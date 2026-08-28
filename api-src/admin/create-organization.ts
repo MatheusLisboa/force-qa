@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { httpErrorStatus, readJsonBody, requireSuperadmin } from "../shared/auth";
+import { clientErrorMessage, httpErrorStatus, readJsonBody, requireSuperadmin } from "../shared/auth";
 import { createOrganizationWithAdmin } from "../shared/organizations";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -20,7 +20,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
     return res.status(200).json({ success: true, ...result });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Falha ao criar organização.";
+    const message = clientErrorMessage(error, "Falha ao criar organização.");
     console.error("admin/create-organization:", error);
     return res.status(httpErrorStatus(error)).json({ error: message });
   }

@@ -1,12 +1,21 @@
 import { isOrganizationId, isValidOrganizationSlug, slugifyOrganizationName } from "../../src/lib/organizations";
 import { adminCreateUser } from "./adminUsers";
-import { getSupabaseAdmin } from "./auth";
+import { getSupabaseAdmin, wrapThrownError } from "./auth";
 
-function uniqueViolation(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const code = (error as { code?: unknown }).code;
-  const message = String((error as { message?: unknown }).message || "").toLowerCase();
-  return code === "23505" || code === "email_exists" || message.includes("duplicate key") || message.includes("already registered");
+function errorCode(error: unknown): string {
+  if (!error || typeof error !== "object") return "";
+  return String((error as { code?: unknown }).code || "");
+}
+
+function errorMessage(error: unknown): string {
+  if (!error || typeof error !== "object") return String(error ?? "");
+  return String((error as { message?: unknown }).message || "");
+}
+
+function isUniqueSlugError(error: unknown): boolean {
+  const code = errorCode(error);
+  const message = errorMessage(error).toLowerCase();
+  return code === "23505" && (message.includes("slug") || message.includes("organizations"));
 }
 
 export async function createOrganizationWithAdmin(params: {
@@ -40,10 +49,10 @@ export async function createOrganizationWithAdmin(params: {
     slug,
   });
   if (insertError) {
-    if (uniqueViolation(insertError)) {
+    if (isUniqueSlugError(insertError)) {
       throw Object.assign(new Error("Já existe uma organização com esse slug."), { status: 409 });
     }
-    throw insertError;
+    throw wrapThrownError(insertError, "Falha ao criar a organização.");
   }
 
   try {
@@ -57,11 +66,12 @@ export async function createOrganizationWithAdmin(params: {
     });
     return { organizationId, adminUserId, slug };
   } catch (error) {
+    console.error("createOrganizationWithAdmin:", {
+      code: errorCode(error),
+      message: errorMessage(error),
+    });
     await admin.from("organizations").delete().eq("id", organizationId);
-    if (uniqueViolation(error)) {
-      throw Object.assign(new Error("Este e-mail já está cadastrado."), { status: 409 });
-    }
-    throw error;
+    throw wrapThrownError(error, "Falha ao criar o admin da organização.");
   }
 }
 

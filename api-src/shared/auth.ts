@@ -69,10 +69,35 @@ export async function requireSuperadmin(authHeader: string | undefined): Promise
 }
 
 export function httpErrorStatus(error: unknown, fallback = 500): number {
-  if (error && typeof error === "object" && "status" in error && typeof (error as { status: unknown }).status === "number") {
-    return (error as { status: number }).status;
+  if (error && typeof error === "object") {
+    if ("status" in error && typeof (error as { status: unknown }).status === "number") {
+      return (error as { status: number }).status;
+    }
+    const code = String((error as { code?: unknown }).code || "");
+    if (code === "42501") return 403;
+    if (code === "23505" || code === "email_exists" || code === "user_already_exists") return 409;
+    if (code === "23503" || code === "22P02") return 400;
   }
   return fallback;
+}
+
+export function clientErrorMessage(error: unknown, fallback: string): string {
+  if (!error) return fallback;
+  if (typeof error === "string" && error.trim()) return error;
+  if (error instanceof Error && error.message.trim()) return error.message;
+  if (typeof error === "object") {
+    const obj = error as { message?: unknown; details?: unknown; hint?: unknown; error?: unknown };
+    for (const value of [obj.message, obj.details, obj.hint, obj.error]) {
+      if (typeof value === "string" && value.trim()) return value;
+    }
+  }
+  return fallback;
+}
+
+export function wrapThrownError(error: unknown, fallback: string): Error {
+  const wrapped = new Error(clientErrorMessage(error, fallback));
+  Object.assign(wrapped, { status: httpErrorStatus(error), cause: error });
+  return wrapped;
 }
 
 export function readJsonBody(body: unknown): Record<string, unknown> {

@@ -3,7 +3,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import { generateExecutiveReport } from "./api-src/ai/generate-report";
-import { httpErrorStatus, requireAdmin, requireSuperadmin, requireUser } from "./api-src/shared/auth";
+import { clientErrorMessage, httpErrorStatus, requireAdmin, requireSuperadmin, requireUser } from "./api-src/shared/auth";
 import { adminCreateUser, adminDeleteUser } from "./api-src/shared/adminUsers";
 import { createOrganizationWithAdmin, resolveActorOrganizationId } from "./api-src/shared/organizations";
 import { inviteToRoom, joinRoom, validateGuestRoom } from "./api-src/shared/rooms";
@@ -17,7 +17,7 @@ app.use(express.json({ limit: "2mb" }));
 const PORT = 3000;
 
 function sendError(res: express.Response, error: unknown, fallback: string) {
-  const message = error instanceof Error ? error.message : fallback;
+  const message = clientErrorMessage(error, fallback);
   console.error(fallback, error);
   res.status(httpErrorStatus(error)).json({ error: message });
 }
