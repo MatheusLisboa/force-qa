@@ -9,6 +9,7 @@ interface CreateProjectModalProps {
   open: boolean;
   createdBy: string;
   createdByName: string;
+  organizationId?: string;
   onClose: () => void;
   onCreated: (warRoomId: string) => void;
 }
@@ -17,6 +18,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   open,
   createdBy,
   createdByName,
+  organizationId,
   onClose,
   onCreated,
 }) => {
@@ -47,6 +49,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
         description: description.trim(),
         createdBy,
         createdByName,
+        organizationId,
       });
       setName("");
       setSquad("");

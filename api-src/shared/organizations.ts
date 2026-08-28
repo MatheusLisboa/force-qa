@@ -40,19 +40,51 @@ export async function createOrganizationWithAdmin(params: {
     throw Object.assign(new Error("A senha do admin deve ter no mínimo 6 caracteres."), { status: 400 });
   }
 
-  const organizationId = crypto.randomUUID();
   const admin = getSupabaseAdmin();
+  let organizationId: string = crypto.randomUUID();
+  let createdNewOrg = false;
 
-  const { error: insertError } = await admin.from("organizations").insert({
-    id: organizationId,
-    name,
-    slug,
-  });
-  if (insertError) {
-    if (isUniqueSlugError(insertError)) {
-      throw Object.assign(new Error("Já existe uma organização com esse slug."), { status: 409 });
+  const { data: existingOrg, error: existingOrgError } = await admin
+    .from("organizations")
+    .select("id")
+    .eq("slug", slug)
+    .maybeSingle();
+  if (existingOrgError) throw wrapThrownError(existingOrgError, "Falha ao verificar o slug da organização.");
+
+  if (existingOrg) {
+    const { data: members, error: membersError } = await admin
+      .from("users")
+      .select("id, email")
+      .eq("organization_id", existingOrg.id);
+    if (membersError) throw wrapThrownError(membersError, "Falha ao verificar a organização.");
+    const memberList = members || [];
+    const onlyThisAdmin =
+      memberList.length === 1 && (memberList[0].email || "").toLowerCase() === adminEmail;
+    if (memberList.length > 0 && !onlyThisAdmin) {
+      throw Object.assign(
+        new Error(`Já existe uma organização com o slug "${slug}". Escolha outro slug.`),
+        { status: 409 }
+      );
     }
-    throw wrapThrownError(insertError, "Falha ao criar a organização.");
+    organizationId = existingOrg.id as string;
+    const { error: renameError } = await admin.from("organizations").update({ name }).eq("id", organizationId);
+    if (renameError) throw wrapThrownError(renameError, "Falha ao reaproveitar a organização.");
+  } else {
+    const { error: insertError } = await admin.from("organizations").insert({
+      id: organizationId,
+      name,
+      slug,
+    });
+    if (insertError) {
+      if (isUniqueSlugError(insertError)) {
+        throw Object.assign(
+          new Error(`Já existe uma organização com o slug "${slug}". Escolha outro slug.`),
+          { status: 409 }
+        );
+      }
+      throw wrapThrownError(insertError, "Falha ao criar a organização.");
+    }
+    createdNewOrg = true;
   }
 
   try {
@@ -63,6 +95,7 @@ export async function createOrganizationWithAdmin(params: {
       role: "admin",
       squad: "Admin",
       organizationId,
+      adoptOrphan: true,
     });
     return { organizationId, adminUserId, slug };
   } catch (error) {
@@ -70,7 +103,9 @@ export async function createOrganizationWithAdmin(params: {
       code: errorCode(error),
       message: errorMessage(error),
     });
-    await admin.from("organizations").delete().eq("id", organizationId);
+    if (createdNewOrg) {
+      await admin.from("organizations").delete().eq("id", organizationId);
+    }
     throw wrapThrownError(error, "Falha ao criar o admin da organização.");
   }
 }

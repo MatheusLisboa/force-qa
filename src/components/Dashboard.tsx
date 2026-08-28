@@ -547,6 +547,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
             open={isWarRoomModalOpen}
             createdBy={profile?.id || "unknown"}
             createdByName={profile?.name || "Usuário"}
+            organizationId={profile?.organizationId}
             onClose={() => setIsWarRoomModalOpen(false)}
             onCreated={(roomId) => {
               setIsWarRoomModalOpen(false);
@@ -562,6 +563,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
             open={isProjectModalOpen}
             createdBy={profile?.id || "unknown"}
             createdByName={profile?.name || "Usuário"}
+            organizationId={profile?.organizationId}
             onClose={() => setIsProjectModalOpen(false)}
             onCreated={(warRoomId) => {
               setIsProjectModalOpen(false);

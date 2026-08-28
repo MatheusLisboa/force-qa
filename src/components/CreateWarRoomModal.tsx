@@ -11,6 +11,7 @@ interface CreateWarRoomModalProps {
   open: boolean;
   createdBy: string;
   createdByName: string;
+  organizationId?: string;
   onClose: () => void;
   onCreated: (roomId: string) => void;
 }
@@ -19,6 +20,7 @@ export const CreateWarRoomModal: React.FC<CreateWarRoomModalProps> = ({
   open,
   createdBy,
   createdByName,
+  organizationId,
   onClose,
   onCreated,
 }) => {
@@ -59,6 +61,7 @@ export const CreateWarRoomModal: React.FC<CreateWarRoomModalProps> = ({
         roomType: "war_room",
         createdBy,
         createdByName,
+        organizationId,
       });
       setName("");
       setProject("");

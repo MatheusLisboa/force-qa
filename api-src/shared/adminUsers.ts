@@ -24,6 +24,32 @@ function isEmailTakenError(error: unknown): boolean {
 
 const ALLOWED_ROLES = ["admin", "qa", "developer", "dba", "devops", "scrum_master", "viewer"] as const;
 
+async function findAuthUserIdByEmail(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  email: string
+): Promise<string | null> {
+  for (let page = 1; page <= 10; page += 1) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 200 });
+    if (error) throw error;
+    const match = (data.users || []).find((user) => (user.email || "").toLowerCase() === email);
+    if (match) return match.id;
+    if (!data.users || data.users.length < 200) break;
+  }
+  return null;
+}
+
+async function roomCountForUser(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  userId: string
+): Promise<number> {
+  const { count, error } = await admin
+    .from("room_members")
+    .select("user_id", { count: "exact", head: true })
+    .eq("user_id", userId);
+  if (error) throw error;
+  return count || 0;
+}
+
 export async function adminCreateUser(params: {
   name: string;
   email: string;
@@ -31,6 +57,7 @@ export async function adminCreateUser(params: {
   role: string;
   squad: string;
   organizationId?: string | null;
+  adoptOrphan?: boolean;
 }): Promise<string> {
   const name = params.name.trim();
   const email = params.email.trim().toLowerCase();
@@ -49,17 +76,33 @@ export async function adminCreateUser(params: {
 
   const { data: existingProfile } = await admin
     .from("users")
-    .select("id")
+    .select("id, organization_id, role, squad, is_superadmin")
     .eq("email", email)
     .maybeSingle();
   if (existingProfile) {
-    throw Object.assign(new Error("Este e-mail já está cadastrado."), { status: 409 });
+    if (
+      params.adoptOrphan &&
+      (await adoptOrphanProfile(admin, existingProfile, {
+        name,
+        email,
+        password: params.password,
+        role,
+        squad,
+        organizationId,
+      }))
+    ) {
+      return existingProfile.id as string;
+    }
+    throw Object.assign(
+      new Error("Este e-mail já está cadastrado. Apague o usuário em Authentication → Users (e em Usuários, se aparecer) e tente de novo."),
+      { status: 409 }
+    );
   }
 
   // The Auth trigger inserts public.users in the same transaction. A brand-new
   // organization_id in metadata can fail that insert; GoTrue then reports it as
   // "email already registered". Stamp the default org at signup, then move.
-  const { data, error } = await admin.auth.admin.createUser({
+  let { data, error } = await admin.auth.admin.createUser({
     email,
     password: params.password,
     email_confirm: true,
@@ -71,10 +114,34 @@ export async function adminCreateUser(params: {
       organization_id: DEFAULT_ORGANIZATION_ID,
     },
   });
+  if (error && isEmailTakenError(error) && params.adoptOrphan) {
+    const orphanId = await findAuthUserIdByEmail(admin, email);
+    if (orphanId) {
+      const { data: profile } = await admin.from("users").select("id").eq("id", orphanId).maybeSingle();
+      if (!profile) {
+        await admin.auth.admin.deleteUser(orphanId);
+        ({ data, error } = await admin.auth.admin.createUser({
+          email,
+          password: params.password,
+          email_confirm: true,
+          app_metadata: { role },
+          user_metadata: {
+            name,
+            role,
+            squad,
+            organization_id: DEFAULT_ORGANIZATION_ID,
+          },
+        }));
+      }
+    }
+  }
   if (error) {
     console.error("adminCreateUser auth:", { code: errorCode(error), message: errorMessage(error) });
     if (isEmailTakenError(error)) {
-      throw Object.assign(new Error("Este e-mail já está cadastrado."), { status: 409 });
+      throw Object.assign(
+        new Error("Este e-mail já existe no Auth. Apague-o em Authentication → Users e tente de novo."),
+        { status: 409 }
+      );
     }
     throw Object.assign(new Error(errorMessage(error) || "Falha ao criar usuário no Auth."), {
       status: 500,
@@ -119,6 +186,78 @@ export async function adminCreateUser(params: {
     console.error("adminCreateUser role:", { code: errorCode(roleError), message: errorMessage(roleError) });
   }
   return data.user.id;
+}
+
+async function adoptOrphanProfile(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  profile: {
+    id: string;
+    organization_id?: string | null;
+    role?: string | null;
+    squad?: string | null;
+    is_superadmin?: boolean | null;
+  },
+  params: {
+    name: string;
+    email: string;
+    password: string;
+    role: string;
+    squad: string;
+    organizationId: string;
+  }
+): Promise<boolean> {
+  if (profile.is_superadmin) return false;
+  const currentOrg = resolveOrganizationId(profile.organization_id);
+  const targetOrg = params.organizationId;
+  if (currentOrg === targetOrg) {
+    await stampAdoptedUser(admin, profile.id, params);
+    return true;
+  }
+  if (currentOrg !== DEFAULT_ORGANIZATION_ID) return false;
+  if ((await roomCountForUser(admin, profile.id)) > 0) return false;
+  await stampAdoptedUser(admin, profile.id, params);
+  return true;
+}
+
+async function stampAdoptedUser(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  userId: string,
+  params: {
+    name: string;
+    password: string;
+    role: string;
+    squad: string;
+    organizationId: string;
+  }
+): Promise<void> {
+  const { error: authError } = await admin.auth.admin.updateUserById(userId, {
+    password: params.password,
+    email_confirm: true,
+    app_metadata: { role: params.role },
+    user_metadata: {
+      name: params.name,
+      role: params.role,
+      squad: params.squad,
+      organization_id: params.organizationId,
+    },
+  });
+  if (authError) throw wrapThrownError(authError, "Falha ao atualizar o admin no Auth.");
+
+  const { error: profileError } = await admin
+    .from("users")
+    .update({
+      name: params.name,
+      squad: params.squad,
+      is_guest: false,
+      organization_id: params.organizationId,
+    })
+    .eq("id", userId);
+  if (profileError) throw wrapThrownError(profileError, "Falha ao mover o admin para a organização.");
+
+  const { error: roleError } = await admin.from("users").update({ role: params.role }).eq("id", userId);
+  if (roleError) {
+    console.error("adoptOrphan role:", { code: errorCode(roleError), message: errorMessage(roleError) });
+  }
 }
 
 export async function adminDeleteUser(

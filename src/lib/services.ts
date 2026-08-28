@@ -54,9 +54,7 @@ function warRoomToRow(data: Omit<WarRoom, "id" | "createdAt">, customId: string)
     created_by_name: data.createdByName,
     guest_access_disabled: data.guestAccessDisabled ?? false,
     kanban_columns: data.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS,
-    organization_id: data.organizationId
-      ? resolveOrganizationId(data.organizationId)
-      : undefined,
+    organization_id: resolveOrganizationId(data.organizationId),
   });
 }
 
@@ -98,9 +96,11 @@ export async function createProject(data: {
   description: string;
   createdBy: string;
   createdByName?: string;
+  organizationId?: string;
 }): Promise<{ projectId: string; warRoomId: string }> {
   const name = data.name.trim();
   const slug = slugifyBoardViewName(name);
+  const organizationId = resolveOrganizationId(data.organizationId);
   const warRoomId = await createBoard({
     name,
     project: name,
@@ -109,6 +109,7 @@ export async function createProject(data: {
     severity: "medium",
     createdBy: data.createdBy,
     createdByName: data.createdByName,
+    organizationId,
   });
 
   const { data: row, error } = await supabase
@@ -120,6 +121,7 @@ export async function createProject(data: {
       description: data.description.trim() || "",
       war_room_id: warRoomId,
       created_by: data.createdBy,
+      organization_id: organizationId,
     })
     .select("id")
     .single();
