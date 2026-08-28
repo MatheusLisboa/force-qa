@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Building2, Check, Edit2, Trash2, UserPlus, X } from "lucide-react";
+import { ArrowLeft, ArrowLeftRight, Building2, Check, Edit2, Trash2, UserPlus, X } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { supabase, subscribeUsers, toWarRoom } from "../lib/supabase";
 import {
@@ -144,6 +144,11 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
   const [userQuery, setUserQuery] = useState("");
   const [organizationFilter, setOrganizationFilter] = useState("all");
   const [includeGuests, setIncludeGuests] = useState(!isSuperadmin);
+  const [migratingUserId, setMigratingUserId] = useState<string | null>(null);
+  const [migrateOrgId, setMigrateOrgId] = useState("");
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [bulkOrgId, setBulkOrgId] = useState("");
+  const [migratingBusy, setMigratingBusy] = useState(false);
 
   useEffect(() => {
     if (profile?.organizationId && !newUserOrganizationId) {
@@ -265,7 +270,11 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
   };
 
   const handleSaveEdit = async (usr: UserProfile) => {
-    if (!editingName.trim() || !editingSquad.trim()) {
+    if (!editingName.trim()) {
+      setUserCreationError("O nome é obrigatório.");
+      return;
+    }
+    if (!isSuperadmin && !editingSquad.trim()) {
       setUserCreationError("Todos os campos de edição são obrigatórios.");
       return;
     }
@@ -317,6 +326,61 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
     }
   };
 
+  const handleMigrateUsers = async (userIds: string[], organizationId: string) => {
+    const destinationId = organizationId.trim();
+    const destination = orgNameById[destinationId];
+    if (!destinationId || !destination) {
+      setUserCreationError("Escolha a organização de destino.");
+      return;
+    }
+    const targets = usersList.filter(
+      (usr) => userIds.includes(usr.id) && usr.organizationId !== destinationId
+    );
+    if (targets.length === 0) {
+      setUserCreationError("Essas pessoas já estão nessa organização.");
+      return;
+    }
+    const names = targets
+      .slice(0, 3)
+      .map((usr) => usr.name || usr.email)
+      .join(", ");
+    const extra = targets.length > 3 ? ` e mais ${targets.length - 3}` : "";
+    const ok = await confirm({
+      title: targets.length === 1 ? "Migrar usuário" : `Migrar ${targets.length} usuários`,
+      message: `${names}${extra} ${targets.length === 1 ? "vai" : "vão"} para ${destination} e perde${targets.length === 1 ? "" : "m"} o acesso às salas da organização atual.`,
+      confirmLabel: "Migrar",
+    });
+    if (!ok) return;
+    setMigratingBusy(true);
+    setUserCreationError("");
+    setUserCreationSuccess("");
+    try {
+      for (const usr of targets) {
+        await moveUserToOrganization(usr.id, destinationId);
+      }
+      setRoomIdsByUser((prev) => {
+        const next = { ...prev };
+        for (const usr of targets) next[usr.id] = [];
+        return next;
+      });
+      setMigratingUserId(null);
+      setSelectedUserIds((prev) => prev.filter((id) => !targets.some((usr) => usr.id === id)));
+      setUserCreationSuccess(
+        targets.length === 1
+          ? `${targets[0].name || targets[0].email} migrado para ${destination}.`
+          : `${targets.length} usuários migrados para ${destination}.`
+      );
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Erro ao migrar usuário.";
+      setUserCreationError(message);
+    } finally {
+      setMigratingBusy(false);
+    }
+  };
+
+  const otherOrganizations = (currentOrgId: string) =>
+    organizations.filter((org) => org.id !== currentOrgId);
+
   return (
     <div className="fq-page fq-page--operational">
       <div className="fq-page-header">
@@ -336,7 +400,7 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
           <h1 className="fq-page-title mt-1">Usuários</h1>
           <p className="text-neutral-500 text-sm mt-1">
             {isSuperadmin
-              ? "Todas as organizações, os mais recentes primeiro. Mova a pessoa de tenant por aqui."
+              ? "Todas as organizações, os mais recentes primeiro. Use Migrar para trocar a pessoa de tenant."
               : "Cadastre pessoas. O acesso ao board também pode ser dado em Administrar, na sala."}
           </p>
         </div>
@@ -476,6 +540,42 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
             </div>
           )}
 
+          {isSuperadmin && selectedUserIds.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-white/[0.08] bg-white/[0.03] p-2.5">
+              <span className="text-[13px] text-neutral-300">
+                {selectedUserIds.length} selecionado{selectedUserIds.length === 1 ? "" : "s"}
+              </span>
+              <select
+                className="fq-select text-sm max-w-xs"
+                value={bulkOrgId}
+                onChange={(e) => setBulkOrgId(e.target.value)}
+              >
+                <option value="">Organização de destino</option>
+                {organizations.map((org) => (
+                  <option key={org.id} value={org.id}>
+                    {org.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="fq-btn-primary text-xs"
+                disabled={migratingBusy || !bulkOrgId}
+                onClick={() => void handleMigrateUsers(selectedUserIds, bulkOrgId)}
+              >
+                <ArrowLeftRight className="w-3.5 h-3.5" />
+                {migratingBusy ? "Migrando..." : "Migrar"}
+              </button>
+              <button
+                type="button"
+                className="fq-btn-ghost text-xs"
+                onClick={() => setSelectedUserIds([])}
+              >
+                Limpar
+              </button>
+            </div>
+          )}
+
           <input
             type="search"
             className="fq-input text-sm"
@@ -494,6 +594,50 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
             ) : (
               visibleUsers.map((usr) => {
                 const isEditing = editingUserId === usr.id;
+                const isMigrating = migratingUserId === usr.id;
+                if (isMigrating) {
+                  const destinations = otherOrganizations(usr.organizationId);
+                  return (
+                    <div key={usr.id} className="fq-table-row--editing">
+                      <p className="text-sm text-neutral-200">
+                        Migrar <span className="font-semibold">{usr.name || usr.email}</span> de{" "}
+                        {orgNameById[usr.organizationId] || "organização atual"}
+                      </p>
+                      {destinations.length === 0 ? (
+                        <p className="text-[13px] text-neutral-500">Não há outra organização para receber esta pessoa.</p>
+                      ) : (
+                        <select
+                          className="fq-select text-sm"
+                          value={migrateOrgId}
+                          onChange={(e) => setMigrateOrgId(e.target.value)}
+                        >
+                          {destinations.map((org) => (
+                            <option key={org.id} value={org.id}>
+                              {org.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      <div className="flex justify-end gap-1.5">
+                        <button
+                          type="button"
+                          className="fq-btn-ghost text-sm py-1.5 px-2"
+                          onClick={() => setMigratingUserId(null)}
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          className="fq-btn-primary text-sm py-1.5 px-2"
+                          disabled={migratingBusy || destinations.length === 0}
+                          onClick={() => void handleMigrateUsers([usr.id], migrateOrgId)}
+                        >
+                          {migratingBusy ? "Migrando..." : "Migrar"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
                 if (isEditing) {
                   return (
                     <div key={usr.id} className="fq-table-row--editing">
@@ -608,8 +752,36 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
                       <div className="mt-0.5 text-neutral-500">{formatRelativeTime(usr.createdAt)}</div>
                     </div>
                     <div className="flex items-center justify-end gap-1">
+                      {isSuperadmin && (
+                        <input
+                          type="checkbox"
+                          className="mr-1"
+                          checked={selectedUserIds.includes(usr.id)}
+                          onChange={(e) => {
+                            setSelectedUserIds((prev) =>
+                              e.target.checked ? [...prev, usr.id] : prev.filter((id) => id !== usr.id)
+                            );
+                          }}
+                          aria-label={`Selecionar ${usr.name || usr.email}`}
+                        />
+                      )}
+                      {isSuperadmin && (
+                        <button
+                          onClick={() => {
+                            setEditingUserId(null);
+                            const destinations = otherOrganizations(usr.organizationId);
+                            setMigratingUserId(usr.id);
+                            setMigrateOrgId(destinations[0]?.id || "");
+                          }}
+                          className="fq-btn-icon !p-1"
+                          title="Migrar de organização"
+                        >
+                          <ArrowLeftRight className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                       <button
                         onClick={async () => {
+                          setMigratingUserId(null);
                           setEditingUserId(usr.id);
                           setEditingName(usr.name || "");
                           setEditingRole(usr.role || "developer");
