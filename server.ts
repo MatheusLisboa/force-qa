@@ -23,9 +23,16 @@ function sendError(res: express.Response, error: unknown, fallback: string) {
 
 app.post("/api/admin/create-user", async (req, res) => {
   try {
-    await requireAdmin(req.headers.authorization);
+    const actor = await requireAdmin(req.headers.authorization);
     const { name, email, password, role, squad } = req.body;
-    const userId = await adminCreateUser({ name, email, password, role, squad });
+    const userId = await adminCreateUser({
+      name,
+      email,
+      password,
+      role,
+      squad,
+      organizationId: actor.organizationId,
+    });
     res.json({ success: true, userId });
   } catch (error) {
     sendError(res, error, "Falha ao criar usuário.");
@@ -34,8 +41,12 @@ app.post("/api/admin/create-user", async (req, res) => {
 
 app.post("/api/admin/delete-user", async (req, res) => {
   try {
-    await requireAdmin(req.headers.authorization);
-    await adminDeleteUser(String(req.body?.userId || ""));
+    const actor = await requireAdmin(req.headers.authorization);
+    await adminDeleteUser(String(req.body?.userId || ""), {
+      id: actor.user.id,
+      organizationId: actor.organizationId,
+      isSuperadmin: actor.isSuperadmin,
+    });
     res.json({ success: true });
   } catch (error) {
     sendError(res, error, "Falha ao remover usuário.");
@@ -57,7 +68,8 @@ app.post("/api/rooms/join", async (req, res) => {
     const roomId = await joinRoom(
       authed.user.id,
       String(req.body?.input || req.body?.roomId || ""),
-      authed.isGuest
+      authed.isGuest,
+      { organizationId: authed.organizationId, isSuperadmin: authed.isSuperadmin }
     );
     res.json({ roomId });
   } catch (error) {
@@ -72,6 +84,8 @@ app.post("/api/rooms/invite", async (req, res) => {
     const result = await inviteToRoom({
       actorId: authed.user.id,
       actorRole: authed.role,
+      actorOrganizationId: authed.organizationId,
+      isSuperadmin: authed.isSuperadmin,
       roomId: String(req.body?.roomId || ""),
       email: String(req.body?.email || ""),
       redirectTo: `${origin.replace(/\/$/, "")}/`,

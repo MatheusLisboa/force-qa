@@ -40,16 +40,21 @@ export async function validateGuestRoom(input: string): Promise<{ id: string; na
   return { id: row.id as string, name: row.name as string };
 }
 
-export async function joinRoom(userId: string, input: string, isGuest: boolean): Promise<string> {
+export async function joinRoom(
+  userId: string,
+  input: string,
+  isGuest: boolean,
+  access?: { organizationId: string; isSuperadmin: boolean }
+): Promise<string> {
   const trimmed = extractRoomToken(input);
   if (!trimmed) {
     throw Object.assign(new Error("Cole o link da sala, o ID ou o nome."), { status: 400 });
   }
 
   const admin = getSupabaseAdmin();
-  const { data: byId } = await admin.from("war_rooms").select("id, guest_access_disabled").eq("id", trimmed).maybeSingle();
+  const { data: byId } = await admin.from("war_rooms").select("id, guest_access_disabled, organization_id").eq("id", trimmed).maybeSingle();
   const row = byId
-    ?? (await admin.from("war_rooms").select("id, guest_access_disabled").ilike("name", trimmed).limit(1).maybeSingle()).data;
+    ?? (await admin.from("war_rooms").select("id, guest_access_disabled, organization_id").ilike("name", trimmed).limit(1).maybeSingle()).data;
 
   if (!row) {
     throw Object.assign(new Error("Sala não encontrada. Confira o ID ou o nome."), { status: 404 });
@@ -59,8 +64,17 @@ export async function joinRoom(userId: string, input: string, isGuest: boolean):
   }
 
   const roomId = row.id as string;
+  const roomOrgId = row.organization_id as string | null;
 
   if (!isGuest) {
+    if (
+      !access?.isSuperadmin
+      && roomOrgId
+      && access?.organizationId
+      && roomOrgId !== access.organizationId
+    ) {
+      throw Object.assign(new Error("Esta sala pertence a outra organização."), { status: 403 });
+    }
     const { data: membership } = await admin
       .from("room_members")
       .select("user_id")
@@ -72,6 +86,10 @@ export async function joinRoom(userId: string, input: string, isGuest: boolean):
       new Error("Você não tem acesso a esta sala. Peça a um admin para adicionar você em Usuários."),
       { status: 403 }
     );
+  }
+
+  if (roomOrgId) {
+    await admin.from("users").update({ organization_id: roomOrgId }).eq("id", userId);
   }
 
   const { error } = await admin.from("room_members").insert({
@@ -88,6 +106,8 @@ export async function joinRoom(userId: string, input: string, isGuest: boolean):
 export async function inviteToRoom(params: {
   actorId: string;
   actorRole: string;
+  actorOrganizationId: string;
+  isSuperadmin: boolean;
   roomId: string;
   email: string;
   redirectTo: string;
@@ -96,17 +116,25 @@ export async function inviteToRoom(params: {
   if (!email || !email.includes("@")) {
     throw Object.assign(new Error("Informe um e-mail válido."), { status: 400 });
   }
-  if (!["admin", "qa", "scrum_master"].includes(params.actorRole)) {
+  if (!["admin", "qa", "scrum_master"].includes(params.actorRole) && !params.isSuperadmin) {
     throw Object.assign(new Error("Apenas admin, QA ou Scrum Master podem convidar."), { status: 403 });
   }
 
   const admin = getSupabaseAdmin();
-  const { data: room } = await admin.from("war_rooms").select("id, name").eq("id", params.roomId).maybeSingle();
+  const { data: room } = await admin.from("war_rooms").select("id, name, organization_id").eq("id", params.roomId).maybeSingle();
   if (!room) {
     throw Object.assign(new Error("Sala não encontrada."), { status: 404 });
   }
+  const roomOrgId = room.organization_id as string | null;
+  if (
+    !params.isSuperadmin
+    && roomOrgId
+    && roomOrgId !== params.actorOrganizationId
+  ) {
+    throw Object.assign(new Error("Esta sala pertence a outra organização."), { status: 403 });
+  }
 
-  if (params.actorRole !== "admin") {
+  if (params.actorRole !== "admin" && !params.isSuperadmin) {
     const { data: membership } = await admin
       .from("room_members")
       .select("user_id")
@@ -120,17 +148,21 @@ export async function inviteToRoom(params: {
 
   const { data: existingProfile } = await admin
     .from("users")
-    .select("id")
+    .select("id, organization_id")
     .eq("email", email)
     .maybeSingle();
 
   let userId = existingProfile?.id as string | undefined;
   let invited = false;
 
+  if (existingProfile && roomOrgId && existingProfile.organization_id && existingProfile.organization_id !== roomOrgId && !params.isSuperadmin) {
+    throw Object.assign(new Error("Este e-mail pertence a outra organização."), { status: 403 });
+  }
+
   if (!userId) {
     const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
       redirectTo: params.redirectTo,
-      data: { squad: "", name: email.split("@")[0] },
+      data: { squad: "", name: email.split("@")[0], organization_id: roomOrgId || params.actorOrganizationId },
     });
     if (error) throw error;
     if (!data.user) throw new Error("Falha ao enviar o convite.");

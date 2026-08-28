@@ -12,6 +12,7 @@ import {
 import { applyRealtimeChange, isIncompleteRow, RealtimeEvent } from "./realtime";
 import { PulseBug } from "./dashboardPulse";
 import { normalizeArea } from "./squads";
+import { resolveOrganizationId } from "./organizations";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -50,6 +51,8 @@ export function toUserProfile(row: Record<string, unknown>): UserProfile {
     email: row.email as string,
     role: row.role as UserProfile["role"],
     squad: normalizeArea((row.squad as string) || ""),
+    organizationId: resolveOrganizationId(row.organization_id as string | undefined),
+    isSuperadmin: Boolean(row.is_superadmin),
     avatarUrl: (row.avatar_url as string) || undefined,
     isGuest: Boolean(row.is_guest),
     createdAt: row.created_at as string,
@@ -73,6 +76,7 @@ export function toWarRoom(row: Record<string, unknown>): WarRoom {
     createdBy: row.created_by as string,
     createdByName: (row.created_by_name as string) || undefined,
     guestAccessDisabled: row.guest_access_disabled as boolean,
+    organizationId: resolveOrganizationId(row.organization_id as string | undefined),
   };
 }
 
@@ -141,6 +145,7 @@ export function toBoardView(row: Record<string, unknown>): BoardView {
     orderIndex: (row.order_index as number) ?? 0,
     filters: (row.filters as BoardView["filters"]) || {},
     projectId: (row.project_id as string) || undefined,
+    organizationId: resolveOrganizationId(row.organization_id as string | undefined),
     createdAt: row.created_at as string,
   };
 }
@@ -153,6 +158,7 @@ export function toProject(row: Record<string, unknown>): Project {
     squad: normalizeArea((row.squad as string) || ""),
     description: (row.description as string) || "",
     warRoomId: row.war_room_id as string,
+    organizationId: resolveOrganizationId(row.organization_id as string | undefined),
     createdAt: row.created_at as string,
     createdBy: row.created_by as string,
   };

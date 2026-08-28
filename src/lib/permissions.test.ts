@@ -26,6 +26,7 @@ describe("permissions", () => {
   it("keeps admin-only user management", () => {
     expect(canManageUsers("admin")).toBe(true);
     expect(canManageUsers("qa")).toBe(false);
+    expect(canManageUsers("qa", true)).toBe(true);
   });
 
   it("aligns invite and archive with space managers", () => {

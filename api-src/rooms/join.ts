@@ -14,7 +14,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const roomId = await joinRoom(
       authed.user.id,
       String(body.input || body.roomId || ""),
-      authed.isGuest
+      authed.isGuest,
+      { organizationId: authed.organizationId, isSuperadmin: authed.isSuperadmin }
     );
     return res.status(200).json({ roomId });
   } catch (error: unknown) {

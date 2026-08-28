@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient, User } from "@supabase/supabase-js";
+import { resolveOrganizationId } from "../../src/lib/organizations";
 
 export function envVar(key: string): string | undefined {
   const raw = process.env[key];
@@ -21,6 +22,8 @@ export interface AuthedUser {
   user: User;
   role: string;
   isGuest: boolean;
+  organizationId: string;
+  isSuperadmin: boolean;
 }
 
 export async function requireUser(authHeader: string | undefined): Promise<AuthedUser> {
@@ -36,7 +39,7 @@ export async function requireUser(authHeader: string | undefined): Promise<Authe
 
   const { data: profile } = await admin
     .from("users")
-    .select("role, is_guest")
+    .select("role, is_guest, organization_id, is_superadmin")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -44,12 +47,14 @@ export async function requireUser(authHeader: string | undefined): Promise<Authe
     user,
     role: (profile?.role as string) || "viewer",
     isGuest: Boolean(profile?.is_guest),
+    organizationId: resolveOrganizationId(profile?.organization_id as string | undefined),
+    isSuperadmin: Boolean(profile?.is_superadmin),
   };
 }
 
 export async function requireAdmin(authHeader: string | undefined): Promise<AuthedUser> {
   const authed = await requireUser(authHeader);
-  if (authed.role !== "admin") {
+  if (authed.role !== "admin" && !authed.isSuperadmin) {
     throw Object.assign(new Error("Apenas administradores podem executar esta operação."), { status: 403 });
   }
   return authed;

@@ -10,6 +10,7 @@ import { SIGNUP_ROLES } from "../lib/permissions";
 import { joinWarRoom } from "../lib/services";
 import { authFetch, readApiError } from "../lib/apiClient";
 import { normalizeArea } from "../lib/squads";
+import { resolveOrganizationId, DEFAULT_ORGANIZATION_ID } from "../lib/organizations";
 
 interface AuthContextType {
   user: User | null;
@@ -51,6 +52,7 @@ async function saveProfile(profile: UserProfile): Promise<void> {
     email: profile.email,
     role: profile.role,
     squad: normalizeArea(profile.squad),
+    organization_id: resolveOrganizationId(profile.organizationId),
     avatar_url: profile.avatarUrl || null,
     is_guest: profile.isGuest ?? false,
     created_at: profile.createdAt || new Date().toISOString(),
@@ -173,6 +175,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       email: trimmedEmail,
       role: safeRole,
       squad: normalizeArea(squad),
+      organizationId: DEFAULT_ORGANIZATION_ID,
       isGuest: false,
       createdAt: new Date().toISOString(),
     };
@@ -187,6 +190,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           name: newUserProfile.name,
           role: safeRole,
           squad: newUserProfile.squad,
+          organization_id: newUserProfile.organizationId,
           is_guest: false,
         },
       },
@@ -269,6 +273,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             name: name.trim(),
             role: "viewer",
             squad: normalizeArea(squad),
+            organization_id: DEFAULT_ORGANIZATION_ID,
             is_guest: true,
           },
         },
@@ -284,6 +289,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: tempEmail,
         role: "viewer",
         squad: normalizeArea(squad),
+        organizationId: DEFAULT_ORGANIZATION_ID,
         isGuest: true,
         createdAt: new Date().toISOString(),
       };
@@ -358,6 +364,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       email: user.email || "",
       role: safeRole,
       squad: normalizeArea(squad),
+      organizationId: DEFAULT_ORGANIZATION_ID,
       isGuest: false,
       createdAt: new Date().toISOString(),
     };
@@ -377,6 +384,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       email: profile.email,
       role: profile.role,
       isGuest: profile.isGuest,
+      organizationId: profile.organizationId,
+      isSuperadmin: profile.isSuperadmin,
     };
     await saveProfile(updated);
     applyProfile(updated);

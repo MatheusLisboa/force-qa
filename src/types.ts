@@ -10,6 +10,8 @@ export interface UserProfile {
   email: string;
   role: UserRole;
   squad: string;
+  organizationId: string;
+  isSuperadmin?: boolean;
   avatarUrl?: string;
   isGuest?: boolean;
   createdAt: string;
@@ -57,6 +59,7 @@ export interface WarRoom {
   createdBy: string;
   createdByName?: string;
   guestAccessDisabled?: boolean;
+  organizationId?: string;
 }
 
 export interface Bug {
@@ -155,6 +158,7 @@ export interface BoardView {
   orderIndex: number;
   filters: BoardViewFilters;
   projectId?: string;
+  organizationId?: string;
   createdAt: string;
 }
 
@@ -165,6 +169,7 @@ export interface Project {
   squad: string;
   description: string;
   warRoomId: string;
+  organizationId?: string;
   createdAt: string;
   createdBy: string;
 }

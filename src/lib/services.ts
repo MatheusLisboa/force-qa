@@ -23,6 +23,7 @@ import { slugifyBoardViewName } from "./boardViews";
 import { authFetch, readApiError } from "./apiClient";
 import { diffRoomAccess } from "./roomAccess";
 import { normalizeArea } from "./squads";
+import { resolveOrganizationId } from "./organizations";
 
 function cleanUndefined<T extends object>(obj: T): T {
   const result = { ...obj } as Record<string, unknown>;
@@ -53,6 +54,9 @@ function warRoomToRow(data: Omit<WarRoom, "id" | "createdAt">, customId: string)
     created_by_name: data.createdByName,
     guest_access_disabled: data.guestAccessDisabled ?? false,
     kanban_columns: data.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS,
+    organization_id: data.organizationId
+      ? resolveOrganizationId(data.organizationId)
+      : undefined,
   });
 }
 

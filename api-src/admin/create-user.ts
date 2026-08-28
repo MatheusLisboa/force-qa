@@ -9,7 +9,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    await requireAdmin(req.headers.authorization);
+    const actor = await requireAdmin(req.headers.authorization);
     const body = readJsonBody(req.body);
     const userId = await adminCreateUser({
       name: String(body.name || ""),
@@ -17,6 +17,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       password: String(body.password || ""),
       role: String(body.role || ""),
       squad: String(body.squad || ""),
+      organizationId: actor.organizationId,
     });
     return res.status(200).json({ success: true, userId });
   } catch (error: unknown) {

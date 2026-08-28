@@ -16,8 +16,11 @@ export function canArchiveBugs(role?: UserRole | string | null): boolean {
   return role === "admin" || role === "qa" || role === "scrum_master";
 }
 
-export function canManageUsers(role?: UserRole | string | null): boolean {
-  return role === "admin";
+export function canManageUsers(
+  role?: UserRole | string | null,
+  isSuperadmin?: boolean
+): boolean {
+  return Boolean(isSuperadmin) || role === "admin";
 }
 
 export function canAssignBugs(role?: UserRole | string | null): boolean {

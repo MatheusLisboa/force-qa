@@ -9,8 +9,12 @@
 -- 7. migration_bug_types.sql
 -- 8. migration_access_and_security.sql  (membership, evidências Storage, role lock)
 -- 9. migration_room_access_ui.sql       (acesso só via UI; guest ainda entra pelo ID)
+-- 10. migration_organizations.sql       (org padrão; ainda sem isolamento entre tenants)
+-- 11. migration_organization_scope.sql  (RLS e admin presos à org; superadmin atravessa)
 --
 -- Em ambiente já existente, rode apenas as migrations ainda não aplicadas.
 -- A migration_access_and_security.sql é obrigatória para convites, join e RLS de viewer.
 -- A migration_room_access_ui.sql é obrigatória para o painel de membros e checkboxes em Usuários.
+-- A migration_organizations.sql é obrigatória antes do app gravar organization_id.
+-- A migration_organization_scope.sql isola leitura/escrita por org (rode depois da 10).
 -- Se o SQL Editor retornar deadlock (40P01), espere uns segundos e rode o arquivo de novo.

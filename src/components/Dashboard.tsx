@@ -18,6 +18,7 @@ import {
 import { AnimatePresence } from "motion/react";
 import { RoomStatusBadge, RoomTypeBadge } from "./BugBadges";
 import { canManageSpaces as roleCanManageSpaces } from "../lib/permissions";
+import { belongsToOrganization } from "../lib/organizations";
 import {
   comparePulseActivity,
   dashboardPulse,
@@ -99,6 +100,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
   const scopedBugs = allBugs.filter((bug) => !myCardsOnly || bug.ownerId === profile?.id);
   const pulse = dashboardPulse(scopedBugs);
 
+  const orgRooms = useMemo(
+    () =>
+      warRooms.filter((room) =>
+        belongsToOrganization(room.organizationId, profile?.organizationId, profile?.isSuperadmin)
+      ),
+    [warRooms, profile?.organizationId, profile?.isSuperadmin]
+  );
+  const orgProjects = useMemo(
+    () =>
+      projects.filter((project) =>
+        belongsToOrganization(project.organizationId, profile?.organizationId, profile?.isSuperadmin)
+      ),
+    [projects, profile?.organizationId, profile?.isSuperadmin]
+  );
+
   const spaces = useMemo<SpaceRow[]>(() => {
     const viewCountByProject = allBoardViews.reduce<Record<string, number>>((acc, view) => {
       if (view.projectId && view.isActive) {
@@ -106,7 +122,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
       }
       return acc;
     }, {});
-    const warRoomRows: SpaceRow[] = warRooms
+    const warRoomRows: SpaceRow[] = orgRooms
       .filter((room) => (room.roomType || "war_room") === "war_room")
       .map((room) => ({
         key: `room-${room.id}`,
@@ -121,7 +137,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
           : undefined,
       }));
 
-    const projectRows: SpaceRow[] = projects.map((project) => ({
+    const projectRows: SpaceRow[] = orgProjects.map((project) => ({
       key: `project-${project.id}`,
       roomId: project.warRoomId,
       name: project.name,
@@ -131,7 +147,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
     }));
 
     return [...warRoomRows, ...projectRows];
-  }, [warRooms, projects, allBoardViews]);
+  }, [orgRooms, orgProjects, allBoardViews]);
 
   const spaceQueryNorm = spaceQuery.trim().toLowerCase();
   const displayedSpaces = spaces
@@ -152,7 +168,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
     });
 
   const canManageSpaces = roleCanManageSpaces(profile?.role);
-  const hasSpaces = warRooms.length > 0 || projects.length > 0;
+  const hasSpaces = orgRooms.length > 0 || orgProjects.length > 0;
 
   const copyInvite = (roomId: string, event: React.MouseEvent) => {
     event.stopPropagation();

@@ -15,6 +15,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const result = await inviteToRoom({
       actorId: authed.user.id,
       actorRole: authed.role,
+      actorOrganizationId: authed.organizationId,
+      isSuperadmin: authed.isSuperadmin,
       roomId: String(body.roomId || ""),
       email: String(body.email || ""),
       redirectTo: `${origin.replace(/\/$/, "")}/`,

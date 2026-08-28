@@ -13,6 +13,7 @@ import { UserProfile, UserRole, WarRoom } from "../types";
 import { RoleBadge } from "./BugBadges";
 import { SquadSelect } from "./SquadSelect";
 import { useConfirm } from "../context/ConfirmContext";
+import { belongsToOrganization } from "../lib/organizations";
 
 interface AdminUsersPageProps {
   onBack: () => void;
@@ -149,13 +150,19 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
         console.error("admin users rooms:", error);
         return;
       }
-      setRooms((data || []).map(toWarRoom));
+      setRooms(
+        (data || [])
+          .map(toWarRoom)
+          .filter((room) =>
+            belongsToOrganization(room.organizationId, profile?.organizationId, profile?.isSuperadmin)
+          )
+      );
     })();
     return () => {
       cancelled = true;
       unsubUsers();
     };
-  }, []);
+  }, [profile?.organizationId, profile?.isSuperadmin]);
 
   useEffect(() => {
     let cancelled = false;
@@ -240,6 +247,9 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
   const userQueryNorm = userQuery.trim().toLowerCase();
   const visibleUsers = usersList.filter((usr) => {
     if (!usr?.id) return false;
+    if (!belongsToOrganization(usr.organizationId, profile?.organizationId, profile?.isSuperadmin)) {
+      return false;
+    }
     if (!userQueryNorm) return true;
     return [usr.name, usr.email, usr.squad, usr.role].some((value) =>
       (value || "").toLowerCase().includes(userQueryNorm)
