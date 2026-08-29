@@ -1,7 +1,8 @@
 import React from "react";
 import { Bug, KanbanColumn, UserRole } from "../types";
 import { BugTypeTag } from "./BugTypeTag";
-import { evidenceLabel, isImageEvidence, safeMediaUrl } from "../lib/evidence";
+import { evidenceLabel, isImageEvidence } from "../lib/evidence";
+import { primaryAttachmentUrl } from "../lib/attachments";
 import { canWriteBugs } from "../lib/permissions";
 import { formatOpenAge, isSlaBreached } from "../lib/cardAge";
 import { displayColumnLabel, resolveBugColumnId } from "../lib/kanbanColumns";
@@ -63,6 +64,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                 list.map((bug) => {
                   const sla = isSlaBreached(bug);
                   const severity = getSeverityConfig(bug.criticism);
+                  const thumb = primaryAttachmentUrl(bug);
                   return (
                     <div
                       key={bug.id}
@@ -90,16 +92,16 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                               Atrasado
                             </span>
                           )}
-                          {safeMediaUrl(bug.evidenceUrl) && (
-                            isImageEvidence(bug.evidenceUrl) ? (
+                          {thumb && (
+                            isImageEvidence(thumb) ? (
                               <img
-                                src={bug.evidenceUrl}
+                                src={thumb}
                                 alt="Evidência"
                                 className="h-7 w-10 rounded object-cover border border-white/[0.08]"
                               />
                             ) : (
                               <span className="inline-flex items-center gap-1 text-[11px] text-neutral-400">
-                                {evidenceLabel(bug.evidenceUrl) === "link" ? (
+                                {evidenceLabel(thumb) === "link" ? (
                                   <Link2 className="w-3 h-3" />
                                 ) : (
                                   <Paperclip className="w-3 h-3" />

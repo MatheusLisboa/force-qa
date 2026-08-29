@@ -3,12 +3,14 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import { generateExecutiveReportForRoom } from "./api-src/ai/generate-report";
-import { clientErrorMessage, httpErrorStatus, requireAdmin, requireAiUser, requireSuperadmin, requireUser } from "./api-src/shared/auth";
+import { clientErrorMessage, getSupabaseAdmin, httpErrorStatus, requireAdmin, requireAiUser, requireSuperadmin, requireUser } from "./api-src/shared/auth";
 import { adminCreateUser, adminDeleteUser, adminMoveUser } from "./api-src/shared/adminUsers";
 import { createOrganizationWithAdmin, resolveActorOrganizationId } from "./api-src/shared/organizations";
 import { appRedirectTo } from "./api-src/shared/appUrl";
 import { assertActorCanAccessRoom, inviteToRoom, joinRoom, validateGuestRoom } from "./api-src/shared/rooms";
 import { detectDuplicate, suggestBugFields } from "./api-src/shared/geminiBugs";
+import { dispatchRoomWebhook, getOrgWebhookUrl, setOrgWebhookUrl, type WebhookKind } from "./api-src/shared/webhooks";
+import { canWriteBugs } from "./src/lib/permissions";
 
 dotenv.config();
 
@@ -149,6 +151,72 @@ app.post("/api/ai/detect-duplicate", async (req, res) => {
     res.json(result);
   } catch (error) {
     sendError(res, error, "Failed to detect duplicates");
+  }
+});
+
+app.get("/api/admin/org-webhook", async (req, res) => {
+  try {
+    const actor = await requireAdmin(req.headers.authorization);
+    const url = await getOrgWebhookUrl(actor.organizationId);
+    res.json({ url: url || "" });
+  } catch (error) {
+    sendError(res, error, "Falha ao ler o webhook.");
+  }
+});
+
+app.post("/api/admin/org-webhook", async (req, res) => {
+  try {
+    const actor = await requireAdmin(req.headers.authorization);
+    const url = req.body?.url === null || req.body?.url === undefined ? "" : String(req.body.url);
+    await setOrgWebhookUrl(actor.organizationId, url);
+    res.json({ ok: true });
+  } catch (error) {
+    sendError(res, error, "Falha ao configurar o webhook.");
+  }
+});
+
+app.post("/api/webhooks/dispatch", async (req, res) => {
+  try {
+    const actor = await requireUser(req.headers.authorization);
+    if (!canWriteBugs(actor.role) || actor.isGuest) {
+      throw Object.assign(new Error("Sem permissão para disparar webhook."), { status: 403 });
+    }
+    const roomId = String(req.body?.roomId || "").trim();
+    const bugId = String(req.body?.bugId || "").trim();
+    const kind: WebhookKind | "" =
+      req.body?.kind === "ready_for_qa" ? "ready_for_qa" : req.body?.kind === "blocker" ? "blocker" : "";
+    if (!roomId || !bugId || !kind) {
+      throw Object.assign(new Error("roomId, bugId e kind são obrigatórios."), { status: 400 });
+    }
+    await assertActorCanAccessRoom(
+      {
+        id: actor.user.id,
+        role: actor.role,
+        organizationId: actor.organizationId,
+        isSuperadmin: actor.isSuperadmin,
+        isGuest: actor.isGuest,
+      },
+      roomId
+    );
+    const admin = getSupabaseAdmin();
+    const [{ data: room }, { data: bug }] = await Promise.all([
+      admin.from("war_rooms").select("id, name, organization_id").eq("id", roomId).maybeSingle(),
+      admin.from("bugs").select("id, title, war_room_id").eq("id", bugId).maybeSingle(),
+    ]);
+    if (!room || !bug || bug.war_room_id !== roomId) {
+      throw Object.assign(new Error("Card ou sala não encontrados."), { status: 404 });
+    }
+    await dispatchRoomWebhook({
+      organizationId: String(room.organization_id || actor.organizationId),
+      kind,
+      roomId,
+      roomName: String(room.name || roomId),
+      bugId,
+      title: String(bug.title || "Card"),
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    sendError(res, error, "Falha ao disparar webhook.");
   }
 });
 

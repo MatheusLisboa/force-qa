@@ -1,11 +1,13 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { subscribeBug, subscribeBugComments, subscribeActivityLogs } from "../lib/supabase";
-import { updateBugField, createComment, fetchUsersList, archiveBug } from "../lib/services";
+import { updateBugField, createComment, fetchUsersList, archiveBug, copyBugToRoom, fetchAccessibleRooms } from "../lib/services";
 import { useToast } from "../context/ToastContext";
 import { useConfirm } from "../context/ConfirmContext";
 import { useAuth } from "../context/AuthContext";
-import { Bug, BugComment, ActivityLog, BugStatus } from "../types";
-import { isImageEvidence, safeMediaUrl } from "../lib/evidence";
+import { Bug, BugComment, ActivityLog, BugStatus, ReproItem, WarRoom } from "../types";
+import { isImageEvidence, safeMediaUrl, uploadEvidenceFile } from "../lib/evidence";
+import { attachmentsOf, makeAttachment } from "../lib/attachments";
+import { DEFAULT_BUG_REPRO } from "../lib/reproChecklist";
 import { truncateForLog, getStatusLabel, ENVIRONMENT_LABELS } from "../lib/bugLabels";
 import { BugTypeTag } from "./BugTypeTag";
 import { SeverityBadge, StatusBadge } from "./BugBadges";
@@ -24,12 +26,17 @@ import {
   ExternalLink,
   Pencil,
   Check,
-  Link2
+  Link2,
+  Copy,
+  ArrowRightLeft,
+  Paperclip,
+  Upload
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 interface BugDetailModalProps {
   bug: Bug;
+  roomBugs?: Pick<Bug, "id" | "title">[];
   onClose: () => void;
 }
 
@@ -42,7 +49,7 @@ const STATUS_VALUES: BugStatus[] = [
   "reopened",
 ];
 
-export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) => {
+export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, roomBugs = [], onClose }) => {
   const { profile } = useAuth();
   const { toast } = useToast();
   const { confirm } = useConfirm();
@@ -59,6 +66,11 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [editDescription, setEditDescription] = useState(bug.description);
   const [savingField, setSavingField] = useState<"title" | "description" | null>(null);
+  const [newLink, setNewLink] = useState("");
+  const [addingFile, setAddingFile] = useState(false);
+  const [moveRoomId, setMoveRoomId] = useState("");
+  const [rooms, setRooms] = useState<Array<Pick<WarRoom, "id" | "name" | "roomType" | "project">>>([]);
+  const [moving, setMoving] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   const evidenceDialogRef = useRef<HTMLDivElement>(null);
 
@@ -71,8 +83,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
   useModalA11y(isFullscreenEvidence && !!fullscreenUrl, closeEvidenceFullscreen, evidenceDialogRef);
 
   const canEdit = canWriteBugs(profile?.role);
-  const evidenceUrl = safeMediaUrl(activeBug.evidenceUrl);
-  const prototypeUrl = safeMediaUrl(activeBug.prototypeUrl);
+  const gallery = attachmentsOf(activeBug);
 
   useEffect(() => {
     const unsubscribeBug = subscribeBug(bug.id, (b) => {
@@ -82,6 +93,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
     const unsubscribeLogs = subscribeActivityLogs(bug.id, setActivityLogs);
 
     fetchUsersList().then(setUsers);
+    fetchAccessibleRooms().then(setRooms);
 
     return () => {
       unsubscribeBug();
@@ -94,6 +106,20 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
     setEditTitle(activeBug.title);
     setEditDescription(activeBug.description);
   }, [activeBug.title, activeBug.description]);
+
+  useEffect(() => {
+    if (!profile || !canEdit) return;
+    if (activeBug.type !== "bug") return;
+    if ((activeBug.reproChecklist || []).length > 0) return;
+    void updateBugField(
+      activeBug.id,
+      activeBug.warRoomId,
+      { reproChecklist: DEFAULT_BUG_REPRO.map((item) => ({ ...item })) },
+      profile.id,
+      profile.name,
+      "Adicionou checklist de reprodução"
+    );
+  }, [activeBug.id, activeBug.type, activeBug.reproChecklist?.length, canEdit, profile?.id, profile?.name]);
 
   const handleSaveTitle = async () => {
     if (!profile || !canEdit) return;
@@ -271,6 +297,94 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
     }
   };
 
+  const persistAttachments = async (next: ReturnType<typeof attachmentsOf>, log: string) => {
+    if (!profile) return;
+    await updateBugField(
+      activeBug.id,
+      activeBug.warRoomId,
+      { attachments: next },
+      profile.id,
+      profile.name,
+      log
+    );
+  };
+
+  const handleAddFiles = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files: File[] = event.target.files ? Array.from(event.target.files) : [];
+    event.target.value = "";
+    if (!profile || files.length === 0) return;
+    setAddingFile(true);
+    try {
+      const added = [];
+      for (const file of files) {
+        added.push(makeAttachment(await uploadEvidenceFile(activeBug.warRoomId, file), "file"));
+      }
+      await persistAttachments([...gallery, ...added], `Anexou ${added.length} arquivo(s)`);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Falha no upload.", { kind: "error" });
+    } finally {
+      setAddingFile(false);
+    }
+  };
+
+  const handleAddLink = async () => {
+    if (!profile || !newLink.trim()) return;
+    try {
+      await persistAttachments([...gallery, makeAttachment(newLink.trim(), "link")], "Anexou um link");
+      setNewLink("");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Link inválido.", { kind: "error" });
+    }
+  };
+
+  const handleRemoveAttachment = async (id: string) => {
+    await persistAttachments(gallery.filter((item) => item.id !== id), "Removeu um anexo");
+  };
+
+  const handleToggleRepro = async (item: ReproItem) => {
+    if (!profile || !canEdit) return;
+    const next = (activeBug.reproChecklist || []).map((row) =>
+      row.id === item.id ? { ...row, done: !row.done } : row
+    );
+    await updateBugField(
+      activeBug.id,
+      activeBug.warRoomId,
+      { reproChecklist: next },
+      profile.id,
+      profile.name,
+      next.find((row) => row.id === item.id)?.done ? `Marcou "${item.text}"` : `Desmarcou "${item.text}"`
+    );
+  };
+
+  const handleDuplicateChange = async (value: string) => {
+    if (!profile) return;
+    await updateBugField(
+      activeBug.id,
+      activeBug.warRoomId,
+      { duplicateOfBugId: value || null },
+      profile.id,
+      profile.name,
+      value ? "Ligou como duplicata" : "Removeu ligação de duplicata"
+    );
+  };
+
+  const handleCopyOrMove = async (archiveSource: boolean) => {
+    if (!profile || !moveRoomId) return;
+    setMoving(true);
+    try {
+      await copyBugToRoom(activeBug, moveRoomId, profile.id, profile.name, {
+        archiveSource,
+        skipWebhook: true,
+      });
+      toast(archiveSource ? "Card movido." : "Card clonado.", { kind: "success" });
+      if (archiveSource) onClose();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Não foi possível copiar o card.", { kind: "error" });
+    } finally {
+      setMoving(false);
+    }
+  };
+
   const openEvidence = (url: string) => {
     const safe = safeMediaUrl(url);
     if (!safe) return;
@@ -390,36 +504,84 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
 
         <div className="fq-bug-modal-body">
           <div className="fq-bug-modal-main">
-            {(evidenceUrl || prototypeUrl) && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {evidenceUrl && (
-                  <div className="space-y-1.5">
-                    <span className="text-[12px] text-neutral-500 font-medium">
-                      {isImageEvidence(evidenceUrl) ? "Evidência" : "Link de evidência"}
-                    </span>
-                    {isImageEvidence(evidenceUrl) ? (
-                      <div onClick={() => openEvidence(evidenceUrl)} className="fq-evidence-thumb group !max-h-[220px]">
-                        <img src={evidenceUrl} alt="Evidência do Bug" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-xs text-white font-mono transition">
-                          Ampliar
-                        </div>
+            {activeBug.duplicateOfBugId && (
+              <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                Duplicata de{" "}
+                <span className="font-medium">
+                  {roomBugs.find((item) => item.id === activeBug.duplicateOfBugId)?.title || "outro card"}
+                </span>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <span className="text-[12px] text-neutral-500 font-medium">Anexos</span>
+              {gallery.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {gallery.map((item) => {
+                    const url = safeMediaUrl(item.url);
+                    if (!url) return null;
+                    return (
+                      <div key={item.id} className="space-y-1.5">
+                        <span className="text-[11px] text-neutral-500">
+                          {item.kind === "prototype" ? "Protótipo" : item.kind === "link" ? "Link" : "Arquivo"}
+                        </span>
+                        {isImageEvidence(url) ? (
+                          <div onClick={() => openEvidence(url)} className="fq-evidence-thumb group !max-h-[180px]">
+                            <img src={url} alt="" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                          </div>
+                        ) : (
+                          <a href={url} target="_blank" rel="noopener noreferrer" className="fq-evidence-link group !p-3">
+                            <ExternalLink className="w-4 h-4 text-neutral-400 shrink-0" />
+                            <span className="text-xs font-mono break-all line-clamp-2">{url}</span>
+                          </a>
+                        )}
+                        {canEdit && (
+                          <button type="button" className="text-[11px] text-red-400 hover:underline" onClick={() => void handleRemoveAttachment(item.id)}>
+                            Remover
+                          </button>
+                        )}
                       </div>
-                    ) : (
-                      <a href={evidenceUrl} target="_blank" rel="noopener noreferrer" className="fq-evidence-link group !p-3">
-                        <ExternalLink className="w-4 h-4 text-neutral-400 shrink-0 group-hover:text-neutral-200" />
-                        <span className="text-xs font-mono break-all line-clamp-2">{evidenceUrl}</span>
-                      </a>
-                    )}
-                  </div>
-                )}
-                {prototypeUrl && (
-                  <div className="space-y-1.5">
-                    <span className="text-[12px] text-neutral-500 font-medium">Protótipo</span>
-                    <div onClick={() => openEvidence(prototypeUrl)} className="fq-evidence-thumb group !max-h-[220px]">
-                      <img src={prototypeUrl} alt="Protótipo Original" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                    </div>
-                  </div>
-                )}
+                    );
+                  })}
+                </div>
+              )}
+              {canEdit && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="fq-btn-ghost text-[11px] cursor-pointer">
+                    <Upload className="w-3.5 h-3.5" />
+                    {addingFile ? "Enviando..." : "Adicionar imagens"}
+                    <input type="file" accept="image/*" multiple className="hidden" onChange={handleAddFiles} disabled={addingFile} />
+                  </label>
+                  <input
+                    type="url"
+                    className="fq-input text-[12px] flex-1 min-w-[160px]"
+                    placeholder="https:// link"
+                    value={newLink}
+                    onChange={(e) => setNewLink(e.target.value)}
+                  />
+                  <button type="button" className="fq-btn-secondary text-[11px]" onClick={() => void handleAddLink} disabled={!newLink.trim()}>
+                    <Paperclip className="w-3.5 h-3.5" />
+                    Link
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {(activeBug.reproChecklist || []).length > 0 && (
+              <div className="fq-panel !p-4 space-y-2">
+                <span className="text-[12px] text-neutral-500 font-medium">Reprodução</span>
+                {(activeBug.reproChecklist || []).map((item) => (
+                  <label key={item.id} className="flex items-start gap-2 text-sm text-neutral-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={item.done}
+                      disabled={!canEdit}
+                      onChange={() => void handleToggleRepro(item)}
+                    />
+                    <span className={item.done ? "line-through text-neutral-500" : ""}>{item.text}</span>
+                  </label>
+                ))}
               </div>
             )}
 
@@ -565,6 +727,67 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
               </div>
             )}
 
+            {canEdit && (
+              <div>
+                <span className="fq-label fq-label--inline !mb-1.5">Duplicata de</span>
+                <select
+                  className="fq-select text-xs"
+                  value={activeBug.duplicateOfBugId || ""}
+                  onChange={(e) => void handleDuplicateChange(e.target.value)}
+                >
+                  <option value="">Nenhum</option>
+                  {roomBugs
+                    .filter((item) => item.id !== activeBug.id)
+                    .map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.title}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            )}
+
+            {canEdit && (
+              <div className="space-y-2">
+                <span className="fq-label fq-label--inline !mb-1.5 gap-1">
+                  <ArrowRightLeft className="w-3.5 h-3.5" /> Mover / clonar
+                </span>
+                <select
+                  className="fq-select text-xs"
+                  value={moveRoomId}
+                  onChange={(e) => setMoveRoomId(e.target.value)}
+                >
+                  <option value="">Escolher sala...</option>
+                  {rooms
+                    .filter((room) => room.id !== activeBug.warRoomId)
+                    .map((room) => (
+                      <option key={room.id} value={room.id}>
+                        {room.name}{room.roomType === "board" ? " · permanente" : ""}
+                      </option>
+                    ))}
+                </select>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className="fq-btn-secondary text-[11px] flex-1"
+                    disabled={!moveRoomId || moving}
+                    onClick={() => void handleCopyOrMove(true)}
+                  >
+                    Mover
+                  </button>
+                  <button
+                    type="button"
+                    className="fq-btn-ghost text-[11px] flex-1"
+                    disabled={!moveRoomId || moving}
+                    onClick={() => void handleCopyOrMove(false)}
+                  >
+                    <Copy className="w-3 h-3" />
+                    Clonar
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="fq-panel !p-3 space-y-3">
               <div>
                 <span className="text-[12px] text-neutral-500 flex items-center gap-1.5 mb-1.5">
@@ -637,7 +860,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
             required
             rows={2}
             className="fq-textarea text-sm leading-relaxed"
-            placeholder="Escreva um comentário..."
+            placeholder="Escreva um comentário... Use @Nome para mencionar"
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
           />

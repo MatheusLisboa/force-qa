@@ -3,13 +3,13 @@ import { motion } from "motion/react";
 import { CheckCircle, Sparkles, Upload } from "lucide-react";
 import { useModalA11y } from "../hooks/useModalA11y";
 import { useToast } from "../context/ToastContext";
-import { useConfirm } from "../context/ConfirmContext";
 import { useAuth } from "../context/AuthContext";
 import { createBug, fetchAIDuplicateCheck } from "../lib/services";
 import { uploadEvidenceFile } from "../lib/evidence";
+import { makeAttachment } from "../lib/attachments";
 import { canWriteBugs } from "../lib/permissions";
 import { BUG_TYPE_OPTIONS, ENVIRONMENT_LABELS } from "../lib/bugLabels";
-import { Bug, BugPriority, BugType, SeverityLevel } from "../types";
+import { Bug, BugAttachment, BugPriority, BugType, SeverityLevel } from "../types";
 import { SeverityPicker } from "./SeverityPicker";
 
 interface CreateBugModalProps {
@@ -29,7 +29,6 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
 }) => {
   const { profile } = useAuth();
   const { toast } = useToast();
-  const { confirm } = useConfirm();
   const dialogRef = useRef<HTMLDivElement>(null);
   useModalA11y(open, onClose, dialogRef);
 
@@ -45,14 +44,19 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
   const [bugPriority, setBugPriority] = useState<BugPriority>("medium");
   const [bugUrl, setBugUrl] = useState("");
   const [bugTagsInput, setBugTagsInput] = useState("");
-  const [bugEvidence, setBugEvidence] = useState<string | null>(null);
-  const [bugEvidenceFile, setBugEvidenceFile] = useState<File | null>(null);
+  const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
+  const [evidencePreviews, setEvidencePreviews] = useState<string[]>([]);
   const [bugEvidenceLink, setBugEvidenceLink] = useState("");
   const [bugPrototype, setBugPrototype] = useState<string | null>(null);
   const [bugPrototypeFile, setBugPrototypeFile] = useState<File | null>(null);
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
   const [moreDetails, setMoreDetails] = useState(false);
+  const [duplicatePrompt, setDuplicatePrompt] = useState<{
+    explanation: string;
+    score: number;
+    duplicateOfBugId: string | null;
+  } | null>(null);
 
   const resetForm = useCallback(() => {
     setBugTitle("");
@@ -63,13 +67,14 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
     setBugPriority("medium");
     setBugUrl("");
     setBugTagsInput("");
-    setBugEvidence(null);
-    setBugEvidenceFile(null);
+    setEvidenceFiles([]);
+    setEvidencePreviews([]);
     setBugEvidenceLink("");
     setBugPrototype(null);
     setBugPrototypeFile(null);
     setFormError("");
     setMoreDetails(false);
+    setDuplicatePrompt(null);
   }, [presetType]);
 
   const closeAndReset = useCallback(() => {
@@ -78,25 +83,25 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
   }, [onClose, resetForm]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, kind: "evidence" | "prototype") => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
+    const files: File[] = e.target.files ? Array.from(e.target.files) : [];
+    e.target.value = "";
+    if (files.length === 0) return;
+    const oversized = files.find((file) => file.size > 2 * 1024 * 1024);
+    if (oversized) {
       toast("Arquivos de evidência devem ter no máximo 2MB.", { kind: "error" });
       return;
     }
-    const preview = URL.createObjectURL(file);
     if (kind === "evidence") {
-      setBugEvidenceFile(file);
-      setBugEvidence(preview);
-      setBugEvidenceLink("");
-    } else {
-      setBugPrototypeFile(file);
-      setBugPrototype(preview);
+      setEvidenceFiles((current) => [...current, ...files]);
+      setEvidencePreviews((current) => [...current, ...files.map((file) => URL.createObjectURL(file))]);
+      return;
     }
+    const file = files[0];
+    setBugPrototypeFile(file);
+    setBugPrototype(URL.createObjectURL(file));
   };
 
-  const handleReportBug = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitCard = async (duplicateOfBugId: string | null) => {
     if (!bugTitle.trim()) {
       setFormError("Informe um título para o card.");
       return;
@@ -109,37 +114,17 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
         throw new Error("Observadores não podem criar cards.");
       }
 
-      try {
-        const triage = await fetchAIDuplicateCheck(
-          bugTitle,
-          bugDesc,
-          existingBugs.map((b) => ({ id: b.id, title: b.title, description: b.description || "" }))
-        );
-        if (triage.isDuplicate && (triage.confidenceScore ?? 0) >= 70) {
-          const proceed = await confirm({
-            title: "Possível duplicata",
-            message: `${triage.explanation} (${triage.confidenceScore}%). Criar o card mesmo assim?`,
-            confirmLabel: "Criar mesmo assim",
-          });
-          if (!proceed) {
-            setFormSubmitting(false);
-            return;
-          }
-        }
-      } catch (dupErr) {
-        console.warn("Checagem de duplicata indisponível:", dupErr);
+      const attachments: BugAttachment[] = [];
+      for (const file of evidenceFiles) {
+        attachments.push(makeAttachment(await uploadEvidenceFile(roomId, file), "file"));
       }
-
-      let evidenceValue = bugEvidenceLink.trim() || undefined;
-      if (bugEvidenceFile) {
-        evidenceValue = await uploadEvidenceFile(roomId, bugEvidenceFile);
-      } else if (evidenceValue?.startsWith("data:")) {
-        throw new Error("Envie a evidência pelo campo de arquivo.");
+      if (bugEvidenceLink.trim()) {
+        attachments.push(makeAttachment(bugEvidenceLink.trim(), "link"));
       }
-
       let prototypeValue: string | undefined;
       if (bugPrototypeFile) {
         prototypeValue = await uploadEvidenceFile(roomId, bugPrototypeFile);
+        attachments.push(makeAttachment(prototypeValue, "prototype"));
       }
 
       const splitTags = bugTagsInput
@@ -154,8 +139,10 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
         criticism: bugCrit,
         status: "new",
         kanbanColumnId: "new",
-        evidenceUrl: evidenceValue,
+        attachments,
+        evidenceUrl: attachments[0]?.url,
         prototypeUrl: prototypeValue,
+        duplicateOfBugId,
         ownerId: null,
         ownerName: null,
         environment: bugEnv,
@@ -174,6 +161,35 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
     } finally {
       setFormSubmitting(false);
     }
+  };
+
+  const handleReportBug = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bugTitle.trim()) {
+      setFormError("Informe um título para o card.");
+      return;
+    }
+    setFormSubmitting(true);
+    setFormError("");
+    try {
+      const triage = await fetchAIDuplicateCheck(
+        bugTitle,
+        bugDesc,
+        existingBugs.map((b) => ({ id: b.id, title: b.title, description: b.description || "" }))
+      );
+      if (triage.isDuplicate && (triage.confidenceScore ?? 0) >= 70) {
+        setDuplicatePrompt({
+          explanation: triage.explanation,
+          score: triage.confidenceScore,
+          duplicateOfBugId: triage.duplicateOfBugId,
+        });
+        setFormSubmitting(false);
+        return;
+      }
+    } catch (dupErr) {
+      console.warn("Checagem de duplicata indisponível:", dupErr);
+    }
+    await submitCard(null);
   };
 
   if (!open) return null;
@@ -201,6 +217,39 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
         <form onSubmit={handleReportBug} className="flex min-h-0 flex-1 flex-col">
           <div className="flex-1 overflow-y-auto my-4 pr-1 space-y-4 text-sm text-neutral-400">
             {formError && <div className="fq-alert-error text-xs">{formError}</div>}
+
+            {duplicatePrompt && (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 space-y-2">
+                <p className="text-xs text-amber-100">
+                  Possível duplicata ({duplicatePrompt.score}%): {duplicatePrompt.explanation}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="fq-btn-primary text-[11px]"
+                    disabled={formSubmitting}
+                    onClick={() => void submitCard(duplicatePrompt.duplicateOfBugId)}
+                  >
+                    Criar e ligar
+                  </button>
+                  <button
+                    type="button"
+                    className="fq-btn-secondary text-[11px]"
+                    disabled={formSubmitting}
+                    onClick={() => void submitCard(null)}
+                  >
+                    Criar sem ligar
+                  </button>
+                  <button
+                    type="button"
+                    className="fq-btn-ghost text-[11px]"
+                    onClick={() => setDuplicatePrompt(null)}
+                  >
+                    Voltar
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div>
               <label className="fq-label fq-label--xs">Título *</label>
@@ -236,35 +285,46 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
             </div>
 
             <div>
-              <label className="fq-label fq-label--xs">Evidência (imagem ou link)</label>
+              <label className="fq-label fq-label--xs">Evidências (imagens ou link)</label>
               <input
                 type="url"
                 className="fq-input text-[13px] mb-2"
                 placeholder="https://..."
                 value={bugEvidenceLink}
-                onChange={(e) => {
-                  setBugEvidenceLink(e.target.value);
-                  if (e.target.value.trim()) {
-                    setBugEvidence(null);
-                    setBugEvidenceFile(null);
-                  }
-                }}
+                onChange={(e) => setBugEvidenceLink(e.target.value)}
               />
               <div className="fq-upload-zone space-y-2">
                 <Upload className="w-6 h-6 text-neutral-500 mx-auto" />
-                <span className="block text-[12px] text-neutral-400">Ou envie imagem (PNG/JPG, máx. 2MB)</span>
-                <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, "evidence")} className="absolute inset-0 opacity-0 cursor-pointer" />
+                <span className="block text-[12px] text-neutral-400">Envie uma ou mais imagens (PNG/JPG, máx. 2MB cada)</span>
+                <input type="file" accept="image/*" multiple onChange={(e) => handleImageUpload(e, "evidence")} className="absolute inset-0 opacity-0 cursor-pointer" />
               </div>
-              {(bugEvidence || bugEvidenceLink.trim()) && (
-                <div className="fq-attachment-chip">
-                  <CheckCircle className="w-4 h-4 text-green-500 shrink-0" />
-                  <span className="text-[12px] text-neutral-400 truncate">
-                    {bugEvidence ? "Imagem anexada" : `Link: ${bugEvidenceLink.trim()}`}
-                  </span>
-                  <button type="button" onClick={() => { setBugEvidence(null); setBugEvidenceFile(null); setBugEvidenceLink(""); }} className="ml-auto text-[12px] text-red-400 hover:underline">
-                    Excluir
-                  </button>
+              {evidenceFiles.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {evidenceFiles.map((file, index) => (
+                    <div key={`${file.name}-${index}`} className="fq-attachment-chip">
+                      <CheckCircle className="w-4 h-4 text-green-500 shrink-0" />
+                      <span className="text-[12px] text-neutral-400 truncate max-w-[140px]">{file.name}</span>
+                      {evidencePreviews[index] && (
+                        <img src={evidencePreviews[index]} alt="" className="h-8 w-10 rounded object-cover" />
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEvidenceFiles((current) => current.filter((_, i) => i !== index));
+                          setEvidencePreviews((current) => current.filter((_, i) => i !== index));
+                        }}
+                        className="ml-auto text-[12px] text-red-400 hover:underline"
+                      >
+                        Excluir
+                      </button>
+                    </div>
+                  ))}
                 </div>
+              )}
+              {bugType === "bug" && (
+                <p className="mt-2 text-[12px] text-neutral-500">
+                  Cards do tipo bug ganham checklist de reprodução (passos, esperado, atual).
+                </p>
               )}
             </div>
 
@@ -338,7 +398,7 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
 
           <div className="fq-modal-footer">
             <button type="button" onClick={closeAndReset} className="fq-btn-ghost text-xs">Cancelar</button>
-            <button type="submit" disabled={formSubmitting || !bugTitle.trim()} className="fq-btn-primary">
+            <button type="submit" disabled={formSubmitting || !bugTitle.trim() || Boolean(duplicatePrompt)} className="fq-btn-primary">
               {formSubmitting ? "Criando card..." : "Criar Card"}
             </button>
           </div>

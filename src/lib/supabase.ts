@@ -14,6 +14,8 @@ import { PulseBug } from "./dashboardPulse";
 import { normalizeArea } from "./squads";
 import { resolveOrganizationId } from "./organizations";
 import { withSignedMedia } from "./evidence";
+import { parseAttachments } from "./attachments";
+import { parseReproChecklist } from "./reproChecklist";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -100,6 +102,9 @@ export function toBug(row: Record<string, unknown>): Bug {
     tags: (row.tags as string[]) || [],
     priority: row.priority as Bug["priority"],
     type: row.type as Bug["type"],
+    attachments: parseAttachments(row.attachments),
+    duplicateOfBugId: (row.duplicate_of_bug_id as string) || null,
+    reproChecklist: parseReproChecklist(row.repro_checklist),
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
     createdBy: row.created_by as string,
@@ -455,6 +460,42 @@ export function subscribeBugsByRoom(
     onChange: callback,
     matches: (bug) => bug.warRoomId === roomId && !bug.archived,
     requiredKeys: ["id", "war_room_id", "title", "status"],
+    alwaysRefetch: true,
+  });
+}
+
+export type InboxBug = Bug & { roomName: string };
+
+export function subscribeInboxBugs(
+  userId: string,
+  callback: (bugs: InboxBug[]) => void
+): Unsubscribe {
+  return subscribeMappedList({
+    table: "bugs",
+    channelName: `inbox-${userId}`,
+    fetchRows: async () => {
+      const { data, error } = await supabase
+        .from("bugs")
+        .select("*, war_rooms(name)")
+        .eq("owner_id", userId)
+        .eq("archived", false)
+        .neq("status", "validated")
+        .order("updated_at", { ascending: false });
+      if (error) throw error;
+      return Promise.all(
+        (data || []).map(async (row) => {
+          const bug = await withSignedMedia(toBug(row));
+          const related = row.war_rooms as { name?: string } | { name?: string }[] | null;
+          const roomName = Array.isArray(related) ? related[0]?.name : related?.name;
+          return { ...bug, roomName: roomName || bug.warRoomId };
+        })
+      );
+    },
+    mapRow: (row) => ({ ...toBug(row), roomName: "" }),
+    getId: (bug) => bug.id,
+    onChange: callback,
+    matches: (bug) => bug.ownerId === userId && !bug.archived && bug.status !== "validated",
+    requiredKeys: ["id", "war_room_id", "title", "status", "owner_id"],
     alwaysRefetch: true,
   });
 }

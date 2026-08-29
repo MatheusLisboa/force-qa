@@ -11,6 +11,8 @@ import { BoardViewSwitcher } from "./BoardViewSwitcher";
 import { KanbanBoard } from "./KanbanBoard";
 import { CreateBugModal } from "./CreateBugModal";
 import { RoomMembersPanel } from "./RoomMembersPanel";
+import { EndWarRoomModal } from "./EndWarRoomModal";
+import { useRoomPresence } from "../hooks/useRoomPresence";
 import { filterItemsByView, readStoredBoardViewId, writeStoredBoardViewId } from "../lib/boardViews";
 import { BUG_TYPE_OPTIONS, ENVIRONMENT_LABELS } from "../lib/bugLabels";
 import {
@@ -69,6 +71,8 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
   const [isBugModalOpen, setIsBugModalOpen] = useState(false);
   const [createPresetType, setCreatePresetType] = useState<BugType>("bug");
   const [selectedBug, setSelectedBug] = useState<Bug | null>(null);
+  const [endModalOpen, setEndModalOpen] = useState(false);
+  const presence = useRoomPresence(roomId, profile ? { id: profile.id, name: profile.name } : null);
 
   const openCreateCardModal = useCallback((presetType?: BugType) => {
     setCreatePresetType(presetType ?? "bug");
@@ -464,6 +468,24 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
                   <RoomTypeBadge type="war_room" />
                 )}
               </span>
+              {presence.length > 0 && (
+                <div
+                  className="ml-1 hidden sm:flex items-center -space-x-1.5"
+                  title={presence.map((member) => member.name).join(", ")}
+                >
+                  {presence.slice(0, 5).map((member) => (
+                    <span
+                      key={member.id}
+                      className="flex h-6 w-6 items-center justify-center rounded-md border border-[#111] bg-white/[0.1] text-[9px] font-semibold uppercase text-neutral-200"
+                    >
+                      {member.name.slice(0, 2)}
+                    </span>
+                  ))}
+                  {presence.length > 5 && (
+                    <span className="pl-2 text-[10px] text-neutral-500">+{presence.length - 5}</span>
+                  )}
+                </div>
+              )}
             </div>
             <p className="text-[12px] sm:text-[13px] text-neutral-500 mt-0.5 truncate">
               {headlineParts.map((part, index) => (
@@ -617,8 +639,13 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
                 <select
                   value={warRoom.status}
                   onChange={async (e) => {
+                    const next = e.target.value as WarRoom["status"];
+                    if (next === "ended" && warRoom.status !== "ended") {
+                      setEndModalOpen(true);
+                      return;
+                    }
                     try {
-                      await updateWarRoom(roomId, { status: e.target.value as WarRoom["status"] });
+                      await updateWarRoom(roomId, { status: next });
                     } catch (err) {
                       console.error("Erro ao atualizar status da sala:", err);
                     }
@@ -942,10 +969,26 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
         {selectedBug && (
           <BugDetailModal
             bug={selectedBug}
+            roomBugs={bugs}
             onClose={closeSelectedBug}
           />
         )}
       </AnimatePresence>
+
+      {warRoom && (
+        <EndWarRoomModal
+          open={endModalOpen}
+          warRoom={warRoom}
+          bugs={bugs}
+          canUseAi={canUseAi}
+          onClose={() => setEndModalOpen(false)}
+          onEnded={() => setEndModalOpen(false)}
+          onOpenAiReport={() => {
+            setEndModalOpen(false);
+            openAiReport(true);
+          }}
+        />
+      )}
     </div>
   );
 };

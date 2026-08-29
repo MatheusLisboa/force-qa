@@ -1,5 +1,5 @@
 import React from "react";
-import { LayoutGrid } from "lucide-react";
+import { Inbox, LayoutGrid } from "lucide-react";
 import { PulseBug } from "../lib/dashboardPulse";
 import {
   decorateSpaces,
@@ -13,25 +13,29 @@ interface RoomRailProps {
   spaces: SpaceRow[];
   bugs: PulseBug[];
   currentRoomId: string | null;
+  inboxOpen?: boolean;
   loading?: boolean;
   mobileOpen: boolean;
   onCloseMobile: () => void;
   onSelectRoom: (roomId: string) => void;
   onOpenDashboard: () => void;
+  onOpenInbox: () => void;
 }
 
 export const RoomRail: React.FC<RoomRailProps> = ({
   spaces,
   bugs,
   currentRoomId,
+  inboxOpen = false,
   loading = false,
   mobileOpen,
   onCloseMobile,
   onSelectRoom,
   onOpenDashboard,
+  onOpenInbox,
 }) => {
   const groups = groupSpacesByProject(railVisibleSpaces(decorateSpaces(spaces, bugs), currentRoomId));
-  const onDashboard = !currentRoomId;
+  const onDashboard = !currentRoomId && !inboxOpen;
 
   const select = (roomId: string) => {
     onSelectRoom(roomId);
@@ -59,6 +63,17 @@ export const RoomRail: React.FC<RoomRailProps> = ({
             }}
           >
             <span className="fq-rail-item-name">Todas as salas</span>
+          </button>
+          <button
+            type="button"
+            className={`fq-rail-item ${inboxOpen ? "fq-rail-item--current" : ""}`}
+            onClick={() => {
+              onOpenInbox();
+              onCloseMobile();
+            }}
+          >
+            <Inbox className="h-3.5 w-3.5 shrink-0 text-neutral-500" />
+            <span className="fq-rail-item-name">Meus cards</span>
           </button>
         </div>
 

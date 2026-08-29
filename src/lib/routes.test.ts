@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { adminBoardViewsPath, adminOrganizationsPath, adminUsersPath, cardUrl, dashboardPath, parseRoomInvite, roomPath } from "./routes";
+import { adminBoardViewsPath, adminOrganizationsPath, adminUsersPath, cardUrl, dashboardPath, inboxPath, parseRoomInvite, roomPath } from "./routes";
 
 describe("routes", () => {
   it("builds dashboard, room and admin paths", () => {
     expect(dashboardPath()).toBe("/");
+    expect(inboxPath()).toBe("/inbox");
     expect(roomPath("abc 1")).toBe("/?room=abc+1");
     expect(roomPath("abc", "blockers")).toBe("/?room=abc&pulse=blockers");
     expect(roomPath("abc", "all", "card-1")).toBe("/?room=abc&card=card-1");

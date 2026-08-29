@@ -15,12 +15,13 @@ import { subscribeNotifications } from "./lib/supabase";
 import { AppNotification } from "./types";
 import { ToastProvider } from "./context/ToastContext";
 import { ConfirmProvider } from "./context/ConfirmContext";
-import { adminBoardViewsPath, adminOrganizationsPath, adminUsersPath, dashboardPath, pushPath, roomPath } from "./lib/routes";
+import { adminBoardViewsPath, adminOrganizationsPath, adminUsersPath, dashboardPath, inboxPath, pushPath, roomPath } from "./lib/routes";
 import { parsePulseKind, PulseKind } from "./lib/dashboardPulse";
 import { formatRoleLabel } from "./lib/format";
 import { SquadSelect } from "./components/SquadSelect";
 import { canManageOrganizations, canManageUsers } from "./lib/permissions";
 import { RoomRail } from "./components/RoomRail";
+import { InboxPage } from "./components/InboxPage";
 import { useOrgSpaces } from "./hooks/useOrgSpaces";
 
 function AppContent() {
@@ -31,6 +32,7 @@ function AppContent() {
   const [focusBugAt, setFocusBugAt] = useState(0);
   const [adminPage, setAdminPage] = useState<"board-views" | "users" | "organizations" | null>(null);
   const [adminProjectId, setAdminProjectId] = useState<string | null>(null);
+  const [inboxOpen, setInboxOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [notifOpen, setNotifOpen] = useState(false);
   const [joinError, setJoinError] = useState("");
@@ -47,6 +49,14 @@ function AppContent() {
 
   const syncRouteFromLocation = useCallback(() => {
     const path = window.location.pathname.replace(/\/$/, "") || "/";
+    if (path === "/inbox") {
+      setAdminPage(null);
+      setAdminProjectId(null);
+      setInboxOpen(true);
+      setSelectedRoomId(null);
+      return;
+    }
+    setInboxOpen(false);
     if (path === "/admin/board-views") {
       setAdminPage("board-views");
       const params = new URLSearchParams(window.location.search);
@@ -148,6 +158,7 @@ function AppContent() {
 
   const openRoom = useCallback(async (roomId: string, pulse: PulseKind = "all", bugId?: string | null) => {
     setJoinError("");
+    setInboxOpen(false);
     setFocusBugId(bugId || null);
     setFocusBugAt(Date.now());
     if (selectedRoomId === roomId) {
@@ -195,6 +206,7 @@ function AppContent() {
     setFocusBugAt(0);
     setAdminPage(null);
     setAdminProjectId(null);
+    setInboxOpen(false);
     joinAttemptRef.current = null;
     setJoinError("");
     setRailOpen(false);
@@ -203,6 +215,7 @@ function AppContent() {
 
   const handleOpenAdminPage = (path: "/admin/board-views" | "/admin/users" | "/admin/organizations", projectId?: string) => {
     setSelectedRoomId(null);
+    setInboxOpen(false);
     setRailOpen(false);
     if (path === "/admin/users") {
       setAdminPage("users");
@@ -219,6 +232,16 @@ function AppContent() {
     setAdminPage("board-views");
     setAdminProjectId(projectId ?? null);
     pushPath(adminBoardViewsPath(projectId));
+  };
+
+  const handleOpenInbox = () => {
+    setSelectedRoomId(null);
+    setAdminPage(null);
+    setAdminProjectId(null);
+    setInboxOpen(true);
+    setRailOpen(false);
+    setJoinError("");
+    pushPath(inboxPath());
   };
 
   // 1. Loading core state
@@ -402,18 +425,20 @@ function AppContent() {
 
       {/* Primary viewport switch container */}
       <main className="flex min-h-0 flex-1">
-        {!adminPage && (
-          <RoomRail
-            spaces={spaces}
-            bugs={allBugs}
-            currentRoomId={selectedRoomId}
-            loading={spacesLoading}
-            mobileOpen={railOpen}
-            onCloseMobile={() => setRailOpen(false)}
-            onSelectRoom={handleSelectRoom}
-            onOpenDashboard={handleBackToDashboard}
-          />
-        )}
+          {!adminPage && (
+            <RoomRail
+              spaces={spaces}
+              bugs={allBugs}
+              currentRoomId={selectedRoomId}
+              inboxOpen={inboxOpen}
+              loading={spacesLoading}
+              mobileOpen={railOpen}
+              onCloseMobile={() => setRailOpen(false)}
+              onSelectRoom={handleSelectRoom}
+              onOpenDashboard={handleBackToDashboard}
+              onOpenInbox={handleOpenInbox}
+            />
+          )}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">
         {adminPage === "organizations" && canManageOrganizations(profile?.isSuperadmin) ? (
           <AdminOrganizationsPage onBack={handleBackToDashboard} />
@@ -421,6 +446,12 @@ function AppContent() {
           <AdminUsersPage onBack={handleBackToDashboard} />
         ) : adminPage === "board-views" && canManageUsers(profile?.role, profile?.isSuperadmin) ? (
           <AdminBoardViews onBack={handleBackToDashboard} initialProjectId={adminProjectId} />
+        ) : inboxOpen ? (
+          <InboxPage
+            onOpenCard={(roomId, bugId) => {
+              void openRoom(roomId, "all", bugId);
+            }}
+          />
         ) : selectedRoomId ? (
           <WarRoomDetail 
             roomId={selectedRoomId} 
@@ -440,6 +471,7 @@ function AppContent() {
                 ? handleOpenAdminPage
                 : undefined
             }
+            onOpenInbox={handleOpenInbox}
           />
         )}
         </div>

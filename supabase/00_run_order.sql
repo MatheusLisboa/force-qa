@@ -14,6 +14,7 @@
 -- 12. migration_create_organization_admin.sql (criar org + admin sem o Auth mascarar erro)
 -- 13. migration_room_organization_from_creator.sql (sala/projeto herda a org de quem criou)
 -- 14. migration_security_hardening.sql  (RLS privilegiada, guest, storage, comentários)
+-- 15. migration_session_ops.sql         (anexos, duplicata, checklist, webhook da org)
 --
 -- Em ambiente já existente, rode apenas as migrations ainda não aplicadas.
 -- A migration_access_and_security.sql é obrigatória para convites, join e RLS de viewer.
@@ -23,4 +24,5 @@
 -- A migration_create_organization_admin.sql é obrigatória para a tela Organizações criar o primeiro admin.
 -- A migration_room_organization_from_creator.sql evita 403 ao criar sala/projeto numa org que não é a padrão.
 -- A migration_security_hardening.sql é obrigatória: trava is_superadmin/org, guest sem hop de tenant, bucket privado.
+-- A migration_session_ops.sql é obrigatória para vários anexos, duplicata, checklist e webhook.
 -- Se o SQL Editor retornar deadlock (40P01), espere uns segundos e rode o arquivo de novo.

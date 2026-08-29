@@ -24,7 +24,10 @@ import { authFetch, readApiError } from "./apiClient";
 import { diffRoomAccess } from "./roomAccess";
 import { normalizeArea } from "./squads";
 import { resolveOrganizationId } from "./organizations";
-import { safeMediaUrl } from "./evidence";
+import { safeMediaUrl, copyEvidenceToRoom } from "./evidence";
+import { attachmentsOf, makeAttachment, parseAttachments } from "./attachments";
+import { parseReproChecklist, reproForType } from "./reproChecklist";
+import { findMentionedUsers } from "./mentions";
 
 function cleanUndefined<T extends object>(obj: T): T {
   const result = { ...obj } as Record<string, unknown>;
@@ -37,6 +40,24 @@ function cleanUndefined<T extends object>(obj: T): T {
 function generateId(prefix: string): string {
   const uuid = crypto.randomUUID();
   return `${prefix}${uuid}`;
+}
+
+async function notifyWebhook(input: {
+  roomId: string;
+  bugId: string;
+  kind: "blocker" | "ready_for_qa";
+}): Promise<void> {
+  try {
+    const response = await authFetch("/api/webhooks/dispatch", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+    if (!response.ok) {
+      console.warn("webhook dispatch:", await response.text().catch(() => response.status));
+    }
+  } catch (error) {
+    console.warn("webhook dispatch:", error);
+  }
 }
 
 function warRoomToRow(data: Omit<WarRoom, "id" | "createdAt">, customId: string) {
@@ -192,7 +213,8 @@ export async function deleteWarRoom(roomId: string): Promise<void> {
 export async function createBug(
   data: Omit<Bug, "id" | "createdAt" | "updatedAt">,
   userId: string,
-  userName: string
+  userName: string,
+  options?: { skipWebhook?: boolean }
 ): Promise<string> {
   const customId = generateId("bug-");
   try {
@@ -210,6 +232,16 @@ export async function createBug(
     if (data.prototypeUrl && !prototypeUrl) {
       throw new Error("O link de protótipo precisa ser https://");
     }
+    const attachments = parseAttachments(data.attachments).length
+      ? parseAttachments(data.attachments)
+      : [
+          ...(evidenceUrl ? [makeAttachment(evidenceUrl, "file")] : []),
+          ...(prototypeUrl ? [makeAttachment(prototypeUrl, "prototype")] : []),
+        ];
+    const reproChecklist = parseReproChecklist(data.reproChecklist).length
+      ? parseReproChecklist(data.reproChecklist)
+      : reproForType(data.type);
+
     const now = new Date().toISOString();
     const row = cleanUndefined({
       id: customId,
@@ -219,8 +251,11 @@ export async function createBug(
       criticism: data.criticism,
       status: data.status,
       kanban_column_id: data.kanbanColumnId ?? data.status,
-      evidence_url: evidenceUrl,
+      evidence_url: evidenceUrl || attachments[0]?.url,
       prototype_url: prototypeUrl,
+      attachments,
+      duplicate_of_bug_id: data.duplicateOfBugId || null,
+      repro_checklist: reproChecklist,
       owner_id: data.ownerId,
       owner_name: data.ownerName,
       environment: data.environment,
@@ -246,6 +281,10 @@ export async function createBug(
       type: "creation",
       description: `Registrou o bug "${data.title}" com criticidade [${data.criticism.toUpperCase()}]`,
     });
+
+    if (data.criticism === "blocker" && !options?.skipWebhook) {
+      void notifyWebhook({ roomId: data.warRoomId, bugId: customId, kind: "blocker" });
+    }
 
     return customId;
   } catch (error) {
@@ -301,6 +340,19 @@ export async function updateBugField(
   if (fields.type !== undefined) payload.type = fields.type;
   if (fields.reopenCount !== undefined) payload.reopen_count = fields.reopenCount;
   if (fields.archived !== undefined) payload.archived = fields.archived;
+  if (fields.attachments !== undefined) {
+    const attachments = parseAttachments(fields.attachments);
+    payload.attachments = attachments;
+    payload.evidence_url = attachments[0]?.url ?? null;
+  }
+  if (fields.duplicateOfBugId !== undefined) payload.duplicate_of_bug_id = fields.duplicateOfBugId || null;
+  if (fields.reproChecklist !== undefined) payload.repro_checklist = parseReproChecklist(fields.reproChecklist);
+
+  const { data: previous } = await supabase
+    .from("bugs")
+    .select("criticism, status")
+    .eq("id", bugId)
+    .maybeSingle();
 
   const { error } = await supabase.from("bugs").update(payload).eq("id", bugId);
   if (error) handleDbError(error, OperationType.UPDATE, `bugs/${bugId}`);
@@ -324,6 +376,11 @@ export async function updateBugField(
       bugId,
     });
   }
+
+  const becameBlocker = fields.criticism === "blocker" && previous?.criticism !== "blocker";
+  const becameReady = fields.status === "ready_for_qa" && previous?.status !== "ready_for_qa";
+  if (becameBlocker) void notifyWebhook({ roomId: warRoomId, bugId, kind: "blocker" });
+  if (becameReady) void notifyWebhook({ roomId: warRoomId, bugId, kind: "ready_for_qa" });
 }
 
 export async function archiveBug(
@@ -341,6 +398,144 @@ export async function archiveBug(
     "Arquivou o card",
     "archive"
   );
+}
+
+export async function fetchAccessibleRooms(): Promise<
+  Array<Pick<WarRoom, "id" | "name" | "roomType" | "project">>
+> {
+  const { data, error } = await supabase
+    .from("war_rooms")
+    .select("id, name, room_type, project")
+    .order("name");
+  if (error) {
+    console.error("fetchAccessibleRooms:", error);
+    return [];
+  }
+  return (data || []).map((row) => ({
+    id: row.id as string,
+    name: (row.name as string) || row.id,
+    roomType: (row.room_type as WarRoom["roomType"]) || "war_room",
+    project: (row.project as string) || "",
+  }));
+}
+
+export async function findPermanentBoardForWarRoom(
+  warRoom: Pick<WarRoom, "id" | "project">
+): Promise<{ roomId: string; name: string } | null> {
+  if (!warRoom.project.trim()) return null;
+  const { data: project } = await supabase
+    .from("projects")
+    .select("war_room_id, name")
+    .eq("name", warRoom.project)
+    .maybeSingle();
+  if (project?.war_room_id && project.war_room_id !== warRoom.id) {
+    return { roomId: project.war_room_id as string, name: (project.name as string) || warRoom.project };
+  }
+  const { data: board } = await supabase
+    .from("war_rooms")
+    .select("id, name")
+    .eq("project", warRoom.project)
+    .eq("room_type", "board")
+    .neq("id", warRoom.id)
+    .maybeSingle();
+  if (board?.id) {
+    return { roomId: board.id as string, name: (board.name as string) || warRoom.project };
+  }
+  return null;
+}
+
+export async function copyBugToRoom(
+  bug: Bug,
+  targetRoomId: string,
+  userId: string,
+  userName: string,
+  options?: { archiveSource?: boolean; skipWebhook?: boolean }
+): Promise<string> {
+  if (targetRoomId === bug.warRoomId) {
+    throw new Error("Escolha outra sala.");
+  }
+  const copied = [];
+  for (const attachment of attachmentsOf(bug)) {
+    if (attachment.kind === "link") {
+      copied.push(makeAttachment(attachment.url, "link"));
+      continue;
+    }
+    copied.push(makeAttachment(await copyEvidenceToRoom(attachment.url, targetRoomId), attachment.kind));
+  }
+  const newId = await createBug(
+    {
+      warRoomId: targetRoomId,
+      title: bug.title,
+      description: bug.description,
+      criticism: bug.criticism,
+      status: bug.status,
+      kanbanColumnId: bug.kanbanColumnId ?? bug.status,
+      attachments: copied,
+      evidenceUrl: copied[0]?.url,
+      prototypeUrl: copied.find((item) => item.kind === "prototype")?.url,
+      duplicateOfBugId: bug.duplicateOfBugId || null,
+      reproChecklist: bug.reproChecklist || [],
+      ownerId: bug.ownerId,
+      ownerName: bug.ownerName,
+      environment: bug.environment,
+      affectedUrl: bug.affectedUrl,
+      buildVersion: bug.buildVersion,
+      tags: bug.tags,
+      priority: bug.priority,
+      type: bug.type,
+      createdBy: userId,
+      createdByName: userName,
+    },
+    userId,
+    userName,
+    { skipWebhook: options?.skipWebhook ?? true }
+  );
+  if (options?.archiveSource) {
+    await archiveBug(bug.id, bug.warRoomId, userId, userName);
+  }
+  return newId;
+}
+
+export async function applyLeftoverAction(
+  bugs: Bug[],
+  action: "keep" | "move" | "archive",
+  userId: string,
+  userName: string,
+  targetRoomId?: string
+): Promise<void> {
+  if (action === "keep" || bugs.length === 0) return;
+  if (action === "archive") {
+    for (const bug of bugs) {
+      await archiveBug(bug.id, bug.warRoomId, userId, userName);
+    }
+    return;
+  }
+  if (!targetRoomId) throw new Error("Não há board permanente deste projeto.");
+  for (const bug of bugs) {
+    await copyBugToRoom(bug, targetRoomId, userId, userName, {
+      archiveSource: true,
+      skipWebhook: true,
+    });
+  }
+}
+
+export async function fetchOrgWebhookUrl(): Promise<string> {
+  const response = await authFetch("/api/admin/org-webhook");
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Não foi possível ler o webhook."));
+  }
+  const data = (await response.json()) as { url?: string };
+  return String(data.url || "");
+}
+
+export async function saveOrgWebhookUrl(url: string): Promise<void> {
+  const response = await authFetch("/api/admin/org-webhook", {
+    method: "POST",
+    body: JSON.stringify({ url }),
+  });
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Não foi possível salvar o webhook."));
+  }
 }
 
 async function joinWarRoomViaApi(input: string): Promise<string> {
@@ -588,6 +783,25 @@ export async function createComment(
       type: "comment",
       title: `${userName} comentou no seu card`,
       body: (bugRow.title as string) || commentData.text.slice(0, 80),
+      warRoomId: commentData.warRoomId,
+      bugId: commentData.bugId,
+    });
+  }
+
+  const users = await fetchUsersList();
+  const mentioned = findMentionedUsers(
+    commentData.text,
+    users.map((user) => ({ id: user.id, name: user.name }))
+  );
+  const alreadyNotified = new Set<string>([commentData.userId, String(bugRow?.owner_id || "")]);
+  for (const user of mentioned) {
+    if (alreadyNotified.has(user.id)) continue;
+    alreadyNotified.add(user.id);
+    await createNotification({
+      userId: user.id,
+      type: "mention",
+      title: `${userName} mencionou você`,
+      body: (bugRow?.title as string) || commentData.text.slice(0, 80),
       warRoomId: commentData.warRoomId,
       bugId: commentData.bugId,
     });

@@ -2,6 +2,10 @@ export function dashboardPath(): string {
   return "/";
 }
 
+export function inboxPath(): string {
+  return "/inbox";
+}
+
 export function roomPath(roomId: string, pulse?: string | null, cardId?: string | null): string {
   const params = new URLSearchParams();
   params.set("room", roomId);

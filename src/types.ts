@@ -33,6 +33,20 @@ export type BugType =
   | "performance"
   | "security";
 
+export type AttachmentKind = "file" | "link" | "prototype";
+
+export interface BugAttachment {
+  id: string;
+  url: string;
+  kind: AttachmentKind;
+}
+
+export interface ReproItem {
+  id: string;
+  text: string;
+  done: boolean;
+}
+
 export type RoomType = "war_room" | "board";
 
 export interface KanbanColumn {
@@ -80,6 +94,9 @@ export interface Bug {
   tags: string[];
   priority: BugPriority;
   type: BugType;
+  attachments?: BugAttachment[];
+  duplicateOfBugId?: string | null;
+  reproChecklist?: ReproItem[];
   createdAt: string;
   updatedAt: string;
   createdBy: string;

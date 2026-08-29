@@ -60,19 +60,30 @@ export async function signStorageUrl(url: string): Promise<string> {
   return data.signedUrl;
 }
 
-export async function withSignedMedia<T extends { evidenceUrl?: string; prototypeUrl?: string }>(
-  item: T
-): Promise<T> {
+export async function withSignedMedia<T extends {
+  evidenceUrl?: string;
+  prototypeUrl?: string;
+  attachments?: { id: string; url: string; kind: "file" | "link" | "prototype" }[];
+}>(item: T): Promise<T> {
   const evidenceUrl = item.evidenceUrl
     ? await signStorageUrl(item.evidenceUrl)
     : undefined;
   const prototypeUrl = item.prototypeUrl
     ? await signStorageUrl(item.prototypeUrl)
     : undefined;
+  const attachments = item.attachments
+    ? await Promise.all(
+        item.attachments.map(async (attachment) => ({
+          ...attachment,
+          url: safeMediaUrl(await signStorageUrl(attachment.url)) || attachment.url,
+        }))
+      )
+    : undefined;
   return {
     ...item,
     evidenceUrl: evidenceUrl ? safeMediaUrl(evidenceUrl) || evidenceUrl : undefined,
     prototypeUrl: prototypeUrl ? safeMediaUrl(prototypeUrl) || prototypeUrl : undefined,
+    attachments,
   };
 }
 
@@ -100,4 +111,30 @@ export async function uploadEvidenceFile(roomId: string, file: File): Promise<st
 
   const { data } = supabase.storage.from("evidence").getPublicUrl(path);
   return data.publicUrl;
+}
+
+/** Re-uploads a storage object into the target room prefix (RLS is per-room). External https links are kept. */
+export async function copyEvidenceToRoom(sourceUrl: string, targetRoomId: string): Promise<string> {
+  const path = storagePathFromUrl(sourceUrl);
+  if (!path) {
+    const safe = safeMediaUrl(sourceUrl);
+    if (!safe) throw new Error("Anexo inválido para copiar.");
+    return safe;
+  }
+  const signed = await signStorageUrl(sourceUrl);
+  const response = await fetch(signed);
+  if (!response.ok) throw new Error("Não foi possível copiar o anexo.");
+  const blob = await response.blob();
+  const ext = (path.split(".").pop() || "png").toLowerCase();
+  const mimeByExt: Record<string, string> = {
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    webp: "image/webp",
+    gif: "image/gif",
+    avif: "image/avif",
+  };
+  const type = blob.type && blob.type.startsWith("image/") ? blob.type : mimeByExt[ext] || "image/png";
+  const file = new File([blob], `copy.${ext}`, { type });
+  return uploadEvidenceFile(targetRoomId, file);
 }
