@@ -2,11 +2,12 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
-import { generateExecutiveReport } from "./api-src/ai/generate-report";
-import { clientErrorMessage, httpErrorStatus, requireAdmin, requireSuperadmin, requireUser } from "./api-src/shared/auth";
+import { generateExecutiveReportForRoom } from "./api-src/ai/generate-report";
+import { clientErrorMessage, httpErrorStatus, requireAdmin, requireAiUser, requireSuperadmin, requireUser } from "./api-src/shared/auth";
 import { adminCreateUser, adminDeleteUser, adminMoveUser } from "./api-src/shared/adminUsers";
 import { createOrganizationWithAdmin, resolveActorOrganizationId } from "./api-src/shared/organizations";
-import { inviteToRoom, joinRoom, validateGuestRoom } from "./api-src/shared/rooms";
+import { appRedirectTo } from "./api-src/shared/appUrl";
+import { assertActorCanAccessRoom, inviteToRoom, joinRoom, validateGuestRoom } from "./api-src/shared/rooms";
 import { detectDuplicate, suggestBugFields } from "./api-src/shared/geminiBugs";
 
 dotenv.config();
@@ -112,7 +113,6 @@ app.post("/api/rooms/join", async (req, res) => {
 app.post("/api/rooms/invite", async (req, res) => {
   try {
     const authed = await requireUser(req.headers.authorization);
-    const origin = String(req.headers.origin || process.env.APP_URL || `http://localhost:${PORT}`);
     const result = await inviteToRoom({
       actorId: authed.user.id,
       actorRole: authed.role,
@@ -120,7 +120,7 @@ app.post("/api/rooms/invite", async (req, res) => {
       isSuperadmin: authed.isSuperadmin,
       roomId: String(req.body?.roomId || ""),
       email: String(req.body?.email || ""),
-      redirectTo: `${origin.replace(/\/$/, "")}/`,
+      redirectTo: appRedirectTo(),
     });
     res.json(result);
   } catch (error) {
@@ -130,7 +130,7 @@ app.post("/api/rooms/invite", async (req, res) => {
 
 app.post("/api/ai/suggest-bug-fields", async (req, res) => {
   try {
-    await requireUser(req.headers.authorization);
+    await requireAiUser(req.headers.authorization);
     const result = await suggestBugFields(String(req.body?.title || ""), req.body?.description);
     res.json(result);
   } catch (error) {
@@ -140,7 +140,7 @@ app.post("/api/ai/suggest-bug-fields", async (req, res) => {
 
 app.post("/api/ai/detect-duplicate", async (req, res) => {
   try {
-    await requireUser(req.headers.authorization);
+    await requireAiUser(req.headers.authorization);
     const result = await detectDuplicate(
       String(req.body?.title || ""),
       req.body?.description,
@@ -154,8 +154,19 @@ app.post("/api/ai/detect-duplicate", async (req, res) => {
 
 app.post("/api/ai/generate-report", async (req, res) => {
   try {
-    await requireUser(req.headers.authorization);
-    const result = await generateExecutiveReport(req.body?.metrics);
+    const authed = await requireAiUser(req.headers.authorization);
+    const roomId = String(req.body?.roomId || "").trim();
+    await assertActorCanAccessRoom(
+      {
+        id: authed.user.id,
+        role: authed.role,
+        organizationId: authed.organizationId,
+        isSuperadmin: authed.isSuperadmin,
+        isGuest: authed.isGuest,
+      },
+      roomId
+    );
+    const result = await generateExecutiveReportForRoom(roomId);
     res.json(result);
   } catch (error) {
     sendError(res, error, "Falha ao gerar relatório executivo.");

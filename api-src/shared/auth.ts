@@ -68,6 +68,32 @@ export async function requireSuperadmin(authHeader: string | undefined): Promise
   return authed;
 }
 
+const AI_WINDOW_MS = 10 * 60 * 1000;
+const AI_MAX_HITS = 20;
+const aiHits = new Map<string, number[]>();
+
+export function assertAiRateLimit(userId: string): void {
+  const now = Date.now();
+  const recent = (aiHits.get(userId) || []).filter((t) => now - t < AI_WINDOW_MS);
+  if (recent.length >= AI_MAX_HITS) {
+    throw Object.assign(new Error("Muitas solicitações de IA. Tente de novo em alguns minutos."), {
+      status: 429,
+    });
+  }
+  recent.push(now);
+  aiHits.set(userId, recent);
+}
+
+/** Viewer/guest cannot spend AI quota. */
+export async function requireAiUser(authHeader: string | undefined): Promise<AuthedUser> {
+  const authed = await requireUser(authHeader);
+  if (authed.isGuest || authed.role === "viewer") {
+    throw Object.assign(new Error("Apenas quem escreve cards pode usar a IA."), { status: 403 });
+  }
+  assertAiRateLimit(authed.user.id);
+  return authed;
+}
+
 export function httpErrorStatus(error: unknown, fallback = 500): number {
   if (error && typeof error === "object") {
     if ("status" in error && typeof (error as { status: unknown }).status === "number") {

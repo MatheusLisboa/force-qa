@@ -8,23 +8,72 @@ const ALLOWED_TYPES: Record<string, string> = {
   "image/gif": "gif",
   "image/avif": "avif",
 };
+const SIGNED_URL_TTL_SEC = 60 * 60;
 
-/** Returns true when evidence should render as an image (storage, http image, or legacy base64). */
+const STORAGE_OBJECT_RE = /\/storage\/v1\/object\/(?:public|sign)\/evidence\/([^?]+)/i;
+
+export function storagePathFromUrl(url: string): string | null {
+  const match = url.match(STORAGE_OBJECT_RE);
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
+}
+
+/** https only. Rejects javascript:, data:, http:. Storage URLs (https) pass. */
+export function safeMediaUrl(url: string | undefined | null): string | undefined {
+  if (!url) return undefined;
+  const trimmed = url.trim();
+  if (!trimmed) return undefined;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== "https:") return undefined;
+    return trimmed;
+  } catch {
+    return undefined;
+  }
+}
+
 export function isImageEvidence(url: string): boolean {
-  if (url.startsWith("data:image/")) return true;
-  if (url.includes("/storage/v1/object/public/evidence/")) return true;
-  if (!/^https?:\/\//i.test(url)) return false;
-  return /\.(png|jpe?g|gif|webp|bmp|svg|avif)(\?.*)?$/i.test(url);
+  const safe = safeMediaUrl(url);
+  if (!safe) return false;
+  if (storagePathFromUrl(safe)) return true;
+  return /\.(png|jpe?g|gif|webp|bmp|svg|avif)(\?.*)?$/i.test(safe.split("?")[0]);
 }
 
 export function isHttpEvidence(url: string): boolean {
-  return /^https?:\/\//i.test(url);
+  return Boolean(safeMediaUrl(url));
 }
 
 export function evidenceLabel(url: string): "image" | "link" {
   if (isImageEvidence(url)) return "image";
-  if (isHttpEvidence(url)) return "link";
   return "link";
+}
+
+export async function signStorageUrl(url: string): Promise<string> {
+  const path = storagePathFromUrl(url);
+  if (!path) return safeMediaUrl(url) || url;
+  const { data, error } = await supabase.storage.from("evidence").createSignedUrl(path, SIGNED_URL_TTL_SEC);
+  if (error || !data?.signedUrl) return url;
+  return data.signedUrl;
+}
+
+export async function withSignedMedia<T extends { evidenceUrl?: string; prototypeUrl?: string }>(
+  item: T
+): Promise<T> {
+  const evidenceUrl = item.evidenceUrl
+    ? await signStorageUrl(item.evidenceUrl)
+    : undefined;
+  const prototypeUrl = item.prototypeUrl
+    ? await signStorageUrl(item.prototypeUrl)
+    : undefined;
+  return {
+    ...item,
+    evidenceUrl: evidenceUrl ? safeMediaUrl(evidenceUrl) || evidenceUrl : undefined,
+    prototypeUrl: prototypeUrl ? safeMediaUrl(prototypeUrl) || prototypeUrl : undefined,
+  };
 }
 
 export async function uploadEvidenceFile(roomId: string, file: File): Promise<string> {

@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { httpErrorStatus, readJsonBody, requireUser } from "../shared/auth";
+import { appRedirectTo } from "../shared/appUrl";
 import { inviteToRoom } from "../shared/rooms";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -11,7 +12,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const authed = await requireUser(req.headers.authorization);
     const body = readJsonBody(req.body);
-    const origin = String(req.headers.origin || process.env.APP_URL || "https://force-qa.vercel.app");
     const result = await inviteToRoom({
       actorId: authed.user.id,
       actorRole: authed.role,
@@ -19,7 +19,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       isSuperadmin: authed.isSuperadmin,
       roomId: String(body.roomId || ""),
       email: String(body.email || ""),
-      redirectTo: `${origin.replace(/\/$/, "")}/`,
+      redirectTo: appRedirectTo(),
     });
     return res.status(200).json(result);
   } catch (error: unknown) {

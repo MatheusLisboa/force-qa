@@ -5,7 +5,7 @@ import { useToast } from "../context/ToastContext";
 import { useConfirm } from "../context/ConfirmContext";
 import { useAuth } from "../context/AuthContext";
 import { Bug, BugComment, ActivityLog, BugStatus } from "../types";
-import { isImageEvidence } from "../lib/evidence";
+import { isImageEvidence, safeMediaUrl } from "../lib/evidence";
 import { truncateForLog, getStatusLabel, ENVIRONMENT_LABELS } from "../lib/bugLabels";
 import { BugTypeTag } from "./BugTypeTag";
 import { SeverityBadge, StatusBadge } from "./BugBadges";
@@ -69,6 +69,8 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
   useModalA11y(isFullscreenEvidence && !!fullscreenUrl, closeEvidenceFullscreen, evidenceDialogRef);
 
   const canEdit = canWriteBugs(profile?.role);
+  const evidenceUrl = safeMediaUrl(activeBug.evidenceUrl);
+  const prototypeUrl = safeMediaUrl(activeBug.prototypeUrl);
 
   useEffect(() => {
     const unsubscribeBug = subscribeBug(bug.id, (b) => {
@@ -268,7 +270,9 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
   };
 
   const openEvidence = (url: string) => {
-    setFullscreenUrl(url);
+    const safe = safeMediaUrl(url);
+    if (!safe) return;
+    setFullscreenUrl(safe);
     setIsFullscreenEvidence(true);
   };
 
@@ -372,33 +376,33 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
 
         <div className="fq-bug-modal-body">
           <div className="fq-bug-modal-main">
-            {(activeBug.evidenceUrl || activeBug.prototypeUrl) && (
+            {(evidenceUrl || prototypeUrl) && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {activeBug.evidenceUrl && (
+                {evidenceUrl && (
                   <div className="space-y-1.5">
                     <span className="text-[12px] text-neutral-500 font-medium">
-                      {isImageEvidence(activeBug.evidenceUrl) ? "Evidência" : "Link de evidência"}
+                      {isImageEvidence(evidenceUrl) ? "Evidência" : "Link de evidência"}
                     </span>
-                    {isImageEvidence(activeBug.evidenceUrl) ? (
-                      <div onClick={() => openEvidence(activeBug.evidenceUrl!)} className="fq-evidence-thumb group !max-h-[220px]">
-                        <img src={activeBug.evidenceUrl} alt="Evidência do Bug" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                    {isImageEvidence(evidenceUrl) ? (
+                      <div onClick={() => openEvidence(evidenceUrl)} className="fq-evidence-thumb group !max-h-[220px]">
+                        <img src={evidenceUrl} alt="Evidência do Bug" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
                         <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-xs text-white font-mono transition">
                           Ampliar
                         </div>
                       </div>
                     ) : (
-                      <a href={activeBug.evidenceUrl} target="_blank" rel="noopener noreferrer" className="fq-evidence-link group !p-3">
+                      <a href={evidenceUrl} target="_blank" rel="noopener noreferrer" className="fq-evidence-link group !p-3">
                         <ExternalLink className="w-4 h-4 text-neutral-400 shrink-0 group-hover:text-neutral-200" />
-                        <span className="text-xs font-mono break-all line-clamp-2">{activeBug.evidenceUrl}</span>
+                        <span className="text-xs font-mono break-all line-clamp-2">{evidenceUrl}</span>
                       </a>
                     )}
                   </div>
                 )}
-                {activeBug.prototypeUrl && (
+                {prototypeUrl && (
                   <div className="space-y-1.5">
                     <span className="text-[12px] text-neutral-500 font-medium">Protótipo</span>
-                    <div onClick={() => openEvidence(activeBug.prototypeUrl!)} className="fq-evidence-thumb group !max-h-[220px]">
-                      <img src={activeBug.prototypeUrl} alt="Protótipo Original" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                    <div onClick={() => openEvidence(prototypeUrl)} className="fq-evidence-thumb group !max-h-[220px]">
+                      <img src={prototypeUrl} alt="Protótipo Original" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
                     </div>
                   </div>
                 )}

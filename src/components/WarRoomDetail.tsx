@@ -57,6 +57,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
   onBack,
 }) => {
   const { profile } = useAuth();
+  const canUseAi = canWriteBugs(profile?.role) && !profile?.isGuest;
   const { toast } = useToast();
   const { confirm } = useConfirm();
   const [copied, setCopied] = useState(false);
@@ -501,6 +502,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
                   <FileSpreadsheet className="w-3.5 h-3.5 text-neutral-500" />
                   Exportar CSV
                 </button>
+                {canUseAi && (
                 <button
                   type="button"
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-neutral-200 hover:bg-white/[0.05]"
@@ -512,6 +514,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
                   <Brain className="w-3.5 h-3.5 text-neutral-500" />
                   Relatório IA
                 </button>
+                )}
                 <button
                   type="button"
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-neutral-200 hover:bg-white/[0.05]"
@@ -821,7 +824,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
         </div>
       )}
 
-      {activeTab === "ai_report" && (
+      {activeTab === "ai_report" && canUseAi && (
         <div className="space-y-5">
           <div className="fq-analytics-panel">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-white/[0.06] pb-4 mb-6">

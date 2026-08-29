@@ -70,7 +70,7 @@ export interface Bug {
   criticism: SeverityLevel;
   status: BugStatus;
   kanbanColumnId?: string;
-  evidenceUrl?: string; // Storage public URL or external link
+  evidenceUrl?: string; // https Storage/object URL or https external link
   prototypeUrl?: string;
   ownerId: string | null;
   ownerName: string | null;

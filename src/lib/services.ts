@@ -16,7 +16,7 @@ import {
   AIDuplicateCheck,
   UserProfile,
 } from "../types";
-import type { BoardReportMetrics, AIExecutiveReport } from "./aiReport/types";
+import type { AIExecutiveReport } from "./aiReport/types";
 import { BoardView, BoardViewFilters, Project, AppNotification, OrganizationOverview } from "../types";
 import { DEFAULT_KANBAN_COLUMNS } from "./kanbanColumns";
 import { slugifyBoardViewName } from "./boardViews";
@@ -24,6 +24,7 @@ import { authFetch, readApiError } from "./apiClient";
 import { diffRoomAccess } from "./roomAccess";
 import { normalizeArea } from "./squads";
 import { resolveOrganizationId } from "./organizations";
+import { safeMediaUrl } from "./evidence";
 
 function cleanUndefined<T extends object>(obj: T): T {
   const result = { ...obj } as Record<string, unknown>;
@@ -198,8 +199,16 @@ export async function createBug(
     if (data.evidenceUrl?.startsWith("data:")) {
       throw new Error("Evidências devem ser enviadas como arquivo (Storage), não Base64.");
     }
+    const evidenceUrl = data.evidenceUrl ? safeMediaUrl(data.evidenceUrl) : undefined;
+    if (data.evidenceUrl && !evidenceUrl) {
+      throw new Error("O link de evidência precisa ser https://");
+    }
     if (data.prototypeUrl?.startsWith("data:")) {
       throw new Error("Protótipos devem ser enviados como arquivo (Storage), não Base64.");
+    }
+    const prototypeUrl = data.prototypeUrl ? safeMediaUrl(data.prototypeUrl) : undefined;
+    if (data.prototypeUrl && !prototypeUrl) {
+      throw new Error("O link de protótipo precisa ser https://");
     }
     const now = new Date().toISOString();
     const row = cleanUndefined({
@@ -210,8 +219,8 @@ export async function createBug(
       criticism: data.criticism,
       status: data.status,
       kanban_column_id: data.kanbanColumnId ?? data.status,
-      evidence_url: data.evidenceUrl,
-      prototype_url: data.prototypeUrl,
+      evidence_url: evidenceUrl,
+      prototype_url: prototypeUrl,
       owner_id: data.ownerId,
       owner_name: data.ownerName,
       environment: data.environment,
@@ -264,8 +273,24 @@ export async function updateBugField(
     if (fields.status === "validated") payload.resolved_at = now;
   }
   if (fields.kanbanColumnId !== undefined) payload.kanban_column_id = fields.kanbanColumnId;
-  if (fields.evidenceUrl !== undefined) payload.evidence_url = fields.evidenceUrl;
-  if (fields.prototypeUrl !== undefined) payload.prototype_url = fields.prototypeUrl;
+  if (fields.evidenceUrl !== undefined) {
+    if (fields.evidenceUrl === "") {
+      payload.evidence_url = null;
+    } else {
+      const evidenceUrl = safeMediaUrl(fields.evidenceUrl);
+      if (!evidenceUrl) throw new Error("O link de evidência precisa ser https://");
+      payload.evidence_url = evidenceUrl;
+    }
+  }
+  if (fields.prototypeUrl !== undefined) {
+    if (fields.prototypeUrl === "") {
+      payload.prototype_url = null;
+    } else {
+      const prototypeUrl = safeMediaUrl(fields.prototypeUrl);
+      if (!prototypeUrl) throw new Error("O link de protótipo precisa ser https://");
+      payload.prototype_url = prototypeUrl;
+    }
+  }
   if (fields.ownerId !== undefined) payload.owner_id = fields.ownerId;
   if (fields.ownerName !== undefined) payload.owner_name = fields.ownerName;
   if (fields.environment !== undefined) payload.environment = fields.environment;
@@ -332,7 +357,7 @@ async function joinWarRoomViaApi(input: string): Promise<string> {
 
 export async function joinWarRoom(input: string): Promise<string> {
   const trimmed = parseRoomInvite(input);
-  if (!trimmed) throw new Error("Cole o link da sala, o ID ou o nome.");
+  if (!trimmed) throw new Error("Cole o link da sala ou o ID.");
 
   const { data: sessionData } = await supabase.auth.getSession();
   const userId = sessionData.session?.user.id;
@@ -754,11 +779,11 @@ export async function fetchAIDuplicateCheck(
 }
 
 export async function fetchAIExecutiveReport(
-  metrics: BoardReportMetrics
+  roomId: string
 ): Promise<AIExecutiveReport> {
   const response = await authFetch("/api/ai/generate-report", {
     method: "POST",
-    body: JSON.stringify({ metrics }),
+    body: JSON.stringify({ roomId }),
   });
   if (!response.ok) {
     throw new Error(await readApiError(response, "Falha ao gerar relatório executivo."));

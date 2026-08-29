@@ -109,9 +109,7 @@ export async function adminCreateUser(params: {
     app_metadata: { role },
     user_metadata: {
       name,
-      role,
       squad,
-      organization_id: DEFAULT_ORGANIZATION_ID,
     },
   });
   if (error && isEmailTakenError(error) && params.adoptOrphan) {
@@ -127,9 +125,7 @@ export async function adminCreateUser(params: {
           app_metadata: { role },
           user_metadata: {
             name,
-            role,
             squad,
-            organization_id: DEFAULT_ORGANIZATION_ID,
           },
         }));
       }
@@ -233,12 +229,10 @@ async function stampAdoptedUser(
   const { error: authError } = await admin.auth.admin.updateUserById(userId, {
     password: params.password,
     email_confirm: true,
-    app_metadata: { role: params.role },
+    app_metadata: { role: params.role, organization_id: params.organizationId },
     user_metadata: {
       name: params.name,
-      role: params.role,
       squad: params.squad,
-      organization_id: params.organizationId,
     },
   });
   if (authError) throw wrapThrownError(authError, "Falha ao atualizar o admin no Auth.");

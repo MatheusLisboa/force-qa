@@ -287,11 +287,11 @@ export const LoginScreen: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="fq-label">ID da war room</label>
+                    <label className="fq-label">Link ou ID da sala</label>
                     <input
                       type="text"
                       required
-                      placeholder="Cole o ID compartilhado com você"
+                      placeholder="Cole o link da sala ou o ID"
                       className="fq-input"
                       value={warRoomName}
                       onChange={(e) => setWarRoomName(e.target.value)}

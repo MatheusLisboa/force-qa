@@ -1,5 +1,8 @@
 -- ForceQA Supabase schema
 -- Run in Supabase SQL Editor: https://supabase.com/dashboard/project/bdvpzgrgwgcvfgflelbn/sql
+--
+-- NÃO use este arquivo sozinho em produção. As policies iniciais são permissivas
+-- (USING true) e só ficam isoladas depois das migrations 8–14 em 00_run_order.sql.
 
 -- ---------------------------------------------------------------------------
 -- Tables

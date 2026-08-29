@@ -23,21 +23,16 @@ function extractRoomToken(input: string): string {
 export async function validateGuestRoom(input: string): Promise<{ id: string; name: string }> {
   const trimmed = extractRoomToken(input);
   if (!trimmed) {
-    throw Object.assign(new Error("Cole o link da sala, o ID ou o nome."), { status: 400 });
+    throw Object.assign(new Error("Cole o link da sala ou o ID."), { status: 400 });
   }
 
   const admin = getSupabaseAdmin();
   const { data: byId } = await admin.from("war_rooms").select("id, name, guest_access_disabled").eq("id", trimmed).maybeSingle();
-  const row = byId
-    ?? (await admin.from("war_rooms").select("id, name, guest_access_disabled").ilike("name", trimmed).limit(1).maybeSingle()).data;
 
-  if (!row) {
-    throw Object.assign(new Error("A sala informada não existe. Verifique o ID ou o nome."), { status: 404 });
+  if (!byId || byId.guest_access_disabled) {
+    throw Object.assign(new Error("A sala informada não existe. Verifique o link ou o ID."), { status: 404 });
   }
-  if (row.guest_access_disabled) {
-    throw Object.assign(new Error("O acesso de convidados para esta sala foi desativado."), { status: 403 });
-  }
-  return { id: row.id as string, name: row.name as string };
+  return { id: byId.id as string, name: byId.name as string };
 }
 
 export async function joinRoom(
@@ -48,23 +43,21 @@ export async function joinRoom(
 ): Promise<string> {
   const trimmed = extractRoomToken(input);
   if (!trimmed) {
-    throw Object.assign(new Error("Cole o link da sala, o ID ou o nome."), { status: 400 });
+    throw Object.assign(new Error("Cole o link da sala ou o ID."), { status: 400 });
   }
 
   const admin = getSupabaseAdmin();
   const { data: byId } = await admin.from("war_rooms").select("id, guest_access_disabled, organization_id").eq("id", trimmed).maybeSingle();
-  const row = byId
-    ?? (await admin.from("war_rooms").select("id, guest_access_disabled, organization_id").ilike("name", trimmed).limit(1).maybeSingle()).data;
 
-  if (!row) {
-    throw Object.assign(new Error("Sala não encontrada. Confira o ID ou o nome."), { status: 404 });
+  if (!byId) {
+    throw Object.assign(new Error("Sala não encontrada. Confira o link ou o ID."), { status: 404 });
   }
-  if (isGuest && row.guest_access_disabled) {
+  if (isGuest && byId.guest_access_disabled) {
     throw Object.assign(new Error("O acesso de convidados para esta sala foi desativado."), { status: 403 });
   }
 
-  const roomId = row.id as string;
-  const roomOrgId = row.organization_id as string | null;
+  const roomId = byId.id as string;
+  const roomOrgId = byId.organization_id as string | null;
 
   if (!isGuest) {
     if (
@@ -86,10 +79,6 @@ export async function joinRoom(
       new Error("Você não tem acesso a esta sala. Peça a um admin para adicionar você em Usuários."),
       { status: 403 }
     );
-  }
-
-  if (roomOrgId) {
-    await admin.from("users").update({ organization_id: roomOrgId }).eq("id", userId);
   }
 
   const { error } = await admin.from("room_members").insert({
@@ -162,12 +151,19 @@ export async function inviteToRoom(params: {
   if (!userId) {
     const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
       redirectTo: params.redirectTo,
-      data: { squad: "", name: email.split("@")[0], organization_id: roomOrgId || params.actorOrganizationId },
+      data: { squad: "", name: email.split("@")[0] },
     });
     if (error) throw error;
     if (!data.user) throw new Error("Falha ao enviar o convite.");
     userId = data.user.id;
     invited = true;
+    const orgForUser = roomOrgId || params.actorOrganizationId;
+    const { error: metaError } = await admin.auth.admin.updateUserById(userId, {
+      app_metadata: { role: "viewer", organization_id: orgForUser },
+    });
+    if (metaError) throw metaError;
+    const { error: orgError } = await admin.from("users").update({ organization_id: orgForUser }).eq("id", userId);
+    if (orgError) throw orgError;
   }
 
   const { data: already } = await admin
@@ -201,3 +197,42 @@ export async function inviteToRoom(params: {
 
   return { userId, invited, alreadyMember: false };
 }
+
+export async function assertActorCanAccessRoom(
+  actor: { id: string; role: string; organizationId: string; isSuperadmin: boolean; isGuest: boolean },
+  roomId: string
+): Promise<void> {
+  if (!roomId) {
+    throw Object.assign(new Error("ID da sala é obrigatório."), { status: 400 });
+  }
+  const admin = getSupabaseAdmin();
+  const { data: room } = await admin.from("war_rooms").select("id, organization_id").eq("id", roomId).maybeSingle();
+  if (!room) {
+    throw Object.assign(new Error("Sala não encontrada."), { status: 404 });
+  }
+  if (actor.isSuperadmin) return;
+
+  const { data: membership } = await admin
+    .from("room_members")
+    .select("user_id")
+    .eq("war_room_id", roomId)
+    .eq("user_id", actor.id)
+    .maybeSingle();
+
+  if (actor.isGuest) {
+    if (!membership) {
+      throw Object.assign(new Error("Você não tem acesso a esta sala."), { status: 403 });
+    }
+    return;
+  }
+
+  const roomOrgId = room.organization_id as string | null;
+  if (roomOrgId && roomOrgId !== actor.organizationId) {
+    throw Object.assign(new Error("Esta sala pertence a outra organização."), { status: 403 });
+  }
+  if (actor.role === "admin") return;
+  if (!membership) {
+    throw Object.assign(new Error("Você precisa ser membro da sala."), { status: 403 });
+  }
+}
+

@@ -186,13 +186,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       email: trimmedEmail,
       password,
       options: {
-        data: {
-          name: newUserProfile.name,
-          role: safeRole,
-          squad: newUserProfile.squad,
-          organization_id: newUserProfile.organizationId,
-          is_guest: false,
-        },
+          data: {
+            name: newUserProfile.name,
+            squad: newUserProfile.squad,
+            is_guest: false,
+          },
       },
     });
 
@@ -271,9 +269,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         options: {
           data: {
             name: name.trim(),
-            role: "viewer",
             squad: normalizeArea(squad),
-            organization_id: DEFAULT_ORGANIZATION_ID,
             is_guest: true,
           },
         },

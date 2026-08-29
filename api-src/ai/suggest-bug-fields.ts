@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { httpErrorStatus, readJsonBody, requireUser } from "../shared/auth";
+import { httpErrorStatus, readJsonBody, requireAiUser } from "../shared/auth";
 import { suggestBugFields } from "../shared/geminiBugs";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -9,7 +9,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    await requireUser(req.headers.authorization);
+    await requireAiUser(req.headers.authorization);
     const body = readJsonBody(req.body);
     const result = await suggestBugFields(
       String(body.title || ""),

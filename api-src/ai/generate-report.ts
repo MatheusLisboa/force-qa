@@ -1,5 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { httpErrorStatus, readJsonBody, requireUser } from "../shared/auth";
+import { getSupabaseAdmin, httpErrorStatus, readJsonBody, requireAiUser } from "../shared/auth";
+import { assertActorCanAccessRoom } from "../shared/rooms";
+import { aggregateBoardMetrics } from "../../src/lib/aiReport/aggregateMetrics";
+import type { Bug, WarRoom } from "../../src/types";
 
 // ---------------------------------------------------------------------------
 // AI Report
@@ -170,7 +173,7 @@ export async function generateExecutiveReport(
   metrics: unknown
 ): Promise<GenerateReportResult> {
   if (!metrics || typeof metrics !== "object") {
-    throw new Error("Métricas agregadas são obrigatórias.");
+    throw Object.assign(new Error("Métricas agregadas são obrigatórias."), { status: 400 });
   }
 
   const provider = createAIProvider();
@@ -186,9 +189,72 @@ export async function generateExecutiveReport(
   };
 }
 
-// ---------------------------------------------------------------------------
-// Vercel serverless handler
-// ---------------------------------------------------------------------------
+function rowToWarRoom(row: Record<string, unknown>): WarRoom {
+  return {
+    id: String(row.id),
+    name: String(row.name || ""),
+    project: String(row.project || ""),
+    squad: String(row.squad || ""),
+    date: String(row.date || ""),
+    periodEnd: (row.period_end as string) || "",
+    description: String(row.description || ""),
+    severity: (row.severity as WarRoom["severity"]) || "medium",
+    status: (row.status as WarRoom["status"]) || "active",
+    roomType: (row.room_type as WarRoom["roomType"]) || "war_room",
+    createdAt: String(row.created_at || ""),
+    createdBy: String(row.created_by || ""),
+    createdByName: (row.created_by_name as string) || undefined,
+    organizationId: (row.organization_id as string) || undefined,
+  };
+}
+
+function rowToBug(row: Record<string, unknown>): Bug {
+  return {
+    id: String(row.id),
+    warRoomId: String(row.war_room_id),
+    title: String(row.title || ""),
+    description: String(row.description || ""),
+    criticism: row.criticism as Bug["criticism"],
+    status: row.status as Bug["status"],
+    kanbanColumnId: (row.kanban_column_id as string) || undefined,
+    ownerId: (row.owner_id as string) || null,
+    ownerName: (row.owner_name as string) || null,
+    environment: (row.environment as Bug["environment"]) || "homologation",
+    tags: (row.tags as string[]) || [],
+    priority: (row.priority as Bug["priority"]) || "medium",
+    type: (row.type as Bug["type"]) || "bug",
+    createdAt: String(row.created_at || ""),
+    updatedAt: String(row.updated_at || ""),
+    createdBy: String(row.created_by || ""),
+    createdByName: String(row.created_by_name || ""),
+    resolvedAt: (row.resolved_at as string) || undefined,
+    reopenCount: (row.reopen_count as number) || 0,
+    archived: Boolean(row.archived),
+  };
+}
+
+export async function generateExecutiveReportForRoom(roomId: string): Promise<GenerateReportResult> {
+  const admin = getSupabaseAdmin();
+  const { data: roomRow, error: roomError } = await admin
+    .from("war_rooms")
+    .select("*")
+    .eq("id", roomId)
+    .maybeSingle();
+  if (roomError) throw roomError;
+  if (!roomRow) {
+    throw Object.assign(new Error("Sala não encontrada."), { status: 404 });
+  }
+
+  const { data: bugRows, error: bugError } = await admin
+    .from("bugs")
+    .select("*")
+    .eq("war_room_id", roomId)
+    .eq("archived", false);
+  if (bugError) throw bugError;
+
+  const metrics = aggregateBoardMetrics(rowToWarRoom(roomRow), (bugRows || []).map(rowToBug));
+  return generateExecutiveReport(metrics);
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
@@ -197,9 +263,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    await requireUser(req.headers.authorization);
+    const authed = await requireAiUser(req.headers.authorization);
     const body = readJsonBody(req.body);
-    const result = await generateExecutiveReport(body.metrics);
+    const roomId = String(body.roomId || "").trim();
+    await assertActorCanAccessRoom(
+      {
+        id: authed.user.id,
+        role: authed.role,
+        organizationId: authed.organizationId,
+        isSuperadmin: authed.isSuperadmin,
+        isGuest: authed.isGuest,
+      },
+      roomId
+    );
+    const result = await generateExecutiveReportForRoom(roomId);
     return res.status(200).json(result);
   } catch (error: unknown) {
     const message =

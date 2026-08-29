@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Brain, Copy, Download, Sparkles, X } from "lucide-react";
 import { Bug, WarRoom } from "../types";
-import { aggregateBoardMetrics } from "../lib/aiReport/aggregateMetrics";
 import { fetchAIExecutiveReport } from "../lib/services";
 import { AIExecutiveReport } from "../lib/aiReport/types";
 import { useModalA11y } from "../hooks/useModalA11y";
@@ -19,7 +18,6 @@ export const AIReportModal: React.FC<AIReportModalProps> = ({
   isOpen,
   onClose,
   warRoom,
-  bugs,
   autoGenerate = false,
 }) => {
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -41,8 +39,7 @@ export const AIReportModal: React.FC<AIReportModalProps> = ({
     setError("");
     setReport(null);
     try {
-      const metrics = aggregateBoardMetrics(warRoom, bugs);
-      const result = await fetchAIExecutiveReport(metrics);
+      const result = await fetchAIExecutiveReport(warRoom.id);
       setReport(result);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Falha ao gerar relatório.";
@@ -50,7 +47,7 @@ export const AIReportModal: React.FC<AIReportModalProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [warRoom, bugs]);
+  }, [warRoom.id]);
 
   useEffect(() => {
     if (!isOpen) {

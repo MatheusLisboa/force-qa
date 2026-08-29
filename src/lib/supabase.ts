@@ -13,6 +13,7 @@ import { applyRealtimeChange, isIncompleteRow, RealtimeEvent } from "./realtime"
 import { PulseBug } from "./dashboardPulse";
 import { normalizeArea } from "./squads";
 import { resolveOrganizationId } from "./organizations";
+import { withSignedMedia } from "./evidence";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -230,6 +231,7 @@ function subscribeMappedList<T>(options: {
   matches?: (item: T) => boolean;
   requiredKeys?: string[];
   insertAt?: "start" | "end";
+  alwaysRefetch?: boolean;
 }): Unsubscribe {
   let items: T[] = [];
   let refetchTimer: ReturnType<typeof setTimeout> | null = null;
@@ -271,6 +273,7 @@ function subscribeMappedList<T>(options: {
           return;
         }
         const mapped = options.mapRow(raw);
+        if (options.alwaysRefetch) scheduleRefetch();
         if (options.matches && event !== "DELETE" && !options.matches(mapped)) {
           publish(items.filter((item) => options.getId(item) !== options.getId(mapped)));
           return;
@@ -445,13 +448,14 @@ export function subscribeBugsByRoom(
         .eq("archived", false)
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return (data || []).map(toBug);
+      return Promise.all((data || []).map((row) => withSignedMedia(toBug(row))));
     },
     mapRow: toBug,
     getId: (bug) => bug.id,
     onChange: callback,
     matches: (bug) => bug.warRoomId === roomId && !bug.archived,
     requiredKeys: ["id", "war_room_id", "title", "status"],
+    alwaysRefetch: true,
   });
 }
 
@@ -469,7 +473,7 @@ export function subscribeBug(
       console.error("subscribeBug:", error);
       return;
     }
-    callback(data ? toBug(data) : null);
+    callback(data ? await withSignedMedia(toBug(data)) : null);
   };
   return subscribeTable("bugs", fetchRow, `bug-${bugId}`);
 }

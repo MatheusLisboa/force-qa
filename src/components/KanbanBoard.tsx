@@ -1,7 +1,7 @@
 import React from "react";
 import { Bug, KanbanColumn, UserRole } from "../types";
 import { BugTypeTag } from "./BugTypeTag";
-import { evidenceLabel, isImageEvidence } from "../lib/evidence";
+import { evidenceLabel, isImageEvidence, safeMediaUrl } from "../lib/evidence";
 import { canWriteBugs } from "../lib/permissions";
 import { formatOpenAge, isSlaBreached } from "../lib/cardAge";
 import { displayColumnLabel, resolveBugColumnId } from "../lib/kanbanColumns";
@@ -92,7 +92,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                               Atrasado
                             </span>
                           )}
-                          {bug.evidenceUrl && (
+                          {safeMediaUrl(bug.evidenceUrl) && (
                             isImageEvidence(bug.evidenceUrl) ? (
                               <img
                                 src={bug.evidenceUrl}
