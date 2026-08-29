@@ -104,13 +104,13 @@ export const LoginScreen: React.FC = () => {
   return (
     <div className="fq-shell relative flex min-h-screen flex-col justify-between overflow-hidden">
       <div className="fq-header z-10 !relative">
-        <div className="flex items-center gap-2.5">
+        <div className="fq-header-brand">
           <div className="fq-brand-mark">FQ</div>
-          <span className="font-display text-lg font-semibold tracking-tight text-white">
-            ForceQA
-          </span>
+          <span className="fq-header-brand-name">ForceQA</span>
         </div>
-        <span className="text-xs text-neutral-500">QA colaborativo</span>
+        <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-neutral-500">
+          War room de QA
+        </span>
       </div>
 
       <main className="z-10 flex flex-1 items-center justify-center px-4 py-8">
@@ -137,11 +137,11 @@ export const LoginScreen: React.FC = () => {
               <div className="fq-brand-mark !h-10 !w-10 !text-sm">FQ</div>
             </div>
             
-            <h1 className="font-display text-3xl font-semibold tracking-tight text-white mb-2">
+            <h1 className="font-display text-[1.75rem] font-semibold tracking-[-0.03em] text-white mb-2">
               Entre para continuar
             </h1>
             <p className="text-neutral-400 text-sm max-w-sm mx-auto mb-6 leading-relaxed">
-              Entre com o e-mail que o admin cadastrou. Convidado usa o ID da sala.
+              Use o e-mail cadastrado pelo admin. Convidado cola o link da sala.
             </p>
           </div>
 

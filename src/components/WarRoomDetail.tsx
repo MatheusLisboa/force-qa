@@ -407,7 +407,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
           </button>
           <div className="min-w-0">
             <div className="flex items-center gap-2 min-w-0">
-              <h2 className="truncate font-display text-lg sm:text-xl font-semibold tracking-tight text-neutral-100">
+              <h2 className="truncate font-display text-lg sm:text-xl font-semibold tracking-[-0.02em] text-neutral-50">
                 {warRoom.name}
               </h2>
               <span className="hidden sm:inline-flex">
@@ -476,10 +476,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
               <span className="fq-action-label">Mais</span>
             </button>
             {roomMoreOpen && (
-              <div
-                className="absolute right-0 top-full mt-1.5 w-52 rounded-lg border z-40 py-1"
-                style={{ backgroundColor: "var(--color-fq-elevated)", borderColor: "var(--color-fq-border)" }}
-              >
+              <div className="fq-menu w-52">
                 <button
                   type="button"
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-neutral-200 hover:bg-white/[0.05]"

@@ -291,14 +291,9 @@ function AppContent() {
   return (
     <div className="fq-shell flex flex-col">
       <header className="fq-header">
-        <div 
-          onClick={handleBackToDashboard}
-          className="flex items-center gap-2.5 cursor-pointer group"
-        >
+        <div onClick={handleBackToDashboard} className="fq-header-brand">
           <div className="fq-brand-mark">FQ</div>
-          <span className="font-display text-[15px] font-semibold tracking-tight text-neutral-100 transition group-hover:text-white">
-            ForceQA
-          </span>
+          <span className="fq-header-brand-name">ForceQA</span>
         </div>
 
         <div className="flex items-center gap-2 text-[13px]">
@@ -320,10 +315,7 @@ function AppContent() {
               )}
             </button>
             {notifOpen && (
-              <div
-                className="absolute right-0 top-full mt-2 w-80 max-h-80 overflow-y-auto rounded-lg border z-50 p-2 space-y-1"
-                style={{ backgroundColor: "var(--color-fq-elevated)", borderColor: "var(--color-fq-border)" }}
-              >
+              <div className="fq-menu w-80 max-h-80 overflow-y-auto p-2 space-y-1">
                 <div className="flex items-center justify-between px-2 py-1">
                   <span className="text-[13px] font-medium text-neutral-500">Notificações</span>
                   {notifications.some((n) => !n.readAt) && (
@@ -358,13 +350,12 @@ function AppContent() {
               </div>
             )}
           </div>
-          <div 
+          <div
             onClick={() => setIsProfileModalOpen(true)}
-            className="flex cursor-pointer select-none items-center gap-2 rounded-md border px-2.5 py-1.5 transition hover:bg-white/[0.05]"
-            style={{ borderColor: "var(--color-fq-border)", backgroundColor: "rgba(255,255,255,0.03)" }}
+            className="fq-header-user"
             title="Clique para editar seu perfil ou alterar senha"
           >
-            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-white/[0.08] text-[10px] font-medium text-neutral-300">
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-white/[0.08] text-[10px] font-semibold text-neutral-200">
               {profile.name.substring(0, 2).toUpperCase()}
             </div>
             <div className="hidden sm:flex flex-col text-left">

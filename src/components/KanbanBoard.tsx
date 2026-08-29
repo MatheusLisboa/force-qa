@@ -47,13 +47,11 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
             onDrop={(e) => onDrop(e, column.id)}
           >
             <div className="fq-kanban-column-header">
-              <span className="text-[13px] font-medium text-neutral-300 flex items-center gap-1.5">
-                <span className={`w-1.5 h-1.5 rounded-full ${column.color}`} />
+              <span className="flex items-center gap-1.5 text-[12px] font-semibold tracking-wide text-neutral-300">
+                <span className={`h-1.5 w-1.5 rounded-full ${column.color}`} />
                 {displayColumnLabel(column)}
               </span>
-              <span className="bg-white/[0.06] px-1.5 py-0.5 rounded-full text-[11px] font-medium text-neutral-400 tabular-nums">
-                {list.length}
-              </span>
+              <span className="fq-kanban-count">{list.length}</span>
             </div>
 
             <div className={`fq-kanban-column-body${list.length > 5 ? " fq-kanban-column-body--scroll" : ""}`}>
@@ -76,7 +74,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                       }`}
                     >
                       <span
-                        className={`absolute left-0 top-0 h-full w-1 ${getSeverityStripeClass(bug.criticism)}`}
+                        className={`fq-kanban-card-stripe ${getSeverityStripeClass(bug.criticism)}`}
                         title={severity.label}
                       />
 

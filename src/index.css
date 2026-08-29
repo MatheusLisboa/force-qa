@@ -2,7 +2,7 @@
 @import "tailwindcss";
 
 /* -------------------------------------------------------------------------- */
-/* Design tokens (ForceQA DS v1 — foundation)                                  */
+/* Design tokens (ForceQA — dark ops, Linear-inspired chrome) */
 /* -------------------------------------------------------------------------- */
 
 @theme {
@@ -10,17 +10,17 @@
   --font-display: "Outfit", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 
-  --color-fq-base: #09090b;
-  --color-fq-surface: #121216;
-  --color-fq-elevated: #1a1a21;
-  --color-fq-border: rgba(255, 255, 255, 0.08);
-  --color-fq-border-subtle: rgba(255, 255, 255, 0.05);
-  --color-fq-text: #e4e4e7;
-  --color-fq-text-primary: #fafafa;
-  --color-fq-text-secondary: #a1a1aa;
-  --color-fq-text-tertiary: #71717a;
+  --color-fq-base: #0b0c10;
+  --color-fq-surface: #13141b;
+  --color-fq-elevated: #1b1d27;
+  --color-fq-border: rgba(255, 255, 255, 0.07);
+  --color-fq-border-subtle: rgba(255, 255, 255, 0.045);
+  --color-fq-text: #e8e8ed;
+  --color-fq-text-primary: #f7f7f8;
+  --color-fq-text-secondary: #9b9eab;
+  --color-fq-text-tertiary: #6b6f7c;
   --color-fq-accent: #2dd4bf;
-  --color-fq-accent-muted: rgba(45, 212, 191, 0.14);
+  --color-fq-accent-muted: rgba(45, 212, 191, 0.12);
   --color-fq-danger: #ef4444;
   --color-fq-danger-muted: rgba(239, 68, 68, 0.12);
 }
@@ -58,21 +58,43 @@
     @apply min-h-screen text-neutral-200;
     background-color: var(--color-fq-base);
     background-image:
-      radial-gradient(900px 420px at 8% -12%, rgba(45, 212, 191, 0.09), transparent 55%),
-      radial-gradient(700px 360px at 100% 0%, rgba(99, 102, 241, 0.07), transparent 50%);
-    --fq-header-h: 3.5rem;
+      radial-gradient(780px 380px at 0% -20%, rgba(45, 212, 191, 0.07), transparent 58%),
+      radial-gradient(640px 280px at 100% -10%, rgba(99, 102, 241, 0.05), transparent 52%);
+    --fq-header-h: 3.25rem;
   }
 
   .fq-brand-mark {
-    @apply flex h-8 w-8 items-center justify-center rounded-lg text-[11px] font-semibold tracking-wide text-zinc-950;
-    background: linear-gradient(180deg, #5eead4 0%, #2dd4bf 100%);
-    box-shadow: 0 0 0 1px rgba(45, 212, 191, 0.35), 0 8px 20px rgba(45, 212, 191, 0.18);
+    @apply flex h-7 w-7 items-center justify-center rounded-md text-[10px] font-bold tracking-wide text-teal-950;
+    background: linear-gradient(180deg, #5eead4 0%, #14b8a6 100%);
+    box-shadow: 0 0 0 1px rgba(45, 212, 191, 0.28), 0 6px 14px rgba(20, 184, 166, 0.22);
   }
 
   .fq-header {
-    @apply sticky top-0 z-30 flex items-center justify-between border-b px-4 py-2.5 sm:px-5 backdrop-blur-md;
-    background-color: color-mix(in srgb, var(--color-fq-base) 82%, transparent);
+    @apply sticky top-0 z-30 flex h-[3.25rem] items-center justify-between border-b px-4 sm:px-6 backdrop-blur-xl;
+    background-color: color-mix(in srgb, var(--color-fq-base) 78%, transparent);
     border-color: var(--color-fq-border);
+  }
+
+  .fq-header-brand {
+    @apply flex items-center gap-2.5 cursor-pointer select-none;
+  }
+
+  .fq-header-brand-name {
+    @apply font-display text-[15px] font-semibold tracking-tight text-neutral-100;
+  }
+
+  .fq-header-user {
+    @apply flex cursor-pointer select-none items-center gap-2 rounded-lg px-2 py-1 transition;
+    background-color: rgba(255, 255, 255, 0.03);
+  }
+
+  .fq-header-user:hover {
+    background-color: rgba(255, 255, 255, 0.06);
+  }
+
+  .fq-header .fq-btn-ghost {
+    border-color: transparent;
+    background: transparent;
   }
 
   .fq-footer {
@@ -99,10 +121,10 @@
   }
 
   .fq-auth-card {
-    background-color: color-mix(in srgb, var(--color-fq-surface) 95%, transparent);
+    background-color: color-mix(in srgb, var(--color-fq-surface) 92%, transparent);
     border: 1px solid var(--color-fq-border);
-    @apply w-full rounded-xl p-8 backdrop-blur-xl;
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+    @apply w-full rounded-2xl p-8 backdrop-blur-xl;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(45, 212, 191, 0.04);
   }
 
   /* Forms — 36px height, 6px radius */
@@ -193,15 +215,16 @@
   }
 
   .fq-btn-primary {
-    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-md px-3 py-2 text-[13px] font-medium transition-colors duration-150;
+    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-md px-3 py-2 text-[13px] font-semibold transition duration-150;
     @apply disabled:cursor-not-allowed disabled:opacity-50;
     min-height: 36px;
-    background-color: var(--color-fq-text-primary);
-    color: var(--color-fq-base);
+    background: linear-gradient(180deg, #5eead4 0%, #2dd4bf 100%);
+    color: #042f2e;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.18) inset, 0 6px 16px rgba(45, 212, 191, 0.18);
   }
 
   .fq-btn-primary:hover:not(:disabled) {
-    @apply bg-white;
+    filter: brightness(1.06);
   }
 
   .fq-btn-primary:focus-visible {
@@ -218,7 +241,7 @@
   }
 
   .fq-btn-secondary:hover:not(:disabled) {
-  background-color: color-mix(in srgb, var(--color-fq-elevated) 90%, white 10%);
+    background-color: color-mix(in srgb, var(--color-fq-elevated) 90%, white 10%);
     border-color: rgba(255, 255, 255, 0.12);
   }
 
@@ -391,8 +414,7 @@
   }
 
   .fq-page-header {
-    @apply flex flex-col gap-4 border-b pb-5 md:flex-row md:items-center md:justify-between;
-    border-color: var(--color-fq-border-subtle);
+    @apply flex flex-col gap-4 pb-1 md:flex-row md:items-end md:justify-between;
   }
 
   .fq-action-label {
@@ -400,11 +422,11 @@
   }
 
   .fq-page-eyebrow {
-    @apply text-[13px] text-neutral-500;
+    @apply mb-1 text-[11px] font-medium uppercase tracking-[0.14em] text-teal-400/80;
   }
 
   .fq-page-title {
-    @apply font-display text-2xl font-semibold tracking-tight text-neutral-100;
+    @apply font-display text-[1.65rem] font-semibold tracking-[-0.03em] text-neutral-50;
   }
 
   .fq-section-title {
@@ -412,7 +434,7 @@
   }
 
   .fq-metric-card {
-    @apply relative flex items-center gap-3 overflow-hidden rounded-lg p-4;
+    @apply relative flex items-center gap-3 overflow-hidden rounded-xl p-4;
     background-color: var(--color-fq-surface);
     border: 1px solid var(--color-fq-border);
   }
@@ -426,8 +448,9 @@
   }
 
   .fq-metric-card--active {
-    border-color: rgba(255, 255, 255, 0.22);
+    border-color: rgba(45, 212, 191, 0.35);
     background-color: var(--color-fq-elevated);
+    box-shadow: 0 0 0 1px rgba(45, 212, 191, 0.08);
   }
 
   .fq-drawer-overlay {
@@ -454,11 +477,11 @@
   }
 
   .fq-bug-modal {
-    @apply relative my-auto flex w-full max-w-5xl flex-col overflow-hidden rounded-xl;
+    @apply relative my-auto flex w-full max-w-5xl flex-col overflow-hidden rounded-2xl;
     max-height: min(90vh, 920px);
     background-color: var(--color-fq-surface);
     border: 1px solid var(--color-fq-border);
-    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 32px 80px rgba(0, 0, 0, 0.55);
   }
 
   .fq-bug-modal-header {
@@ -532,9 +555,9 @@
 
   .fq-card-interactive:hover {
     background-color: var(--color-fq-elevated);
-    border-color: rgba(45, 212, 191, 0.28);
+    border-color: rgba(255, 255, 255, 0.12);
     transform: translateY(-1px);
-    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.32);
   }
 
   .fq-badge {
@@ -798,9 +821,9 @@
 
   /* Kanban */
   .fq-filter-bar {
-    @apply flex flex-col items-center gap-3 rounded-lg p-3 md:flex-row;
-    background-color: var(--color-fq-surface);
-    border: 1px solid var(--color-fq-border);
+    @apply flex flex-col items-center gap-3 rounded-xl p-2.5 md:flex-row;
+    background-color: rgba(255, 255, 255, 0.025);
+    border: 1px solid var(--color-fq-border-subtle);
   }
 
   .fq-filter-chip {
@@ -891,14 +914,14 @@
   }
 
   .fq-kanban-column {
-    @apply flex shrink-0 grow flex-col rounded-lg;
+    @apply flex shrink-0 grow flex-col;
     flex-basis: 320px;
     min-width: 320px;
     max-width: 380px;
     height: auto;
     min-height: var(--fq-kanban-column-min-height);
-    background-color: var(--color-fq-surface);
-    border: 1px solid var(--color-fq-border);
+    background: transparent;
+    border: none;
   }
 
   @media (min-width: 1920px) {
@@ -914,17 +937,22 @@
   }
 
   .fq-kanban-column-header {
-    @apply sticky top-0 z-10 flex shrink-0 items-center justify-between border-b px-3 py-2.5;
-    border-color: var(--color-fq-border-subtle);
-    background-color: var(--color-fq-surface);
+    @apply sticky top-0 z-10 flex shrink-0 items-center justify-between px-1 py-2;
+    background-color: var(--color-fq-base);
+  }
+
+  .fq-kanban-count {
+    @apply inline-flex min-w-[1.35rem] items-center justify-center rounded-md px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-neutral-400;
+    background-color: rgba(255, 255, 255, 0.06);
   }
 
   .fq-kanban-column-body {
-    @apply space-y-2.5 p-3;
+    @apply space-y-2.5 rounded-xl p-2.5;
     flex: none;
     min-height: var(--fq-kanban-body-min-height);
     overflow-y: visible;
-    background-color: rgba(255, 255, 255, 0.02);
+    background-color: rgba(255, 255, 255, 0.028);
+    border: 1px solid var(--color-fq-border-subtle);
   }
 
   .fq-kanban-column-body--scroll {
@@ -934,13 +962,18 @@
   }
 
   .fq-kanban-card {
-    @apply relative flex cursor-grab flex-col justify-between gap-2.5 overflow-hidden rounded-xl p-3.5 transition duration-150 active:cursor-grabbing;
+    @apply relative flex cursor-grab flex-col justify-between gap-2.5 overflow-hidden rounded-lg p-3.5 pl-4 transition duration-150 active:cursor-grabbing;
     background-color: var(--color-fq-elevated);
-    border: 1px solid var(--color-fq-border);
+    border: 1px solid transparent;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 20px rgba(0, 0, 0, 0.22);
+  }
+
+  .fq-kanban-card-stripe {
+    @apply pointer-events-none absolute top-0 bottom-0 left-0 w-[3px];
   }
 
   .fq-kanban-card-title {
-    @apply line-clamp-3 text-[14px] font-medium leading-snug text-neutral-100;
+    @apply line-clamp-3 text-[13.5px] font-medium leading-snug tracking-tight text-neutral-50;
   }
 
   .fq-kanban-card-meta {
@@ -948,13 +981,21 @@
   }
 
   .fq-kanban-card:hover {
-    border-color: rgba(45, 212, 191, 0.3);
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
+    border-color: rgba(255, 255, 255, 0.1);
+    transform: translateY(-1px);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06), 0 14px 28px rgba(0, 0, 0, 0.32);
   }
 
   .fq-kanban-card--selected {
-    border-color: rgba(45, 212, 191, 0.55);
-    box-shadow: 0 0 0 1px rgba(45, 212, 191, 0.25);
+    border-color: rgba(45, 212, 191, 0.4);
+    box-shadow: 0 0 0 1px rgba(45, 212, 191, 0.22), 0 12px 24px rgba(0, 0, 0, 0.28);
+  }
+
+  .fq-menu {
+    @apply absolute right-0 top-full z-50 mt-1.5 overflow-hidden rounded-xl py-1;
+    background-color: var(--color-fq-elevated);
+    border: 1px solid var(--color-fq-border);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
   }
 
   /* Bug detail panels */

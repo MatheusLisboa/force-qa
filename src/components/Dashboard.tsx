@@ -257,7 +257,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
         className="group fq-card-interactive"
       >
         <div className="flex justify-between items-start gap-3">
-          <h4 className="text-[15px] font-semibold text-neutral-100 tracking-tight truncate" title={space.name}>
+          <h4 className="truncate font-display text-[15px] font-semibold tracking-tight text-neutral-50" title={space.name}>
             {space.name}
           </h4>
           {space.kind === "board" ? (
@@ -304,7 +304,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
             <button onClick={(e) => copyInvite(space.roomId, e)} className="fq-btn-icon !p-1.5" title="Copiar convite">
               <Share2 className="w-3.5 h-3.5" />
             </button>
-            <span className="text-[12px] text-neutral-500 group-hover:text-teal-300 transition flex items-center gap-1">
+            <span className="flex items-center gap-1 text-[12px] text-neutral-500 transition group-hover:text-neutral-200">
               Abrir <ExternalLink className="w-3 h-3" />
             </span>
           </div>
@@ -317,6 +317,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
     <div className="fq-page fq-page--operational">
       <div className="fq-page-header">
         <div>
+          <p className="fq-page-eyebrow">Operação</p>
           <h1 className="fq-page-title">Suas salas</h1>
           <p className="text-neutral-500 text-sm mt-1">Abra um board para continuar o trabalho.</p>
         </div>
@@ -344,10 +345,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
               Mais
             </button>
             {moreOpen && (
-              <div
-                className="absolute right-0 top-full mt-1.5 w-52 rounded-lg border z-40 py-1"
-                style={{ backgroundColor: "var(--color-fq-elevated)", borderColor: "var(--color-fq-border)" }}
-              >
+              <div className="fq-menu w-52">
                 {onOpenAdminPage && canManageUsers(profile?.role, profile?.isSuperadmin) && (
                   <>
                     <button
