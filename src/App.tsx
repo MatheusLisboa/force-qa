@@ -7,7 +7,7 @@ import { WarRoomDetail } from "./components/WarRoomDetail";
 import { AdminBoardViews } from "./components/AdminBoardViews";
 import { AdminUsersPage } from "./components/AdminUsersPage";
 import { AdminOrganizationsPage } from "./components/AdminOrganizationsPage";
-import { LogOut, Lock, User, Bell } from "lucide-react";
+import { LogOut, Lock, User, Bell, PanelLeft } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useModalA11y } from "./hooks/useModalA11y";
 import { joinWarRoom, markAllNotificationsRead, markNotificationRead } from "./lib/services";
@@ -20,6 +20,8 @@ import { parsePulseKind, PulseKind } from "./lib/dashboardPulse";
 import { formatRoleLabel } from "./lib/format";
 import { SquadSelect } from "./components/SquadSelect";
 import { canManageOrganizations, canManageUsers } from "./lib/permissions";
+import { RoomRail } from "./components/RoomRail";
+import { useOrgSpaces } from "./hooks/useOrgSpaces";
 
 function AppContent() {
   const { user, profile, loading, passwordRecovery, updateProfile, changePassword, completePasswordRecovery, logout } = useAuth();
@@ -32,10 +34,15 @@ function AppContent() {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [notifOpen, setNotifOpen] = useState(false);
   const [joinError, setJoinError] = useState("");
+  const [railOpen, setRailOpen] = useState(false);
   const [recoveryPassword, setRecoveryPassword] = useState("");
   const [recoveryConfirm, setRecoveryConfirm] = useState("");
   const [recoveryError, setRecoveryError] = useState("");
   const [recoverySaving, setRecoverySaving] = useState(false);
+  const { spaces, allBugs, loading: spacesLoading } = useOrgSpaces(
+    profile?.organizationId,
+    Boolean(user && profile)
+  );
   const joinAttemptRef = useRef<string | null>(null);
 
   const syncRouteFromLocation = useCallback(() => {
@@ -177,6 +184,7 @@ function AppContent() {
   }, [user, profile, openRoom, selectedRoomId]);
 
   const handleSelectRoom = (roomId: string, pulse?: PulseKind) => {
+    setRailOpen(false);
     void openRoom(roomId, pulse ?? "all");
   };
 
@@ -189,11 +197,13 @@ function AppContent() {
     setAdminProjectId(null);
     joinAttemptRef.current = null;
     setJoinError("");
+    setRailOpen(false);
     pushPath(dashboardPath());
   };
 
   const handleOpenAdminPage = (path: "/admin/board-views" | "/admin/users" | "/admin/organizations", projectId?: string) => {
     setSelectedRoomId(null);
+    setRailOpen(false);
     if (path === "/admin/users") {
       setAdminPage("users");
       setAdminProjectId(null);
@@ -289,11 +299,24 @@ function AppContent() {
 
   // 4. Main operation dashboards
   return (
-    <div className="fq-shell flex flex-col">
+    <div className="fq-shell flex h-dvh flex-col overflow-hidden">
       <header className="fq-header">
-        <div onClick={handleBackToDashboard} className="fq-header-brand">
-          <div className="fq-brand-mark">FQ</div>
-          <span className="fq-header-brand-name">ForceQA</span>
+        <div className="flex items-center gap-2">
+          {!adminPage && (
+            <button
+              type="button"
+              className="fq-btn-ghost !min-h-0 !px-2 !py-2 md:hidden"
+              title="Salas"
+              aria-expanded={railOpen}
+              onClick={() => setRailOpen((open) => !open)}
+            >
+              <PanelLeft className="w-4 h-4" />
+            </button>
+          )}
+          <div onClick={handleBackToDashboard} className="fq-header-brand">
+            <div className="fq-brand-mark">FQ</div>
+            <span className="fq-header-brand-name">ForceQA</span>
+          </div>
         </div>
 
         <div className="flex items-center gap-2 text-[13px]">
@@ -378,7 +401,20 @@ function AppContent() {
       </header>
 
       {/* Primary viewport switch container */}
-      <main className="flex min-h-0 flex-1 flex-col">
+      <main className="flex min-h-0 flex-1">
+        {!adminPage && (
+          <RoomRail
+            spaces={spaces}
+            bugs={allBugs}
+            currentRoomId={selectedRoomId}
+            loading={spacesLoading}
+            mobileOpen={railOpen}
+            onCloseMobile={() => setRailOpen(false)}
+            onSelectRoom={handleSelectRoom}
+            onOpenDashboard={handleBackToDashboard}
+          />
+        )}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">
         {adminPage === "organizations" && canManageOrganizations(profile?.isSuperadmin) ? (
           <AdminOrganizationsPage onBack={handleBackToDashboard} />
         ) : adminPage === "users" && canManageUsers(profile?.role, profile?.isSuperadmin) ? (
@@ -395,6 +431,9 @@ function AppContent() {
           />
         ) : (
           <Dashboard 
+            spaces={spaces}
+            allBugs={allBugs}
+            loading={spacesLoading}
             onSelectRoom={handleSelectRoom}
             onOpenAdminPage={
               canManageUsers(profile?.role, profile?.isSuperadmin) || canManageOrganizations(profile?.isSuperadmin)
@@ -403,6 +442,7 @@ function AppContent() {
             }
           />
         )}
+        </div>
       </main>
 
       <AnimatePresence>

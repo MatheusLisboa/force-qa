@@ -1,9 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { joinWarRoom } from "../lib/services";
-import { subscribeWarRooms, subscribeDashboardPulse, subscribeProjects, subscribeAllBoardViews, fetchDashboardExportBugs } from "../lib/supabase";
+import { fetchDashboardExportBugs } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
-import { WarRoom, Project, BoardView } from "../types";
 import {
   Clock,
   LayoutGrid,
@@ -19,34 +18,23 @@ import {
 import { AnimatePresence } from "motion/react";
 import { RoomStatusBadge, RoomTypeBadge } from "./BugBadges";
 import { canManageOrganizations, canManageSpaces as roleCanManageSpaces, canManageUsers } from "../lib/permissions";
-import { belongsToOrganization } from "../lib/organizations";
 import {
-  comparePulseActivity,
   dashboardPulse,
   PulseBug,
   PulseKind,
-  pulseMatchesCounts,
 } from "../lib/dashboardPulse";
 import { roomInviteUrl } from "../lib/routes";
+import { decorateSpaces, groupSpacesByProject, SpaceRow, UNGROUPED_PROJECT_LABEL } from "../lib/spaces";
 import { CreateWarRoomModal } from "./CreateWarRoomModal";
 import { CreateProjectModal } from "./CreateProjectModal";
 
 interface DashboardProps {
+  spaces: SpaceRow[];
+  allBugs: PulseBug[];
+  loading: boolean;
   onSelectRoom: (roomId: string, pulse?: PulseKind) => void;
   onOpenAdminPage?: (path: "/admin/board-views" | "/admin/users" | "/admin/organizations", projectId?: string) => void;
 }
-
-type SpaceRow = {
-  key: string;
-  roomId: string;
-  name: string;
-  squad: string;
-  projectLabel?: string;
-  kind: "war_room" | "board";
-  status?: WarRoom["status"];
-  dateLine?: string;
-  viewCount?: number;
-};
 
 const PULSE_HINT: Record<Exclude<PulseKind, "all">, string> = {
   open: "Salas com cards abertos, as mais quentes primeiro.",
@@ -54,40 +42,25 @@ const PULSE_HINT: Record<Exclude<PulseKind, "all">, string> = {
   overdue: "Salas com card atrasado. Clique de novo para ver todas.",
 };
 
-export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminPage }) => {
+export const Dashboard: React.FC<DashboardProps> = ({
+  spaces,
+  allBugs,
+  loading,
+  onSelectRoom,
+  onOpenAdminPage,
+}) => {
   const { profile } = useAuth();
   const { toast } = useToast();
-  const [warRooms, setWarRooms] = useState<WarRoom[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [allBoardViews, setAllBoardViews] = useState<BoardView[]>([]);
-  const [allBugs, setAllBugs] = useState<PulseBug[]>([]);
   const [myCardsOnly, setMyCardsOnly] = useState(false);
   const [pulseFilter, setPulseFilter] = useState<PulseKind>("all");
   const [isWarRoomModalOpen, setIsWarRoomModalOpen] = useState(false);
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [spaceQuery, setSpaceQuery] = useState("");
   const [moreOpen, setMoreOpen] = useState(false);
   const [enterIdOpen, setEnterIdOpen] = useState(false);
   const [enterRoomIdInput, setEnterRoomIdInput] = useState("");
   const [enteringRoomLoading, setEnteringRoomLoading] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const unsubscribeRooms = subscribeWarRooms((rooms) => {
-      setWarRooms(rooms);
-      setLoading(false);
-    });
-    const unsubscribeProjects = subscribeProjects(setProjects);
-    const unsubscribeBugs = subscribeDashboardPulse(setAllBugs);
-    const unsubscribeViews = subscribeAllBoardViews(null, setAllBoardViews);
-    return () => {
-      unsubscribeRooms();
-      unsubscribeProjects();
-      unsubscribeBugs();
-      unsubscribeViews();
-    };
-  }, []);
 
   useEffect(() => {
     if (!moreOpen) return;
@@ -101,75 +74,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
   const scopedBugs = allBugs.filter((bug) => !myCardsOnly || bug.ownerId === profile?.id);
   const pulse = dashboardPulse(scopedBugs);
 
-  const orgRooms = useMemo(
-    () =>
-      warRooms.filter((room) =>
-        belongsToOrganization(room.organizationId, profile?.organizationId)
-      ),
-    [warRooms, profile?.organizationId]
-  );
-  const orgProjects = useMemo(
-    () =>
-      projects.filter((project) =>
-        belongsToOrganization(project.organizationId, profile?.organizationId)
-      ),
-    [projects, profile?.organizationId]
-  );
-
-  const spaces = useMemo<SpaceRow[]>(() => {
-    const viewCountByProject = allBoardViews.reduce<Record<string, number>>((acc, view) => {
-      if (view.projectId && view.isActive) {
-        acc[view.projectId] = (acc[view.projectId] || 0) + 1;
-      }
-      return acc;
-    }, {});
-    const warRoomRows: SpaceRow[] = orgRooms
-      .filter((room) => (room.roomType || "war_room") === "war_room")
-      .map((room) => ({
-        key: `room-${room.id}`,
-        roomId: room.id,
-        name: room.name,
-        squad: room.squad,
-        projectLabel: room.project,
-        kind: "war_room",
-        status: room.status,
-        dateLine: room.date
-          ? `${room.date}${room.periodEnd ? ` → ${room.periodEnd}` : ""}`
-          : undefined,
-      }));
-
-    const projectRows: SpaceRow[] = orgProjects.map((project) => ({
-      key: `project-${project.id}`,
-      roomId: project.warRoomId,
-      name: project.name,
-      squad: project.squad,
-      kind: "board",
-      viewCount: viewCountByProject[project.id] || 0,
-    }));
-
-    return [...warRoomRows, ...projectRows];
-  }, [orgRooms, orgProjects, allBoardViews]);
-
-  const spaceQueryNorm = spaceQuery.trim().toLowerCase();
-  const displayedSpaces = spaces
-    .filter((space) => {
-      if (!spaceQueryNorm) return true;
-      return [space.name, space.squad, space.projectLabel, space.roomId]
-        .some((value) => (value || "").toLowerCase().includes(spaceQueryNorm));
-    })
-    .map((space) => {
-      const roomBugs = scopedBugs.filter((bug) => bug.warRoomId === space.roomId);
-      return { space, roomPulse: dashboardPulse(roomBugs) };
-    })
-    .filter(({ roomPulse }) => pulseMatchesCounts(roomPulse, pulseFilter))
-    .sort((a, b) => {
-      const byActivity = comparePulseActivity(a.roomPulse, b.roomPulse);
-      if (byActivity !== 0) return byActivity;
-      return a.space.name.localeCompare(b.space.name, "pt-BR");
-    });
+  const displayedSpaces = decorateSpaces(spaces, scopedBugs, {
+    query: spaceQuery,
+    pulseFilter,
+  });
+  const spaceGroups = groupSpacesByProject(displayedSpaces);
 
   const canManageSpaces = roleCanManageSpaces(profile?.role);
-  const hasSpaces = orgRooms.length > 0 || orgProjects.length > 0;
+  const hasSpaces = spaces.length > 0;
 
   const copyInvite = (roomId: string, event: React.MouseEvent) => {
     event.stopPropagation();
@@ -182,12 +94,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
     setPulseFilter(next);
     if (next === "all") return;
 
-    const matching = spaces
-      .map((space) => ({
-        space,
-        roomPulse: dashboardPulse(scopedBugs.filter((bug) => bug.warRoomId === space.roomId)),
-      }))
-      .filter(({ roomPulse }) => pulseMatchesCounts(roomPulse, next));
+    const matching = decorateSpaces(spaces, scopedBugs, { pulseFilter: next });
 
     if (matching.length === 1 && (next === "blockers" || next === "overdue")) {
       onSelectRoom(matching[0].space.roomId, next);
@@ -529,13 +436,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSelectRoom, onOpenAdminP
             : "Nenhuma sala neste momento."}
         </p>
       ) : (
-        <div>
-          <h3 className="fq-section-title">
-            Salas ({displayedSpaces.length})
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {displayedSpaces.map(({ space, roomPulse }) => renderSpaceCard(space, roomPulse))}
-          </div>
+        <div className="space-y-8">
+          {spaceGroups.map((group) => (
+            <div key={group.key}>
+              <h3 className="fq-section-title">
+                {spaceGroups.length === 1 && group.title === UNGROUPED_PROJECT_LABEL
+                  ? `Salas (${group.items.length})`
+                  : group.title}
+                {!(spaceGroups.length === 1 && group.title === UNGROUPED_PROJECT_LABEL) && (
+                  <span className="font-normal text-neutral-500"> ({group.items.length})</span>
+                )}
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {group.items.map(({ space, roomPulse }) => renderSpaceCard(space, roomPulse))}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

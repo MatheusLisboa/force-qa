@@ -10,6 +10,10 @@ export function roomPath(roomId: string, pulse?: string | null, cardId?: string 
   return `/?${params.toString()}`;
 }
 
+export function cardUrl(roomId: string, cardId: string, origin = window.location.origin): string {
+  return `${origin}${roomPath(roomId, null, cardId)}`;
+}
+
 export function roomInviteUrl(roomId: string, origin = window.location.origin): string {
   return `${origin}${roomPath(roomId)}`;
 }

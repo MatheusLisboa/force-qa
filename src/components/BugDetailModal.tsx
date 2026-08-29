@@ -11,6 +11,7 @@ import { BugTypeTag } from "./BugTypeTag";
 import { SeverityBadge, StatusBadge } from "./BugBadges";
 import { useModalA11y } from "../hooks/useModalA11y";
 import { canArchiveBugs, canAssignBugs, canWriteBugs } from "../lib/permissions";
+import { cardUrl } from "../lib/routes";
 import { 
   X, 
   Send, 
@@ -22,7 +23,8 @@ import {
   AlertCircle,
   ExternalLink,
   Pencil,
-  Check
+  Check,
+  Link2
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -355,6 +357,18 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, onClose }) 
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              className="fq-btn-ghost text-[12px]"
+              title="Copiar link do card"
+              onClick={() => {
+                navigator.clipboard.writeText(cardUrl(activeBug.warRoomId, activeBug.id));
+                toast("Link do card copiado.", { kind: "success" });
+              }}
+            >
+              <Link2 className="w-4 h-4" />
+              <span className="hidden sm:inline">Copiar link</span>
+            </button>
             {(canArchiveBugs(profile?.role) || activeBug.createdBy === profile?.id) && (
               <button
                 type="button"

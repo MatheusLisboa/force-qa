@@ -5,6 +5,10 @@ const FOCUSABLE_SELECTOR =
 
 const closeStack: Array<() => void> = [];
 
+export function isModalOpen(): boolean {
+  return closeStack.length > 0;
+}
+
 function getFocusableElements(container: HTMLElement | null): HTMLElement[] {
   if (!container) return [];
   return Array.from(

@@ -97,6 +97,66 @@
     background: transparent;
   }
 
+  .fq-rail {
+    @apply hidden w-[15.5rem] shrink-0 flex-col overflow-y-auto border-r py-3 md:flex;
+    background-color: color-mix(in srgb, var(--color-fq-base) 94%, transparent);
+    border-color: var(--color-fq-border);
+  }
+
+  .fq-rail-backdrop {
+    @apply fixed inset-0 z-20 bg-black/50 md:hidden;
+    top: var(--fq-header-h);
+  }
+
+  .fq-rail-group {
+    @apply mt-3 px-2;
+  }
+
+  .fq-rail-group-title {
+    @apply mb-1 truncate px-2 text-[10px] font-medium uppercase tracking-[0.12em] text-neutral-500;
+  }
+
+  .fq-rail-item {
+    @apply flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition;
+    color: var(--color-fq-text-secondary);
+  }
+
+  .fq-rail-item:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+    color: var(--color-fq-text-primary);
+  }
+
+  .fq-rail-item--current {
+    background-color: rgba(45, 212, 191, 0.1);
+    color: var(--color-fq-text-primary);
+  }
+
+  .fq-rail-item-name {
+    @apply block truncate text-[13px] font-medium;
+  }
+
+  .fq-rail-count {
+    @apply shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-red-300;
+    background-color: rgba(239, 68, 68, 0.16);
+  }
+
+  @media (max-width: 767px) {
+    .fq-rail {
+      display: none;
+      position: fixed;
+      top: var(--fq-header-h);
+      bottom: 0;
+      left: 0;
+      z-index: 25;
+      width: min(18rem, 86vw);
+    }
+
+    .fq-rail--open {
+      display: flex;
+      flex-direction: column;
+    }
+  }
+
   .fq-footer {
     @apply border-t px-5 py-3 text-[11px];
     background-color: var(--color-fq-base);

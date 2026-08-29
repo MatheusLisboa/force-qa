@@ -22,8 +22,9 @@ import {
 } from "../lib/kanbanColumns";
 import { RoomTypeBadge } from "./BugBadges";
 import { canInviteToRoom, canWriteBugs } from "../lib/permissions";
+import { useRoomShortcuts } from "../hooks/useRoomShortcuts";
 import { bugMatchesPulse, parsePulseKind, PulseKind, roomHeadlineParts } from "../lib/dashboardPulse";
-import { roomInviteUrl } from "../lib/routes";
+import { roomInviteUrl, roomPath, pushPath } from "../lib/routes";
 import {
   ArrowLeft,
   Plus,
@@ -94,6 +95,52 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
   const [adminOpen, setAdminOpen] = useState(false);
   const [roomMoreOpen, setRoomMoreOpen] = useState(false);
   const roomMoreRef = useRef<HTMLDivElement>(null);
+  const searchDesktopRef = useRef<HTMLInputElement>(null);
+  const searchMobileRef = useRef<HTMLInputElement>(null);
+
+  const openBug = useCallback(
+    (bug: Bug) => {
+      setSelectedBug(bug);
+      pushPath(roomPath(roomId, pulseFilter, bug.id));
+    },
+    [roomId, pulseFilter]
+  );
+
+  const closeSelectedBug = useCallback(() => {
+    setSelectedBug(null);
+    pushPath(roomPath(roomId, pulseFilter));
+  }, [roomId, pulseFilter]);
+
+  const focusSearch = useCallback(() => {
+    setFiltersOpen(true);
+    requestAnimationFrame(() => {
+      const mobile = window.matchMedia("(max-width: 767px)").matches;
+      (mobile ? searchMobileRef : searchDesktopRef).current?.focus();
+    });
+  }, []);
+
+  const toggleMyCards = useCallback(() => {
+    if (!profile) return;
+    setOwnerFilter((current) => (current === profile.id ? "all" : profile.id));
+  }, [profile]);
+
+  const handleShortcutEscape = useCallback(() => {
+    if (searchQuery) {
+      setSearchQuery("");
+      return;
+    }
+    setFiltersOpen(false);
+  }, [searchQuery]);
+
+  useRoomShortcuts(
+    {
+      onNew: canWriteBugs(profile?.role) ? () => openCreateCardModal() : undefined,
+      onSearch: focusSearch,
+      onMyCards: profile ? toggleMyCards : undefined,
+      onEscape: handleShortcutEscape,
+    },
+    Boolean(warRoom)
+  );
 
   useEffect(() => {
     const mq = window.matchMedia("(pointer: coarse)");
@@ -443,13 +490,14 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
               className={`fq-btn-ghost text-sm ${
                 ownerFilter === profile.id ? "!bg-white/[0.08] !border-white/20 text-neutral-100" : ""
               }`}
+              title="Meus cards (M)"
             >
               <span className="sm:hidden">Meus</span>
               <span className="fq-action-label">Meus cards</span>
             </button>
           )}
           {canWriteBugs(profile?.role) && (
-            <button onClick={() => openCreateCardModal()} className="fq-btn-primary text-sm">
+            <button onClick={() => openCreateCardModal()} className="fq-btn-primary text-sm" title="Novo card (N)">
               <Plus className="w-4 h-4" />
               <span className="sm:hidden">Novo</span>
               <span className="fq-action-label">Novo card</span>
@@ -686,9 +734,10 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
       <div className="space-y-2">
         <div className="flex items-center gap-2 md:hidden">
           <input
+            ref={searchMobileRef}
             type="search"
             className="fq-input text-xs flex-1"
-            placeholder="Buscar cards..."
+            placeholder="Buscar cards (/)"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -717,9 +766,10 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
         <div className={`flex flex-col items-stretch gap-3 md:flex-row md:items-center ${filtersOpen ? "" : "max-md:hidden"}`}>
         <div className="flex-1 w-full relative hidden md:block">
           <input
-            type="text"
+            ref={searchDesktopRef}
+            type="search"
             className="fq-input text-xs"
-            placeholder="Pesquisar por título, tags, responsável..."
+            placeholder="Pesquisar por título, tags, responsável... (/)"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -815,7 +865,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDrop={handleDrop}
-            onOpenBug={setSelectedBug}
+            onOpenBug={openBug}
             onMoveToColumn={handleMoveToColumn}
           />
         </div>
@@ -892,7 +942,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
         {selectedBug && (
           <BugDetailModal
             bug={selectedBug}
-            onClose={() => setSelectedBug(null)}
+            onClose={closeSelectedBug}
           />
         )}
       </AnimatePresence>
