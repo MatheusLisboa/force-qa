@@ -7,7 +7,7 @@ import { WarRoomDetail } from "./components/WarRoomDetail";
 import { AdminBoardViews } from "./components/AdminBoardViews";
 import { AdminUsersPage } from "./components/AdminUsersPage";
 import { AdminOrganizationsPage } from "./components/AdminOrganizationsPage";
-import { LogOut, Lock, User, Bell, PanelLeft } from "lucide-react";
+import { LogOut, Lock, User, Bell, PanelLeft, PanelLeftClose } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useModalA11y } from "./hooks/useModalA11y";
 import { joinWarRoom, markAllNotificationsRead, markNotificationRead } from "./lib/services";
@@ -37,6 +37,13 @@ function AppContent() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [joinError, setJoinError] = useState("");
   const [railOpen, setRailOpen] = useState(false);
+  const [railCollapsed, setRailCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("forceqa.railCollapsed") === "1";
+    } catch {
+      return false;
+    }
+  });
   const [recoveryPassword, setRecoveryPassword] = useState("");
   const [recoveryConfirm, setRecoveryConfirm] = useState("");
   const [recoveryError, setRecoveryError] = useState("");
@@ -234,6 +241,23 @@ function AppContent() {
     pushPath(adminBoardViewsPath(projectId));
   };
 
+  const persistRailCollapsed = (collapsed: boolean) => {
+    setRailCollapsed(collapsed);
+    try {
+      localStorage.setItem("forceqa.railCollapsed", collapsed ? "1" : "0");
+    } catch {
+      /* ignore quota / private mode */
+    }
+  };
+
+  const toggleRail = () => {
+    if (window.matchMedia("(min-width: 768px)").matches) {
+      persistRailCollapsed(!railCollapsed);
+      return;
+    }
+    setRailOpen((open) => !open);
+  };
+
   const handleOpenInbox = () => {
     setSelectedRoomId(null);
     setAdminPage(null);
@@ -328,12 +352,18 @@ function AppContent() {
           {!adminPage && (
             <button
               type="button"
-              className="fq-btn-ghost !min-h-0 !px-2 !py-2 md:hidden"
-              title="Salas"
-              aria-expanded={railOpen}
-              onClick={() => setRailOpen((open) => !open)}
+              className="fq-btn-ghost !min-h-0 !px-2 !py-2"
+              title={railOpen ? "Fechar salas" : railCollapsed ? "Abrir sidebar" : "Recolher sidebar"}
+              aria-label={railOpen ? "Fechar salas" : railCollapsed ? "Abrir sidebar" : "Recolher sidebar"}
+              aria-expanded={railOpen || !railCollapsed}
+              onClick={toggleRail}
             >
-              <PanelLeft className="w-4 h-4" />
+              <PanelLeft className={`w-4 h-4 md:hidden ${railOpen ? "text-neutral-100" : ""}`} />
+              {railCollapsed ? (
+                <PanelLeft className="hidden w-4 h-4 md:block" />
+              ) : (
+                <PanelLeftClose className="hidden w-4 h-4 md:block" />
+              )}
             </button>
           )}
           <div onClick={handleBackToDashboard} className="fq-header-brand">
@@ -433,7 +463,9 @@ function AppContent() {
               inboxOpen={inboxOpen}
               loading={spacesLoading}
               mobileOpen={railOpen}
+              collapsed={railCollapsed}
               onCloseMobile={() => setRailOpen(false)}
+              onCollapse={() => persistRailCollapsed(true)}
               onSelectRoom={handleSelectRoom}
               onOpenDashboard={handleBackToDashboard}
               onOpenInbox={handleOpenInbox}

@@ -1,5 +1,5 @@
 import React from "react";
-import { Inbox, LayoutGrid } from "lucide-react";
+import { Inbox, LayoutGrid, PanelLeftClose } from "lucide-react";
 import { PulseBug } from "../lib/dashboardPulse";
 import {
   decorateSpaces,
@@ -16,7 +16,9 @@ interface RoomRailProps {
   inboxOpen?: boolean;
   loading?: boolean;
   mobileOpen: boolean;
+  collapsed?: boolean;
   onCloseMobile: () => void;
+  onCollapse?: () => void;
   onSelectRoom: (roomId: string) => void;
   onOpenDashboard: () => void;
   onOpenInbox: () => void;
@@ -29,7 +31,9 @@ export const RoomRail: React.FC<RoomRailProps> = ({
   inboxOpen = false,
   loading = false,
   mobileOpen,
+  collapsed = false,
   onCloseMobile,
+  onCollapse,
   onSelectRoom,
   onOpenDashboard,
   onOpenInbox,
@@ -52,7 +56,26 @@ export const RoomRail: React.FC<RoomRailProps> = ({
           onClick={onCloseMobile}
         />
       )}
-      <aside className={`fq-rail ${mobileOpen ? "fq-rail--open" : ""}`} aria-label="Salas">
+      <aside
+        className={`fq-rail ${mobileOpen ? "fq-rail--open" : ""} ${collapsed ? "fq-rail--collapsed" : ""}`}
+        aria-label="Salas"
+      >
+        <div className="mb-1 flex items-center justify-between gap-1 px-2">
+          <span className="px-2 text-[10px] font-medium uppercase tracking-[0.12em] text-neutral-500">
+            Salas
+          </span>
+          {onCollapse && (
+            <button
+              type="button"
+              className="fq-btn-ghost hidden !min-h-0 !px-2 !py-1.5 md:flex"
+              title="Recolher sidebar"
+              aria-label="Recolher sidebar"
+              onClick={onCollapse}
+            >
+              <PanelLeftClose className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
         <div className="px-2">
           <button
             type="button"
