@@ -20,6 +20,7 @@ import {
   rotateExportToken,
 } from "./api-src/shared/exportApi";
 import { canWriteBugs } from "./src/lib/permissions";
+import { wantsExportToken } from "./src/lib/vercelApiPath";
 
 dotenv.config();
 
@@ -32,6 +33,44 @@ function sendError(res: express.Response, error: unknown, fallback: string) {
   const message = clientErrorMessage(error, fallback);
   console.error(fallback, error);
   res.status(httpErrorStatus(error)).json({ error: message });
+}
+
+async function handleOrgIntegrations(req: express.Request, res: express.Response) {
+  try {
+    const actor = await requireAdmin(req.headers.authorization);
+    const exportToken = wantsExportToken(req);
+    if (exportToken) {
+      if (req.method === "GET") {
+        res.json(await getExportTokenMeta(actor.organizationId));
+        return;
+      }
+      if (req.method === "DELETE") {
+        await revokeExportToken(actor.organizationId);
+        res.json({ ok: true });
+        return;
+      }
+      if (req.method === "POST") {
+        res.json(await rotateExportToken(actor.organizationId));
+        return;
+      }
+      res.status(405).json({ error: "Method not allowed" });
+      return;
+    }
+    if (req.method === "GET") {
+      const url = await getOrgWebhookUrl(actor.organizationId);
+      res.json({ url: url || "" });
+      return;
+    }
+    if (req.method === "POST") {
+      const url = req.body?.url === null || req.body?.url === undefined ? "" : String(req.body.url);
+      await setOrgWebhookUrl(actor.organizationId, url);
+      res.json({ ok: true });
+      return;
+    }
+    res.status(405).json({ error: "Method not allowed" });
+  } catch (error) {
+    sendError(res, error, "Falha ao configurar a integração.");
+  }
 }
 
 app.post("/api/admin/create-user", async (req, res) => {
@@ -164,53 +203,20 @@ app.post("/api/ai/detect-duplicate", async (req, res) => {
   }
 });
 
-app.get("/api/admin/org-webhook", async (req, res) => {
-  try {
-    const actor = await requireAdmin(req.headers.authorization);
-    const url = await getOrgWebhookUrl(actor.organizationId);
-    res.json({ url: url || "" });
-  } catch (error) {
-    sendError(res, error, "Falha ao ler o webhook.");
-  }
+app.get("/api/admin/org-webhook", handleOrgIntegrations);
+app.post("/api/admin/org-webhook", handleOrgIntegrations);
+app.delete("/api/admin/org-webhook", handleOrgIntegrations);
+app.get("/api/admin/org-export-token", (req, res) => {
+  req.query.tab = "export-token";
+  return handleOrgIntegrations(req, res);
 });
-
-app.post("/api/admin/org-webhook", async (req, res) => {
-  try {
-    const actor = await requireAdmin(req.headers.authorization);
-    const url = req.body?.url === null || req.body?.url === undefined ? "" : String(req.body.url);
-    await setOrgWebhookUrl(actor.organizationId, url);
-    res.json({ ok: true });
-  } catch (error) {
-    sendError(res, error, "Falha ao configurar o webhook.");
-  }
+app.post("/api/admin/org-export-token", (req, res) => {
+  req.query.tab = "export-token";
+  return handleOrgIntegrations(req, res);
 });
-
-app.get("/api/admin/org-export-token", async (req, res) => {
-  try {
-    const actor = await requireAdmin(req.headers.authorization);
-    res.json(await getExportTokenMeta(actor.organizationId));
-  } catch (error) {
-    sendError(res, error, "Falha ao ler o token de extração.");
-  }
-});
-
-app.post("/api/admin/org-export-token", async (req, res) => {
-  try {
-    const actor = await requireAdmin(req.headers.authorization);
-    res.json(await rotateExportToken(actor.organizationId));
-  } catch (error) {
-    sendError(res, error, "Falha ao gerar o token de extração.");
-  }
-});
-
-app.delete("/api/admin/org-export-token", async (req, res) => {
-  try {
-    const actor = await requireAdmin(req.headers.authorization);
-    await revokeExportToken(actor.organizationId);
-    res.json({ ok: true });
-  } catch (error) {
-    sendError(res, error, "Falha ao revogar o token de extração.");
-  }
+app.delete("/api/admin/org-export-token", (req, res) => {
+  req.query.tab = "export-token";
+  return handleOrgIntegrations(req, res);
 });
 
 app.get("/api/export/rooms", async (req, res) => {

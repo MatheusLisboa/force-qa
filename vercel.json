@@ -8,6 +8,7 @@
     }
   },
   "rewrites": [
+    { "source": "/api/admin/org-export-token", "destination": "/api/admin/org-webhook?tab=export-token" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }

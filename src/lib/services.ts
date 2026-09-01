@@ -543,7 +543,7 @@ export async function fetchOrgExportTokenMeta(): Promise<{
   prefix: string | null;
   createdAt: string | null;
 }> {
-  const response = await authFetch("/api/admin/org-export-token");
+  const response = await authFetch("/api/admin/org-webhook?tab=export-token");
   if (!response.ok) {
     throw new Error(await readApiError(response, "Não foi possível ler o token de extração."));
   }
@@ -551,7 +551,7 @@ export async function fetchOrgExportTokenMeta(): Promise<{
 }
 
 export async function rotateOrgExportToken(): Promise<{ token: string; prefix: string }> {
-  const response = await authFetch("/api/admin/org-export-token", {
+  const response = await authFetch("/api/admin/org-webhook?tab=export-token", {
     method: "POST",
     body: JSON.stringify({}),
   });
@@ -562,7 +562,7 @@ export async function rotateOrgExportToken(): Promise<{ token: string; prefix: s
 }
 
 export async function revokeOrgExportToken(): Promise<void> {
-  const response = await authFetch("/api/admin/org-export-token", { method: "DELETE" });
+  const response = await authFetch("/api/admin/org-webhook?tab=export-token", { method: "DELETE" });
   if (!response.ok) {
     throw new Error(await readApiError(response, "Não foi possível revogar o token de extração."));
   }
