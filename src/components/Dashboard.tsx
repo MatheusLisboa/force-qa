@@ -247,7 +247,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </button>
             </>
           )}
-          <div className="relative" ref={moreRef}>
+          <div className="relative z-30" ref={moreRef}>
             <button
               type="button"
               onClick={() => setMoreOpen((open) => !open)}

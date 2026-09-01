@@ -480,7 +480,7 @@
   }
 
   .fq-page-header {
-    @apply flex flex-col gap-4 pb-1 md:flex-row md:items-end md:justify-between;
+    @apply relative z-20 flex flex-col gap-4 pb-1 md:flex-row md:items-end md:justify-between;
   }
 
   .fq-action-label {
@@ -792,7 +792,7 @@
   }
 
   .fq-admin-bar {
-    @apply flex flex-col gap-4 rounded-lg border p-4 md:flex-row md:items-center md:justify-between;
+    @apply flex flex-col gap-4 rounded-lg border p-4 md:flex-row md:flex-wrap md:items-center md:justify-between;
     background-color: var(--color-fq-surface);
     border-color: var(--color-fq-border);
   }

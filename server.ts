@@ -122,6 +122,7 @@ app.post("/api/rooms/invite", async (req, res) => {
       isSuperadmin: authed.isSuperadmin,
       roomId: String(req.body?.roomId || ""),
       email: String(req.body?.email || ""),
+      role: String(req.body?.role || ""),
       redirectTo: appRedirectTo(),
     });
     res.json(result);

@@ -535,7 +535,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
               <span className="fq-action-label">Administrar</span>
             </button>
           )}
-          <div className="relative" ref={roomMoreRef}>
+          <div className="relative z-30" ref={roomMoreRef}>
             <button
               type="button"
               onClick={() => setRoomMoreOpen((open) => !open)}

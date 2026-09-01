@@ -19,6 +19,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       isSuperadmin: authed.isSuperadmin,
       roomId: String(body.roomId || ""),
       email: String(body.email || ""),
+      role: String(body.role || ""),
       redirectTo: appRedirectTo(),
     });
     return res.status(200).json(result);

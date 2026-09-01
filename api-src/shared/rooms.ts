@@ -1,4 +1,6 @@
 import { getSupabaseAdmin } from "./auth";
+import { resolveInviteRole } from "../../src/lib/inviteRole";
+import type { UserRole } from "../../src/types";
 
 function extractRoomToken(input: string): string {
   const trimmed = input.trim();
@@ -99,8 +101,14 @@ export async function inviteToRoom(params: {
   isSuperadmin: boolean;
   roomId: string;
   email: string;
+  role?: string;
   redirectTo: string;
-}): Promise<{ userId: string; invited: boolean; alreadyMember: boolean }> {
+}): Promise<{
+  userId: string;
+  invited: boolean;
+  alreadyMember: boolean;
+  roleApplied: UserRole | null;
+}> {
   const email = params.email.trim().toLowerCase();
   if (!email || !email.includes("@")) {
     throw Object.assign(new Error("Informe um e-mail válido."), { status: 400 });
@@ -108,6 +116,7 @@ export async function inviteToRoom(params: {
   if (!["admin", "qa", "scrum_master"].includes(params.actorRole) && !params.isSuperadmin) {
     throw Object.assign(new Error("Apenas admin, QA ou Scrum Master podem convidar."), { status: 403 });
   }
+  const inviteRole = resolveInviteRole(params.role, params.actorRole, params.isSuperadmin);
 
   const admin = getSupabaseAdmin();
   const { data: room } = await admin.from("war_rooms").select("id, name, organization_id").eq("id", params.roomId).maybeSingle();
@@ -151,7 +160,7 @@ export async function inviteToRoom(params: {
   if (!userId) {
     const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
       redirectTo: params.redirectTo,
-      data: { squad: "", name: email.split("@")[0] },
+      data: { squad: "", name: email.split("@")[0], role: inviteRole },
     });
     if (error) throw error;
     if (!data.user) throw new Error("Falha ao enviar o convite.");
@@ -159,11 +168,14 @@ export async function inviteToRoom(params: {
     invited = true;
     const orgForUser = roomOrgId || params.actorOrganizationId;
     const { error: metaError } = await admin.auth.admin.updateUserById(userId, {
-      app_metadata: { role: "viewer", organization_id: orgForUser },
+      app_metadata: { role: inviteRole, organization_id: orgForUser },
     });
     if (metaError) throw metaError;
-    const { error: orgError } = await admin.from("users").update({ organization_id: orgForUser }).eq("id", userId);
-    if (orgError) throw orgError;
+    const { error: profileError } = await admin
+      .from("users")
+      .update({ organization_id: orgForUser, role: inviteRole })
+      .eq("id", userId);
+    if (profileError) throw profileError;
   }
 
   const { data: already } = await admin
@@ -174,7 +186,7 @@ export async function inviteToRoom(params: {
     .maybeSingle();
 
   if (already) {
-    return { userId, invited, alreadyMember: true };
+    return { userId, invited, alreadyMember: true, roleApplied: invited ? inviteRole : null };
   }
 
   const { error: memberError } = await admin.from("room_members").insert({
@@ -195,7 +207,7 @@ export async function inviteToRoom(params: {
     console.error("invite notification:", notifError);
   }
 
-  return { userId, invited, alreadyMember: false };
+  return { userId, invited, alreadyMember: false, roleApplied: invited ? inviteRole : null };
 }
 
 export async function assertActorCanAccessRoom(
