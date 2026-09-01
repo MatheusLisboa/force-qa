@@ -78,6 +78,64 @@ describe("exportCards", () => {
     expect(card.severity).toBe("blocker");
     expect(card.column).toBe("doing");
     expect(card.tags).toEqual(["ios"]);
+    expect(card.attachments).toEqual([]);
+  });
+
+  it("maps prints and legacy evidence into attachments", () => {
+    const withFiles = mapExportCard(
+      {
+        id: "bug-2",
+        war_room_id: "board-qa",
+        title: "Print",
+        description: "",
+        criticism: "high",
+        status: "new",
+        tags: [],
+        attachments: [
+          {
+            id: "att-1",
+            url: "https://cdn.example/shot.png",
+            kind: "file",
+          },
+        ],
+        created_at: "",
+        updated_at: "",
+        created_by_name: "",
+      },
+      "https://app.example"
+    );
+    expect(withFiles.attachments).toEqual([
+      {
+        id: "att-1",
+        kind: "file",
+        contentType: "image",
+        url: "https://cdn.example/shot.png",
+        expiresAt: null,
+      },
+    ]);
+
+    const legacy = mapExportCard(
+      {
+        id: "bug-3",
+        war_room_id: "board-qa",
+        title: "Legacy",
+        description: "",
+        criticism: "low",
+        status: "new",
+        tags: [],
+        evidence_url: "https://files.example/bug.gif",
+        created_at: "",
+        updated_at: "",
+        created_by_name: "",
+      },
+      "https://app.example"
+    );
+    expect(legacy.attachments[0]).toMatchObject({
+      id: "legacy-evidence",
+      kind: "file",
+      contentType: "image",
+      url: "https://files.example/bug.gif",
+    });
   });
 });
 

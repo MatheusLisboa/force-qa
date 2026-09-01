@@ -1,4 +1,6 @@
 import { BugStatus } from "../types";
+import { attachmentsOf, parseAttachments } from "./attachments";
+import { isImageEvidence } from "./evidence";
 import { cardUrl } from "./routes";
 
 export const DEFAULT_EXPORT_LIMIT = 200;
@@ -12,6 +14,14 @@ const BUG_STATUSES: BugStatus[] = [
   "validated",
   "reopened",
 ];
+
+export interface ExportAttachment {
+  id: string;
+  kind: "file" | "link" | "prototype";
+  contentType: "image" | "link";
+  url: string;
+  expiresAt: string | null;
+}
 
 export interface ExportCard {
   id: string;
@@ -34,6 +44,7 @@ export interface ExportCard {
   resolvedAt: string | null;
   createdByName: string;
   url: string;
+  attachments: ExportAttachment[];
 }
 
 export interface ExportRoom {
@@ -89,6 +100,22 @@ export function parseExportCardQuery(query: unknown): ExportCardQuery {
   return { roomId, includeArchived, status, updatedSince, limit, offset };
 }
 
+export function collectExportAttachmentSources(row: Record<string, unknown>): ExportAttachment[] {
+  const parsed = parseAttachments(row.attachments);
+  const sources = attachmentsOf({
+    attachments: parsed,
+    evidenceUrl: typeof row.evidence_url === "string" ? row.evidence_url : undefined,
+    prototypeUrl: typeof row.prototype_url === "string" ? row.prototype_url : undefined,
+  });
+  return sources.map((source) => ({
+    id: source.id,
+    kind: source.kind,
+    contentType: isImageEvidence(source.url) ? "image" : "link",
+    url: source.url,
+    expiresAt: null,
+  }));
+}
+
 export function mapExportRoom(row: Record<string, unknown>): ExportRoom {
   const id = String(row.id || "");
   return {
@@ -131,5 +158,6 @@ export function mapExportCard(
     resolvedAt: row.resolved_at ? String(row.resolved_at) : null,
     createdByName: String(row.created_by_name || ""),
     url: cardUrl(roomId, id, origin),
+    attachments: collectExportAttachmentSources(row),
   };
 }

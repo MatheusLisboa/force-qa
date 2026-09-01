@@ -223,6 +223,9 @@ export const AdminIntegrationsPage: React.FC<AdminIntegrationsPageProps> = ({ on
 curl -s "${origin}/api/export/cards?roomId=ID_DA_SALA" \\
   -H "Authorization: Bearer fqex_…"`}
           </pre>
+          <p className="text-[11px] leading-relaxed text-neutral-500">
+            Cada card traz `attachments` com URL do print. Link do Storage expira em 24h — baixe no mesmo job.
+          </p>
         </div>
       </div>
     </div>

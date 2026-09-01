@@ -114,7 +114,7 @@ curl -s "https://SEU-APP/api/export/cards?roomId=ID_DA_SALA" \
 
 Query opcional em `/cards`: `archived=true`, `status=ready_for_qa`, `updatedSince=2026-09-01T00:00:00Z`, `limit`, `offset`. Também aceita `X-Api-Key` no lugar do Bearer.
 
-Cada card traz `id`, `title`, `description`, `status`, `column`, `severity`, `url` (link no ForceQA). O GitLab cria a issue a partir disso — a API não escreve no GitLab.
+Cada card traz `id`, `title`, `description`, `status`, `column`, `severity`, `url` (link no ForceQA) e `attachments` (prints e links). Prints no Storage vêm com URL assinada (`expiresAt`, TTL 24h) — o GitLab deve baixar no mesmo job. A API não escreve no GitLab.
 
 O token é SHA-256 no banco; o valor completo só aparece uma vez na UI. Trocar ou revogar invalida a chave na hora.
 

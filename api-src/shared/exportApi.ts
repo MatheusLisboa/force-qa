@@ -10,9 +10,15 @@ import {
   mapExportCard,
   mapExportRoom,
   parseExportCardQuery,
+  type ExportAttachment,
   type ExportCard,
   type ExportRoom,
 } from "../../src/lib/exportCards";
+import { storagePathFromUrl } from "../../src/lib/evidence";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+/** GitLab precisa baixar o print no mesmo job; 24h cobre um sync noturno. */
+export const EXPORT_SIGNED_TTL_SEC = 24 * 60 * 60;
 
 const EXPORT_WINDOW_MS = 60 * 1000;
 const EXPORT_MAX_HITS = 60;
@@ -135,7 +141,46 @@ export async function revokeExportToken(organizationId: string): Promise<void> {
 
 const ROOM_SELECT = "id, name, room_type, status, project, organization_id";
 const CARD_SELECT =
-  "id, war_room_id, title, description, criticism, status, kanban_column_id, owner_name, environment, affected_url, build_version, tags, priority, type, duplicate_of_bug_id, created_at, updated_at, created_by_name, resolved_at, archived";
+  "id, war_room_id, title, description, criticism, status, kanban_column_id, owner_name, environment, affected_url, build_version, tags, priority, type, duplicate_of_bug_id, created_at, updated_at, created_by_name, resolved_at, archived, attachments, evidence_url, prototype_url";
+
+async function signExportAttachments(
+  admin: SupabaseClient,
+  attachments: ExportAttachment[]
+): Promise<ExportAttachment[]> {
+  if (attachments.length === 0) return attachments;
+
+  const uniquePaths = [
+    ...new Set(
+      attachments
+        .map((item) => storagePathFromUrl(item.url))
+        .filter((path): path is string => Boolean(path))
+    ),
+  ];
+  const signedByPath = new Map<string, { url: string; expiresAt: string }>();
+  if (uniquePaths.length > 0) {
+    const { data, error } = await admin.storage
+      .from("evidence")
+      .createSignedUrls(uniquePaths, EXPORT_SIGNED_TTL_SEC);
+    if (error) {
+      console.error("export createSignedUrls:", error);
+    }
+    const expiresAt = new Date(Date.now() + EXPORT_SIGNED_TTL_SEC * 1000).toISOString();
+    for (const item of data || []) {
+      const path = String(item.path || "");
+      const signedUrl = String(item.signedUrl || (item as { signedURL?: string }).signedURL || "");
+      if (path && signedUrl && !item.error) {
+        signedByPath.set(path, { url: signedUrl, expiresAt });
+      }
+    }
+  }
+
+  return attachments.map((attachment) => {
+    const path = storagePathFromUrl(attachment.url);
+    const signed = path ? signedByPath.get(path) : undefined;
+    if (!signed) return attachment;
+    return { ...attachment, url: signed.url, expiresAt: signed.expiresAt };
+  });
+}
 
 export async function listExportRooms(organizationId: string): Promise<{
   organizationId: string;
@@ -160,6 +205,7 @@ export async function listExportCards(
 ): Promise<{
   room: ExportRoom;
   cards: ExportCard[];
+  attachmentExpiresInSeconds: number;
   page: { limit: number; offset: number; count: number; hasMore: boolean };
 }> {
   const parsed = parseExportCardQuery(query);
@@ -193,11 +239,20 @@ export async function listExportCards(
   const rows = (data || []) as Record<string, unknown>[];
   const hasMore = rows.length > parsed.limit;
   const origin = appRedirectTo();
-  const cards = rows.slice(0, parsed.limit).map((row) => mapExportCard(row, origin));
+  const cards = await Promise.all(
+    rows.slice(0, parsed.limit).map(async (row) => {
+      const card = mapExportCard(row, origin);
+      return {
+        ...card,
+        attachments: await signExportAttachments(admin, card.attachments),
+      };
+    })
+  );
 
   return {
     room: mapExportRoom(room as Record<string, unknown>),
     cards,
+    attachmentExpiresInSeconds: EXPORT_SIGNED_TTL_SEC,
     page: {
       limit: parsed.limit,
       offset: parsed.offset,
