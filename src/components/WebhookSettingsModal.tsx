@@ -1,8 +1,16 @@
 import React, { useEffect, useRef, useState } from "react";
+import { Copy, KeyRound } from "lucide-react";
 import { motion } from "motion/react";
 import { useModalA11y } from "../hooks/useModalA11y";
-import { fetchOrgWebhookUrl, saveOrgWebhookUrl } from "../lib/services";
+import {
+  fetchOrgExportTokenMeta,
+  fetchOrgWebhookUrl,
+  revokeOrgExportToken,
+  rotateOrgExportToken,
+  saveOrgWebhookUrl,
+} from "../lib/services";
 import { useToast } from "../context/ToastContext";
+import { useConfirm } from "../context/ConfirmContext";
 
 interface WebhookSettingsModalProps {
   open: boolean;
@@ -11,24 +19,36 @@ interface WebhookSettingsModalProps {
 
 export const WebhookSettingsModal: React.FC<WebhookSettingsModalProps> = ({ open, onClose }) => {
   const { toast } = useToast();
+  const { confirm } = useConfirm();
   const dialogRef = useRef<HTMLDivElement>(null);
   useModalA11y(open, onClose, dialogRef);
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [tokenBusy, setTokenBusy] = useState(false);
   const [error, setError] = useState("");
+  const [tokenPrefix, setTokenPrefix] = useState<string | null>(null);
+  const [tokenCreatedAt, setTokenCreatedAt] = useState<string | null>(null);
+  const [plaintextToken, setPlaintextToken] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setError("");
+    setPlaintextToken(null);
     setLoading(true);
-    fetchOrgWebhookUrl()
-      .then(setUrl)
+    Promise.all([fetchOrgWebhookUrl(), fetchOrgExportTokenMeta()])
+      .then(([webhookUrl, meta]) => {
+        setUrl(webhookUrl);
+        setTokenPrefix(meta.prefix);
+        setTokenCreatedAt(meta.createdAt);
+      })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Falha ao carregar."))
       .finally(() => setLoading(false));
   }, [open]);
 
   if (!open) return null;
+
+  const origin = window.location.origin.replace(/\/$/, "");
 
   const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -45,40 +65,171 @@ export const WebhookSettingsModal: React.FC<WebhookSettingsModalProps> = ({ open
     }
   };
 
+  const handleRotate = async () => {
+    const ok = await confirm({
+      title: tokenPrefix ? "Trocar token" : "Gerar token",
+      message: tokenPrefix
+        ? "O token atual para de funcionar na hora. O GitLab precisa receber o novo."
+        : "Gera uma chave de leitura desta org. Guarde — o valor completo só aparece agora.",
+      confirmLabel: tokenPrefix ? "Trocar token" : "Gerar token",
+      danger: Boolean(tokenPrefix),
+    });
+    if (!ok) return;
+    setTokenBusy(true);
+    setError("");
+    try {
+      const rotated = await rotateOrgExportToken();
+      setPlaintextToken(rotated.token);
+      setTokenPrefix(rotated.prefix);
+      setTokenCreatedAt(new Date().toISOString());
+      toast("Token gerado. Copie agora.", { kind: "success" });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível gerar o token.");
+    } finally {
+      setTokenBusy(false);
+    }
+  };
+
+  const handleRevoke = async () => {
+    const ok = await confirm({
+      title: "Revogar token",
+      message: "Quem usa essa chave deixa de ler o board até você gerar outra.",
+      confirmLabel: "Revogar",
+      danger: true,
+    });
+    if (!ok) return;
+    setTokenBusy(true);
+    setError("");
+    try {
+      await revokeOrgExportToken();
+      setPlaintextToken(null);
+      setTokenPrefix(null);
+      setTokenCreatedAt(null);
+      toast("Token revogado.", { kind: "success" });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível revogar.");
+    } finally {
+      setTokenBusy(false);
+    }
+  };
+
+  const copyToken = async () => {
+    if (!plaintextToken) return;
+    await navigator.clipboard.writeText(plaintextToken);
+    toast("Token copiado.", { kind: "success" });
+  };
+
   return (
     <div className="fq-modal-overlay">
       <motion.div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="webhook-title"
+        aria-labelledby="integrations-title"
         tabIndex={-1}
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="fq-modal fq-modal--sm"
+        className="fq-modal fq-modal--md"
       >
         <div className="fq-modal-header">
-          <h3 id="webhook-title" className="fq-modal-title">Webhook Slack / Discord</h3>
+          <h3 id="integrations-title" className="fq-modal-title">Integrações</h3>
           <button type="button" className="fq-btn-icon" onClick={onClose} aria-label="Fechar">X</button>
         </div>
-        <form onSubmit={handleSave} className="space-y-4 text-sm text-neutral-400">
+        <form onSubmit={handleSave} className="space-y-5 text-sm text-neutral-400">
           {error && <div className="fq-alert-error text-xs">{error}</div>}
-          <p>
-            Incoming webhook da organização. Dispara quando um card vira blocker ou entra em Pronto para QA.
-          </p>
-          <input
-            type="url"
-            className="fq-input"
-            placeholder="https://hooks.slack.com/... ou https://discord.com/api/webhooks/..."
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            disabled={loading}
-          />
-          <p className="text-[12px] text-neutral-500">Deixe em branco para desativar.</p>
+
+          <div className="space-y-3">
+            <p className="text-[13px] font-medium text-neutral-200">Webhook Slack / Discord</p>
+            <p className="text-[12px] leading-relaxed text-neutral-500">
+              Incoming webhook da organização. Dispara quando um card vira blocker ou entra em Pronto para QA.
+            </p>
+            <input
+              type="url"
+              className="fq-input"
+              placeholder="https://hooks.slack.com/... ou https://discord.com/api/webhooks/..."
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              disabled={loading}
+            />
+            <p className="text-[12px] text-neutral-500">Deixe em branco para desativar.</p>
+          </div>
+
+          <div className="border-t border-white/[0.06] pt-4 space-y-3">
+            <div className="flex items-start gap-2.5">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-teal-400/10 text-teal-300">
+                <KeyRound className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-[13px] font-medium text-neutral-200">API de extração</p>
+                <p className="text-[12px] leading-relaxed text-neutral-500 mt-0.5">
+                  Token da org para o GitLab (ou um script) puxar salas e cards. Só leitura. O valor completo aparece uma vez.
+                </p>
+              </div>
+            </div>
+
+            {tokenPrefix ? (
+              <p className="text-[12px] text-neutral-400">
+                Ativo: <span className="font-mono text-neutral-200">{tokenPrefix}…</span>
+                {tokenCreatedAt ? ` · ${new Date(tokenCreatedAt).toLocaleDateString("pt-BR")}` : ""}
+              </p>
+            ) : (
+              <p className="text-[12px] text-neutral-500">Nenhum token ainda.</p>
+            )}
+
+            {plaintextToken && (
+              <div className="space-y-1.5">
+                <label className="fq-label fq-label--xs" htmlFor="export-token-once">
+                  Copie agora — não mostramos de novo
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    id="export-token-once"
+                    readOnly
+                    className="fq-input font-mono !text-[12px]"
+                    value={plaintextToken}
+                  />
+                  <button type="button" className="fq-btn-secondary shrink-0" onClick={() => void copyToken()}>
+                    <Copy className="h-4 w-4" />
+                    Copiar
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="fq-btn-secondary text-xs"
+                disabled={loading || tokenBusy}
+                onClick={() => void handleRotate()}
+              >
+                {tokenBusy ? "Gerando..." : tokenPrefix ? "Trocar token" : "Gerar token"}
+              </button>
+              {tokenPrefix && (
+                <button
+                  type="button"
+                  className="fq-btn-ghost text-xs text-red-400"
+                  disabled={loading || tokenBusy}
+                  onClick={() => void handleRevoke()}
+                >
+                  Revogar
+                </button>
+              )}
+            </div>
+
+            <pre className="overflow-x-auto rounded-lg border border-white/[0.08] bg-black/30 p-3 text-[11px] leading-relaxed text-neutral-400">
+{`curl -s "${origin}/api/export/rooms" \\
+  -H "Authorization: Bearer fqex_…"
+
+curl -s "${origin}/api/export/cards?roomId=ID_DA_SALA" \\
+  -H "Authorization: Bearer fqex_…"`}
+            </pre>
+          </div>
+
           <div className="fq-modal-footer">
             <button type="button" className="fq-btn-ghost text-xs" onClick={onClose}>Cancelar</button>
             <button type="submit" className="fq-btn-primary text-xs" disabled={saving || loading}>
-              {saving ? "Salvando..." : "Salvar"}
+              {saving ? "Salvando..." : "Salvar webhook"}
             </button>
           </div>
         </form>

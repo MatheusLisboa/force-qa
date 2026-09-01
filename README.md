@@ -95,3 +95,26 @@ As rotas `/api/*` na Vercel são funções serverless. Defina `SUPABASE_SERVICE_
 | `npm run build:vercel` | Build só do frontend (usado pelo `vercel.json`) |
 | `npm run lint` | Verificação TypeScript |
 | `npm test` | Testes unitários (Vitest) |
+
+## API de extração (GitLab e similares)
+
+Leitura dos boards com um token da organização. Não usa o login do app. O admin gera a chave em **Mais → Integrações**.
+
+Rode [`supabase/migration_export_api.sql`](supabase/migration_export_api.sql) no SQL Editor antes do primeiro uso.
+
+```bash
+# Lista salas da org
+curl -s "https://SEU-APP/api/export/rooms" \
+  -H "Authorization: Bearer fqex_…"
+
+# Cards de uma sala (sem arquivados; máx. 200)
+curl -s "https://SEU-APP/api/export/cards?roomId=ID_DA_SALA" \
+  -H "Authorization: Bearer fqex_…"
+```
+
+Query opcional em `/cards`: `archived=true`, `status=ready_for_qa`, `updatedSince=2026-09-01T00:00:00Z`, `limit`, `offset`. Também aceita `X-Api-Key` no lugar do Bearer.
+
+Cada card traz `id`, `title`, `description`, `status`, `column`, `severity`, `url` (link no ForceQA). O GitLab cria a issue a partir disso — a API não escreve no GitLab.
+
+O token é SHA-256 no banco; o valor completo só aparece uma vez na UI. Trocar ou revogar invalida a chave na hora.
+

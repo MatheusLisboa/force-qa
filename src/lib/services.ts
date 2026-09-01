@@ -538,6 +538,36 @@ export async function saveOrgWebhookUrl(url: string): Promise<void> {
   }
 }
 
+export async function fetchOrgExportTokenMeta(): Promise<{
+  configured: boolean;
+  prefix: string | null;
+  createdAt: string | null;
+}> {
+  const response = await authFetch("/api/admin/org-export-token");
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Não foi possível ler o token de extração."));
+  }
+  return response.json();
+}
+
+export async function rotateOrgExportToken(): Promise<{ token: string; prefix: string }> {
+  const response = await authFetch("/api/admin/org-export-token", {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Não foi possível gerar o token de extração."));
+  }
+  return response.json();
+}
+
+export async function revokeOrgExportToken(): Promise<void> {
+  const response = await authFetch("/api/admin/org-export-token", { method: "DELETE" });
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Não foi possível revogar o token de extração."));
+  }
+}
+
 async function joinWarRoomViaApi(input: string): Promise<string> {
   const response = await authFetch("/api/rooms/join", {
     method: "POST",

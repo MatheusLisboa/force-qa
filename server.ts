@@ -10,6 +10,15 @@ import { appRedirectTo } from "./api-src/shared/appUrl";
 import { assertActorCanAccessRoom, inviteToRoom, joinRoom, validateGuestRoom } from "./api-src/shared/rooms";
 import { detectDuplicate, suggestBugFields } from "./api-src/shared/geminiBugs";
 import { dispatchRoomWebhook, getOrgWebhookUrl, setOrgWebhookUrl, type WebhookKind } from "./api-src/shared/webhooks";
+import {
+  applyExportCors,
+  getExportTokenMeta,
+  listExportCards,
+  listExportRooms,
+  requireExportOrganization,
+  revokeExportToken,
+  rotateExportToken,
+} from "./api-src/shared/exportApi";
 import { canWriteBugs } from "./src/lib/permissions";
 
 dotenv.config();
@@ -174,6 +183,64 @@ app.post("/api/admin/org-webhook", async (req, res) => {
   } catch (error) {
     sendError(res, error, "Falha ao configurar o webhook.");
   }
+});
+
+app.get("/api/admin/org-export-token", async (req, res) => {
+  try {
+    const actor = await requireAdmin(req.headers.authorization);
+    res.json(await getExportTokenMeta(actor.organizationId));
+  } catch (error) {
+    sendError(res, error, "Falha ao ler o token de extração.");
+  }
+});
+
+app.post("/api/admin/org-export-token", async (req, res) => {
+  try {
+    const actor = await requireAdmin(req.headers.authorization);
+    res.json(await rotateExportToken(actor.organizationId));
+  } catch (error) {
+    sendError(res, error, "Falha ao gerar o token de extração.");
+  }
+});
+
+app.delete("/api/admin/org-export-token", async (req, res) => {
+  try {
+    const actor = await requireAdmin(req.headers.authorization);
+    await revokeExportToken(actor.organizationId);
+    res.json({ ok: true });
+  } catch (error) {
+    sendError(res, error, "Falha ao revogar o token de extração.");
+  }
+});
+
+app.get("/api/export/rooms", async (req, res) => {
+  applyExportCors(res);
+  try {
+    const { organizationId } = await requireExportOrganization(req.headers);
+    res.json(await listExportRooms(organizationId));
+  } catch (error) {
+    sendError(res, error, "Falha ao listar salas.");
+  }
+});
+
+app.get("/api/export/cards", async (req, res) => {
+  applyExportCors(res);
+  try {
+    const { organizationId } = await requireExportOrganization(req.headers);
+    res.json(await listExportCards(organizationId, req.query));
+  } catch (error) {
+    sendError(res, error, "Falha ao listar cards.");
+  }
+});
+
+app.options("/api/export/rooms", (_req, res) => {
+  applyExportCors(res);
+  res.status(204).end();
+});
+
+app.options("/api/export/cards", (_req, res) => {
+  applyExportCors(res);
+  res.status(204).end();
 });
 
 app.post("/api/webhooks/dispatch", async (req, res) => {

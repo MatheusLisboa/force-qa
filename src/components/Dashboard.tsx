@@ -321,7 +321,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     }}
                   >
                     <Webhook className="w-3.5 h-3.5 text-neutral-500" />
-                    Webhook Slack/Discord
+                    Integrações
                   </button>
                 )}
                 <button

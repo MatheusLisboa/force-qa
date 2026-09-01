@@ -11,6 +11,7 @@ const entries = [
   "api-src/admin/delete-user.ts",
   "api-src/admin/move-user.ts",
   "api-src/admin/org-webhook.ts",
+  "api-src/admin/org-export-token.ts",
   "api-src/ai/detect-duplicate.ts",
   "api-src/ai/generate-report.ts",
   "api-src/ai/suggest-bug-fields.ts",
@@ -18,6 +19,8 @@ const entries = [
   "api-src/rooms/invite.ts",
   "api-src/rooms/join.ts",
   "api-src/webhooks/dispatch.ts",
+  "api-src/export/rooms.ts",
+  "api-src/export/cards.ts",
 ];
 
 await Promise.all(
