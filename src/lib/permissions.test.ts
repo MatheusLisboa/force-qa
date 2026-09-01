@@ -5,6 +5,7 @@ import {
   canInviteToRoom,
   canManageSpaces,
   canManageUsers,
+  canManageIntegrations,
   canManageOrganizations,
   canWriteBugs,
   SIGNUP_ROLES,
@@ -22,6 +23,15 @@ describe("permissions", () => {
     expect(canManageSpaces("qa")).toBe(true);
     expect(canManageSpaces("scrum_master")).toBe(true);
     expect(canManageSpaces("developer")).toBe(false);
+  });
+
+  it("lets QA and Scrum manage integrations, not developers", () => {
+    expect(canManageIntegrations("admin")).toBe(true);
+    expect(canManageIntegrations("qa")).toBe(true);
+    expect(canManageIntegrations("scrum_master")).toBe(true);
+    expect(canManageIntegrations("developer")).toBe(false);
+    expect(canManageIntegrations("qa", false, true)).toBe(false);
+    expect(canManageIntegrations("viewer", true)).toBe(true);
   });
 
   it("keeps admin-only user management", () => {

@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { clientErrorMessage, httpErrorStatus, readJsonBody, requireAdmin } from "../shared/auth";
+import { clientErrorMessage, httpErrorStatus, readJsonBody, requireIntegrationsManager } from "../shared/auth";
 import { wantsExportToken } from "../../src/lib/vercelApiPath";
 import { getOrgWebhookUrl, setOrgWebhookUrl } from "../shared/webhooks";
 import { getExportTokenMeta, revokeExportToken, rotateExportToken } from "../shared/exportApi";
@@ -13,7 +13,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const actor = await requireAdmin(req.headers.authorization);
+    const actor = await requireIntegrationsManager(req.headers.authorization);
     const organizationId = actor.organizationId;
 
     if (exportToken) {

@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient, User } from "@supabase/supabase-js";
 import { resolveOrganizationId } from "../../src/lib/organizations";
+import { canManageIntegrations } from "../../src/lib/permissions";
 
 export function envVar(key: string): string | undefined {
   const raw = process.env[key];
@@ -56,6 +57,14 @@ export async function requireAdmin(authHeader: string | undefined): Promise<Auth
   const authed = await requireUser(authHeader);
   if (authed.role !== "admin" && !authed.isSuperadmin) {
     throw Object.assign(new Error("Apenas administradores podem executar esta operação."), { status: 403 });
+  }
+  return authed;
+}
+
+export async function requireIntegrationsManager(authHeader: string | undefined): Promise<AuthedUser> {
+  const authed = await requireUser(authHeader);
+  if (!canManageIntegrations(authed.role, authed.isSuperadmin, authed.isGuest)) {
+    throw Object.assign(new Error("Apenas admin, QA ou Scrum Master podem gerenciar integrações."), { status: 403 });
   }
   return authed;
 }

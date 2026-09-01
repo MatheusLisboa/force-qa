@@ -120,11 +120,11 @@ export const AdminIntegrationsPage: React.FC<AdminIntegrationsPageProps> = ({ on
           </button>
           <p className="fq-page-eyebrow flex items-center gap-1.5">
             <Webhook className="w-3.5 h-3.5 text-teal-400" />
-            Admin
+            Org
           </p>
           <h1 className="fq-page-title mt-1">Integrações</h1>
           <p className="text-neutral-500 text-sm mt-1">
-            Webhook Slack/Discord e token para o GitLab puxar os cards. Só admin da org.
+            Webhook Slack/Discord e token para o GitLab puxar os cards. Admin, QA e Scrum desta org.
           </p>
         </div>
       </div>

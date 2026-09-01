@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { AnimatePresence } from "motion/react";
 import { RoomStatusBadge, RoomTypeBadge } from "./BugBadges";
-import { canManageOrganizations, canManageSpaces as roleCanManageSpaces, canManageUsers } from "../lib/permissions";
+import { canManageIntegrations, canManageOrganizations, canManageSpaces as roleCanManageSpaces, canManageUsers } from "../lib/permissions";
 import {
   dashboardPulse,
   PulseBug,
@@ -245,7 +245,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </button>
             </>
           )}
-          {onOpenAdminPage && canManageUsers(profile?.role, profile?.isSuperadmin) && (
+          {onOpenAdminPage && canManageIntegrations(profile?.role, profile?.isSuperadmin, profile?.isGuest) && (
             <button
               type="button"
               onClick={() => onOpenAdminPage("/admin/integrations")}
@@ -319,7 +319,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     Organizações
                   </button>
                 )}
-                {canManageUsers(profile?.role, profile?.isSuperadmin) && (
+                {onOpenAdminPage && canManageIntegrations(profile?.role, profile?.isSuperadmin, profile?.isGuest) && (
                   <button
                     type="button"
                     className="flex w-full items-center gap-2 px-3 py-2 text-sm text-neutral-200 hover:bg-white/[0.05]"

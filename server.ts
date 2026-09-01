@@ -3,7 +3,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import { generateExecutiveReportForRoom } from "./api-src/ai/generate-report";
-import { clientErrorMessage, getSupabaseAdmin, httpErrorStatus, requireAdmin, requireAiUser, requireSuperadmin, requireUser } from "./api-src/shared/auth";
+import { clientErrorMessage, getSupabaseAdmin, httpErrorStatus, requireAdmin, requireAiUser, requireIntegrationsManager, requireSuperadmin, requireUser } from "./api-src/shared/auth";
 import { adminCreateUser, adminDeleteUser, adminMoveUser } from "./api-src/shared/adminUsers";
 import { createOrganizationWithAdmin, resolveActorOrganizationId } from "./api-src/shared/organizations";
 import { appRedirectTo } from "./api-src/shared/appUrl";
@@ -37,7 +37,7 @@ function sendError(res: express.Response, error: unknown, fallback: string) {
 
 async function handleOrgIntegrations(req: express.Request, res: express.Response) {
   try {
-    const actor = await requireAdmin(req.headers.authorization);
+    const actor = await requireIntegrationsManager(req.headers.authorization);
     const exportToken = wantsExportToken(req);
     if (exportToken) {
       if (req.method === "GET") {

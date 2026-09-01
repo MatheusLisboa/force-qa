@@ -98,7 +98,7 @@ As rotas `/api/*` na Vercel são funções serverless. Defina `SUPABASE_SERVICE_
 
 ## API de extração (GitLab e similares)
 
-Leitura dos boards com um token da organização. Não usa o login do app. O admin gera a chave em **Integrações** (botão no painel, ou Mais, ou Administração da sala).
+Leitura dos boards com um token da organização. Não usa o login do app. Admin, QA ou Scrum gera a chave em **Integrações** (botão no painel, ou Mais, ou Administração da sala).
 
 Rode [`supabase/migration_export_api.sql`](supabase/migration_export_api.sql) no SQL Editor antes do primeiro uso.
 

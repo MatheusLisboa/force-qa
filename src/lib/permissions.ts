@@ -23,6 +23,16 @@ export function canManageUsers(
   return Boolean(isSuperadmin) || role === "admin";
 }
 
+/** Webhook e token de extração da org: quem já opera salas (não Dev/Viewer). */
+export function canManageIntegrations(
+  role?: UserRole | string | null,
+  isSuperadmin?: boolean,
+  isGuest?: boolean
+): boolean {
+  if (isGuest) return false;
+  return Boolean(isSuperadmin) || canManageSpaces(role);
+}
+
 export function canManageOrganizations(isSuperadmin?: boolean): boolean {
   return Boolean(isSuperadmin);
 }

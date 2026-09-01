@@ -20,7 +20,7 @@ import { adminBoardViewsPath, adminIntegrationsPath, adminOrganizationsPath, adm
 import { parsePulseKind, PulseKind } from "./lib/dashboardPulse";
 import { formatRoleLabel } from "./lib/format";
 import { SquadSelect } from "./components/SquadSelect";
-import { canManageOrganizations, canManageUsers } from "./lib/permissions";
+import { canManageIntegrations, canManageOrganizations, canManageUsers } from "./lib/permissions";
 import { RoomRail } from "./components/RoomRail";
 import { InboxPage } from "./components/InboxPage";
 import { useOrgSpaces } from "./hooks/useOrgSpaces";
@@ -488,7 +488,7 @@ function AppContent() {
           <AdminOrganizationsPage onBack={handleBackToDashboard} />
         ) : adminPage === "users" && canManageUsers(profile?.role, profile?.isSuperadmin) ? (
           <AdminUsersPage onBack={handleBackToDashboard} />
-        ) : adminPage === "integrations" && canManageUsers(profile?.role, profile?.isSuperadmin) ? (
+        ) : adminPage === "integrations" && canManageIntegrations(profile?.role, profile?.isSuperadmin, profile?.isGuest) ? (
           <AdminIntegrationsPage onBack={handleBackToDashboard} />
         ) : adminPage === "board-views" && canManageUsers(profile?.role, profile?.isSuperadmin) ? (
           <AdminBoardViews onBack={handleBackToDashboard} initialProjectId={adminProjectId} />
@@ -506,7 +506,7 @@ function AppContent() {
             initialBugAt={focusBugAt}
             onBack={handleBackToDashboard}
             onOpenIntegrations={
-              canManageUsers(profile?.role, profile?.isSuperadmin)
+              canManageIntegrations(profile?.role, profile?.isSuperadmin, profile?.isGuest)
                 ? () => handleOpenAdminPage("/admin/integrations")
                 : undefined
             }
@@ -518,7 +518,9 @@ function AppContent() {
             loading={spacesLoading}
             onSelectRoom={handleSelectRoom}
             onOpenAdminPage={
-              canManageUsers(profile?.role, profile?.isSuperadmin) || canManageOrganizations(profile?.isSuperadmin)
+              canManageUsers(profile?.role, profile?.isSuperadmin) ||
+              canManageOrganizations(profile?.isSuperadmin) ||
+              canManageIntegrations(profile?.role, profile?.isSuperadmin, profile?.isGuest)
                 ? handleOpenAdminPage
                 : undefined
             }
