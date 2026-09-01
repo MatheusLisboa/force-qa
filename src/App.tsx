@@ -6,6 +6,7 @@ import { Dashboard } from "./components/Dashboard";
 import { WarRoomDetail } from "./components/WarRoomDetail";
 import { AdminBoardViews } from "./components/AdminBoardViews";
 import { AdminUsersPage } from "./components/AdminUsersPage";
+import { AdminIntegrationsPage } from "./components/AdminIntegrationsPage";
 import { AdminOrganizationsPage } from "./components/AdminOrganizationsPage";
 import { LogOut, Lock, User, Bell, PanelLeft, PanelLeftClose } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -15,7 +16,7 @@ import { subscribeNotifications } from "./lib/supabase";
 import { AppNotification } from "./types";
 import { ToastProvider } from "./context/ToastContext";
 import { ConfirmProvider } from "./context/ConfirmContext";
-import { adminBoardViewsPath, adminOrganizationsPath, adminUsersPath, dashboardPath, inboxPath, pushPath, roomPath } from "./lib/routes";
+import { adminBoardViewsPath, adminIntegrationsPath, adminOrganizationsPath, adminUsersPath, dashboardPath, inboxPath, pushPath, roomPath } from "./lib/routes";
 import { parsePulseKind, PulseKind } from "./lib/dashboardPulse";
 import { formatRoleLabel } from "./lib/format";
 import { SquadSelect } from "./components/SquadSelect";
@@ -30,7 +31,7 @@ function AppContent() {
   const [roomPulse, setRoomPulse] = useState<PulseKind>("all");
   const [focusBugId, setFocusBugId] = useState<string | null>(null);
   const [focusBugAt, setFocusBugAt] = useState(0);
-  const [adminPage, setAdminPage] = useState<"board-views" | "users" | "organizations" | null>(null);
+  const [adminPage, setAdminPage] = useState<"board-views" | "users" | "integrations" | "organizations" | null>(null);
   const [adminProjectId, setAdminProjectId] = useState<string | null>(null);
   const [inboxOpen, setInboxOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -72,6 +73,11 @@ function AppContent() {
     }
     if (path === "/admin/users") {
       setAdminPage("users");
+      setAdminProjectId(null);
+      return;
+    }
+    if (path === "/admin/integrations") {
+      setAdminPage("integrations");
       setAdminProjectId(null);
       return;
     }
@@ -220,7 +226,7 @@ function AppContent() {
     pushPath(dashboardPath());
   };
 
-  const handleOpenAdminPage = (path: "/admin/board-views" | "/admin/users" | "/admin/organizations", projectId?: string) => {
+  const handleOpenAdminPage = (path: "/admin/board-views" | "/admin/users" | "/admin/integrations" | "/admin/organizations", projectId?: string) => {
     setSelectedRoomId(null);
     setInboxOpen(false);
     setRailOpen(false);
@@ -228,6 +234,12 @@ function AppContent() {
       setAdminPage("users");
       setAdminProjectId(null);
       pushPath(adminUsersPath());
+      return;
+    }
+    if (path === "/admin/integrations") {
+      setAdminPage("integrations");
+      setAdminProjectId(null);
+      pushPath(adminIntegrationsPath());
       return;
     }
     if (path === "/admin/organizations") {
@@ -476,6 +488,8 @@ function AppContent() {
           <AdminOrganizationsPage onBack={handleBackToDashboard} />
         ) : adminPage === "users" && canManageUsers(profile?.role, profile?.isSuperadmin) ? (
           <AdminUsersPage onBack={handleBackToDashboard} />
+        ) : adminPage === "integrations" && canManageUsers(profile?.role, profile?.isSuperadmin) ? (
+          <AdminIntegrationsPage onBack={handleBackToDashboard} />
         ) : adminPage === "board-views" && canManageUsers(profile?.role, profile?.isSuperadmin) ? (
           <AdminBoardViews onBack={handleBackToDashboard} initialProjectId={adminProjectId} />
         ) : inboxOpen ? (
@@ -490,7 +504,12 @@ function AppContent() {
             initialPulse={roomPulse}
             initialBugId={focusBugId}
             initialBugAt={focusBugAt}
-            onBack={handleBackToDashboard} 
+            onBack={handleBackToDashboard}
+            onOpenIntegrations={
+              canManageUsers(profile?.role, profile?.isSuperadmin)
+                ? () => handleOpenAdminPage("/admin/integrations")
+                : undefined
+            }
           />
         ) : (
           <Dashboard 

@@ -41,6 +41,7 @@ import {
   MoreHorizontal,
   Settings,
   Filter,
+  Webhook,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -50,6 +51,7 @@ interface WarRoomDetailProps {
   initialBugId?: string | null;
   initialBugAt?: number;
   onBack: () => void;
+  onOpenIntegrations?: () => void;
 }
 
 export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
@@ -58,6 +60,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
   initialBugId = null,
   initialBugAt = 0,
   onBack,
+  onOpenIntegrations,
 }) => {
   const { profile } = useAuth();
   const canUseAi = canWriteBugs(profile?.role) && !profile?.isGuest;
@@ -697,6 +700,13 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
               Excluir {warRoom.roomType === "board" ? "Board" : "War Room"}
             </button>
           </div>
+          )}
+
+          {onOpenIntegrations && (
+            <button type="button" className="fq-btn-secondary text-xs py-1.5" onClick={onOpenIntegrations}>
+              <Webhook className="w-3.5 h-3.5" />
+              Integrações
+            </button>
           )}
 
           {canInviteToRoom(profile?.role) && <RoomMembersPanel roomId={roomId} />}

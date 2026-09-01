@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { adminBoardViewsPath, adminOrganizationsPath, adminUsersPath, cardUrl, dashboardPath, inboxPath, parseRoomInvite, roomPath } from "./routes";
+import { adminBoardViewsPath, adminIntegrationsPath, adminOrganizationsPath, adminUsersPath, cardUrl, dashboardPath, inboxPath, parseRoomInvite, roomPath } from "./routes";
 
 describe("routes", () => {
   it("builds dashboard, room and admin paths", () => {
@@ -12,6 +12,7 @@ describe("routes", () => {
     expect(adminBoardViewsPath()).toBe("/admin/board-views");
     expect(adminBoardViewsPath("p1")).toBe("/admin/board-views?project=p1");
     expect(adminUsersPath()).toBe("/admin/users");
+    expect(adminIntegrationsPath()).toBe("/admin/integrations");
     expect(adminOrganizationsPath()).toBe("/admin/organizations");
   });
 

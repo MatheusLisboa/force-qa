@@ -29,14 +29,13 @@ import { roomInviteUrl } from "../lib/routes";
 import { decorateSpaces, groupSpacesByProject, SpaceRow, UNGROUPED_PROJECT_LABEL } from "../lib/spaces";
 import { CreateWarRoomModal } from "./CreateWarRoomModal";
 import { CreateProjectModal } from "./CreateProjectModal";
-import { WebhookSettingsModal } from "./WebhookSettingsModal";
 
 interface DashboardProps {
   spaces: SpaceRow[];
   allBugs: PulseBug[];
   loading: boolean;
   onSelectRoom: (roomId: string, pulse?: PulseKind) => void;
-  onOpenAdminPage?: (path: "/admin/board-views" | "/admin/users" | "/admin/organizations", projectId?: string) => void;
+  onOpenAdminPage?: (path: "/admin/board-views" | "/admin/users" | "/admin/integrations" | "/admin/organizations", projectId?: string) => void;
   onOpenInbox?: () => void;
 }
 
@@ -65,7 +64,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [enterIdOpen, setEnterIdOpen] = useState(false);
   const [enterRoomIdInput, setEnterRoomIdInput] = useState("");
   const [enteringRoomLoading, setEnteringRoomLoading] = useState(false);
-  const [webhookOpen, setWebhookOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -247,6 +245,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </button>
             </>
           )}
+          {onOpenAdminPage && canManageUsers(profile?.role, profile?.isSuperadmin) && (
+            <button
+              type="button"
+              onClick={() => onOpenAdminPage("/admin/integrations")}
+              className="fq-btn-ghost text-sm"
+            >
+              <Webhook className="w-4 h-4" />
+              Integrações
+            </button>
+          )}
           <div className="relative z-30" ref={moreRef}>
             <button
               type="button"
@@ -316,7 +324,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     type="button"
                     className="flex w-full items-center gap-2 px-3 py-2 text-sm text-neutral-200 hover:bg-white/[0.05]"
                     onClick={() => {
-                      setWebhookOpen(true);
+                      onOpenAdminPage("/admin/integrations");
                       setMoreOpen(false);
                     }}
                   >
@@ -518,7 +526,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
           />
         )}
       </AnimatePresence>
-      <WebhookSettingsModal open={webhookOpen} onClose={() => setWebhookOpen(false)} />
     </div>
   );
 };
