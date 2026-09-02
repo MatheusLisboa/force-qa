@@ -1,11 +1,7 @@
 import { getSupabaseAdmin } from "./auth";
 import { appRedirectTo } from "./appUrl";
-import {
-  extractExportToken,
-  generateExportToken,
-  hashExportToken,
-  hashesMatch,
-} from "../../src/lib/exportToken";
+import { extractExportToken, hashExportToken, hashesMatch } from "../../src/lib/exportToken";
+import { throwIfExportTokenSqlMissing } from "./exportTokenStore";
 import {
   mapExportCard,
   mapExportRoom,
@@ -14,7 +10,7 @@ import {
   type ExportCard,
   type ExportRoom,
 } from "../../src/lib/exportCards";
-import { storagePathFromUrl } from "../../src/lib/evidence";
+import { storagePathFromUrl } from "../../src/lib/mediaUrl";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /** GitLab precisa baixar o print no mesmo job; 24h cobre um sync noturno. */
@@ -60,83 +56,12 @@ export async function requireExportOrganization(headers: {
     .select("organization_id, export_token_hash")
     .eq("export_token_hash", presentedHash)
     .maybeSingle();
-  if (error) throw error;
+  if (error) throwIfExportTokenSqlMissing(error);
   const storedHash = String(data?.export_token_hash || "");
   if (!data?.organization_id || !hashesMatch(presentedHash, storedHash)) {
     throw Object.assign(new Error("Token inválido."), { status: 401 });
   }
   return { organizationId: data.organization_id as string };
-}
-
-export async function getExportTokenMeta(organizationId: string): Promise<{
-  configured: boolean;
-  prefix: string | null;
-  createdAt: string | null;
-}> {
-  const admin = getSupabaseAdmin();
-  const { data, error } = await admin
-    .from("organization_integrations")
-    .select("export_token_prefix, export_token_created_at")
-    .eq("organization_id", organizationId)
-    .maybeSingle();
-  if (error) throw error;
-  const prefix = data?.export_token_prefix ? String(data.export_token_prefix) : null;
-  return {
-    configured: Boolean(prefix),
-    prefix,
-    createdAt: data?.export_token_created_at ? String(data.export_token_created_at) : null,
-  };
-}
-
-export async function rotateExportToken(
-  organizationId: string
-): Promise<{ token: string; prefix: string }> {
-  const generated = generateExportToken();
-  const admin = getSupabaseAdmin();
-  const now = new Date().toISOString();
-  const payload = {
-    export_token_hash: generated.hash,
-    export_token_prefix: generated.prefix,
-    export_token_created_at: now,
-    updated_at: now,
-  };
-
-  const { data: existing, error: lookupError } = await admin
-    .from("organization_integrations")
-    .select("organization_id")
-    .eq("organization_id", organizationId)
-    .maybeSingle();
-  if (lookupError) throw lookupError;
-
-  if (existing) {
-    const { error } = await admin
-      .from("organization_integrations")
-      .update(payload)
-      .eq("organization_id", organizationId);
-    if (error) throw error;
-  } else {
-    const { error } = await admin.from("organization_integrations").insert({
-      organization_id: organizationId,
-      ...payload,
-    });
-    if (error) throw error;
-  }
-
-  return { token: generated.token, prefix: generated.prefix };
-}
-
-export async function revokeExportToken(organizationId: string): Promise<void> {
-  const admin = getSupabaseAdmin();
-  const { error } = await admin
-    .from("organization_integrations")
-    .update({
-      export_token_hash: null,
-      export_token_prefix: null,
-      export_token_created_at: null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("organization_id", organizationId);
-  if (error) throw error;
 }
 
 const ROOM_SELECT = "id, name, room_type, status, project, organization_id";

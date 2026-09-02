@@ -1,6 +1,6 @@
 import { BugStatus } from "../types";
 import { attachmentsOf, parseAttachments } from "./attachments";
-import { isImageEvidence } from "./evidence";
+import { isImageEvidence } from "./mediaUrl";
 import { cardUrl } from "./routes";
 
 export const DEFAULT_EXPORT_LIMIT = 200;

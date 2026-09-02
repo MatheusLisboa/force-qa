@@ -12,13 +12,11 @@ import { detectDuplicate, suggestBugFields } from "./api-src/shared/geminiBugs";
 import { dispatchRoomWebhook, getOrgWebhookUrl, setOrgWebhookUrl, type WebhookKind } from "./api-src/shared/webhooks";
 import {
   applyExportCors,
-  getExportTokenMeta,
   listExportCards,
   listExportRooms,
   requireExportOrganization,
-  revokeExportToken,
-  rotateExportToken,
 } from "./api-src/shared/exportApi";
+import { getExportTokenMeta, revokeExportToken, rotateExportToken } from "./api-src/shared/exportTokenStore";
 import { canWriteBugs } from "./src/lib/permissions";
 import { wantsExportToken } from "./src/lib/vercelApiPath";
 

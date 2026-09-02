@@ -1,5 +1,5 @@
 import { Bug, BugAttachment, AttachmentKind } from "../types";
-import { safeMediaUrl } from "./evidence";
+import { safeMediaUrl } from "./mediaUrl";
 
 export function parseAttachments(raw: unknown): BugAttachment[] {
   if (!Array.isArray(raw)) return [];

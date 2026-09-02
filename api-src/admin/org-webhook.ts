@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { clientErrorMessage, httpErrorStatus, readJsonBody, requireIntegrationsManager } from "../shared/auth";
 import { wantsExportToken } from "../../src/lib/vercelApiPath";
 import { getOrgWebhookUrl, setOrgWebhookUrl } from "../shared/webhooks";
-import { getExportTokenMeta, revokeExportToken, rotateExportToken } from "../shared/exportApi";
+import { getExportTokenMeta, revokeExportToken, rotateExportToken } from "../shared/exportTokenStore";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const exportToken = wantsExportToken(req);
