@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { adminBoardViewsPath, adminIntegrationsPath, adminOrganizationsPath, adminUsersPath, cardUrl, dashboardPath, inboxPath, parseRoomInvite, roomPath } from "./routes";
+import { adminBoardViewsPath, adminIntegrationsPath, adminOrganizationsPath, adminPermissionsPath, adminUsersPath, cardUrl, dashboardPath, inboxPath, parseRoomInvite, roomPath } from "./routes";
 
 describe("routes", () => {
   it("builds dashboard, room and admin paths", () => {
@@ -14,6 +14,7 @@ describe("routes", () => {
     expect(adminUsersPath()).toBe("/admin/users");
     expect(adminIntegrationsPath()).toBe("/admin/integrations");
     expect(adminOrganizationsPath()).toBe("/admin/organizations");
+    expect(adminPermissionsPath()).toBe("/admin/permissions");
   });
 
   it("parses invite links into a room id", () => {

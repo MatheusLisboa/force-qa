@@ -82,7 +82,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, roomBugs = 
   useModalA11y(true, onClose, dialogRef);
   useModalA11y(isFullscreenEvidence && !!fullscreenUrl, closeEvidenceFullscreen, evidenceDialogRef);
 
-  const canEdit = canWriteBugs(profile?.role);
+  const canEdit = canWriteBugs(profile?.role, profile?.isSuperadmin, profile?.isGuest);
   const gallery = attachmentsOf(activeBug);
 
   useEffect(() => {
@@ -206,7 +206,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, roomBugs = 
 
   const handleUpdateStatus = async (newStatus: BugStatus) => {
     if (!profile) return;
-    if (!canWriteBugs(profile.role)) {
+    if (!canWriteBugs(profile.role, profile.isSuperadmin, profile.isGuest)) {
       toast("Observadores não podem modificar o status de tarefas.", { kind: "error" });
       return;
     }
@@ -238,7 +238,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, roomBugs = 
 
   const handleClaimTask = async () => {
     if (!profile) return;
-    if (!canWriteBugs(profile.role)) {
+    if (!canWriteBugs(profile.role, profile.isSuperadmin, profile.isGuest)) {
       toast("Observadores não podem assumir cards.", { kind: "error" });
       return;
     }
@@ -258,7 +258,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, roomBugs = 
   };
 
   const handleAssignOwner = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    if (!profile || !canAssignBugs(profile.role)) return;
+    if (!profile || !canAssignBugs(profile.role, profile.isSuperadmin, profile.isGuest)) return;
     const selectedUserId = e.target.value;
     if (!selectedUserId) return;
 
@@ -483,7 +483,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, roomBugs = 
               <Link2 className="w-4 h-4" />
               <span className="hidden sm:inline">Copiar link</span>
             </button>
-            {(canArchiveBugs(profile?.role) || activeBug.createdBy === profile?.id) && (
+            {(canArchiveBugs(profile?.role, profile?.isSuperadmin, profile?.isGuest) || activeBug.createdBy === profile?.id) && (
               <button
                 type="button"
                 className="fq-btn-danger text-[10px] font-mono !py-1.5"
@@ -696,7 +696,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, roomBugs = 
               )}
             </div>
 
-            {canAssignBugs(profile?.role) && (
+            {canAssignBugs(profile?.role, profile?.isSuperadmin, profile?.isGuest) && (
               <div>
                 <span className="fq-label fq-label--inline !mb-1.5 gap-1">
                   <UserPlus className="w-3.5 h-3.5" /> Atribuir

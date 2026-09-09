@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { canGrantAdminRole } from "../../src/lib/permissions";
 import { adminCreateUser } from "../shared/adminUsers";
 import { clientErrorMessage, httpErrorStatus, readJsonBody, requireAdmin } from "../shared/auth";
 import { resolveActorOrganizationId } from "../shared/organizations";
@@ -12,6 +13,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const actor = await requireAdmin(req.headers.authorization);
     const body = readJsonBody(req.body);
+    const role = String(body.role || "");
+    if (role === "admin" && !canGrantAdminRole(actor.role, actor.isSuperadmin)) {
+      throw Object.assign(new Error("Apenas um admin da org pode criar outro admin."), { status: 403 });
+    }
     const organizationId = await resolveActorOrganizationId(
       actor,
       body.organizationId ? String(body.organizationId) : null

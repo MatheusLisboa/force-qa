@@ -6,8 +6,8 @@ import {
 } from "../lib/supabase";
 import { isUserAlreadyRegistered } from "../lib/authErrors";
 import { UserProfile, UserRole } from "../types";
-import { SIGNUP_ROLES } from "../lib/permissions";
-import { joinWarRoom } from "../lib/services";
+import { SIGNUP_ROLES, resetRolePermissionMatrix, setRolePermissionMatrix } from "../lib/permissions";
+import { fetchRolePermissionMatrix, joinWarRoom } from "../lib/services";
 import { authFetch, readApiError } from "../lib/apiClient";
 import { normalizeArea } from "../lib/squads";
 import { resolveOrganizationId, DEFAULT_ORGANIZATION_ID } from "../lib/organizations";
@@ -27,6 +27,7 @@ interface AuthContextType {
   logout: () => Promise<void>;
   createProfile: (name: string, role: UserRole, squad: string) => Promise<void>;
   updateProfile: (profileData: Partial<UserProfile>) => Promise<void>;
+  permissionEpoch: number;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -73,11 +74,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [passwordRecovery, setPasswordRecovery] = useState(false);
+  const [permissionEpoch, setPermissionEpoch] = useState(0);
   const profileRef = useRef<UserProfile | null>(null);
 
   const applyProfile = (next: UserProfile | null) => {
     profileRef.current = next;
     setProfile(next);
+  };
+
+  const hydratePermissions = async () => {
+    try {
+      setRolePermissionMatrix(await fetchRolePermissionMatrix());
+    } catch {
+      resetRolePermissionMatrix();
+    }
+    setPermissionEpoch((value) => value + 1);
   };
 
   useEffect(() => {
@@ -87,6 +98,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const fetched = await fetchProfile(userId);
       if (!mounted) return;
       applyProfile(fetched ?? profileRef.current);
+      await hydratePermissions();
     };
 
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -99,6 +111,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
       } else {
         applyProfile(null);
+        resetRolePermissionMatrix();
         setLoading(false);
       }
     });
@@ -110,6 +123,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (!currentUser) {
           applyProfile(null);
+          resetRolePermissionMatrix();
+          setPermissionEpoch((value) => value + 1);
           setLoading(false);
           return;
         }
@@ -135,6 +150,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel("role-permissions")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "role_permissions" },
+        () => {
+          void hydratePermissions();
+        }
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
 
   const loginWithEmail = async (
     email: string,
@@ -357,6 +389,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await supabase.auth.signOut();
     setUser(null);
     applyProfile(null);
+    resetRolePermissionMatrix();
+    setPermissionEpoch((value) => value + 1);
   };
 
   const createProfile = async (name: string, role: UserRole, squad: string) => {
@@ -412,6 +446,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logout,
         createProfile,
         updateProfile,
+        permissionEpoch,
       }}
     >
       {children}

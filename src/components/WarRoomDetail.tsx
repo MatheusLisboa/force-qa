@@ -23,7 +23,7 @@ import {
   displayColumnLabel,
 } from "../lib/kanbanColumns";
 import { RoomTypeBadge } from "./BugBadges";
-import { canInviteToRoom, canWriteBugs } from "../lib/permissions";
+import { canInviteToRoom, canUseAi, canWriteBugs } from "../lib/permissions";
 import { useRoomShortcuts } from "../hooks/useRoomShortcuts";
 import { bugMatchesPulse, parsePulseKind, PulseKind, roomHeadlineParts } from "../lib/dashboardPulse";
 import { roomInviteUrl, roomPath, pushPath } from "../lib/routes";
@@ -63,7 +63,9 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
   onOpenIntegrations,
 }) => {
   const { profile } = useAuth();
-  const canUseAi = canWriteBugs(profile?.role) && !profile?.isGuest;
+  const canUseAiTools = canUseAi(profile?.role, profile?.isSuperadmin, profile?.isGuest);
+  const canWrite = canWriteBugs(profile?.role, profile?.isSuperadmin, profile?.isGuest);
+  const canInvite = canInviteToRoom(profile?.role, profile?.isSuperadmin, profile?.isGuest);
   const { toast } = useToast();
   const { confirm } = useConfirm();
   const [copied, setCopied] = useState(false);
@@ -141,7 +143,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
 
   useRoomShortcuts(
     {
-      onNew: canWriteBugs(profile?.role) ? () => openCreateCardModal() : undefined,
+      onNew: canWrite ? () => openCreateCardModal() : undefined,
       onSearch: focusSearch,
       onMyCards: profile ? toggleMyCards : undefined,
       onEscape: handleShortcutEscape,
@@ -249,7 +251,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
     e.preventDefault();
     const bugId = e.dataTransfer.getData("text/plain");
     if (!bugId || !profile || !warRoom) return;
-    if (!canWriteBugs(profile.role)) {
+    if (!canWrite) {
       toast("Observadores não podem mover cards no Kanban.", { kind: "error" });
       return;
     }
@@ -401,7 +403,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
   const bugsByColumn = groupBugsByColumn(visibleKanbanBugs, kanbanColumns);
   const headlineParts = roomHeadlineParts(bugs);
   const canManageThisRoom =
-    profile?.role === "admin" || warRoom.createdBy === profile?.id || canInviteToRoom(profile?.role);
+    profile?.role === "admin" || warRoom.createdBy === profile?.id || canInvite;
 
   const openAiReport = (autoGenerate = false) => {
     setAiReportAutoGenerate(autoGenerate);
@@ -521,7 +523,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
               <span className="fq-action-label">Meus cards</span>
             </button>
           )}
-          {canWriteBugs(profile?.role) && (
+          {canWrite && (
             <button onClick={() => openCreateCardModal()} className="fq-btn-primary text-sm" title="Novo card (N)">
               <Plus className="w-4 h-4" />
               <span className="sm:hidden">Novo</span>
@@ -572,7 +574,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
                   <FileSpreadsheet className="w-3.5 h-3.5 text-neutral-500" />
                   Exportar CSV
                 </button>
-                {canUseAi && (
+                {canUseAiTools && (
                 <button
                   type="button"
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-neutral-200 hover:bg-white/[0.05]"
@@ -627,7 +629,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
               <p className="text-[12px] text-neutral-500">
                 {profile?.role === "admin"
                   ? "Defina quem vê esta sala, status, convidados e exclusão."
-                  : canInviteToRoom(profile?.role) && warRoom.createdBy !== profile?.id
+                  : canInvite && warRoom.createdBy !== profile?.id
                     ? "Adicione ou remova quem pode ver este board."
                     : "Gerencie status, acesso de convidados e exclusão da sala."}
               </p>
@@ -709,7 +711,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
             </button>
           )}
 
-          {canInviteToRoom(profile?.role) && <RoomMembersPanel roomId={roomId} />}
+          {canInvite && <RoomMembersPanel roomId={roomId} />}
 
           {profile?.role === "admin" && warRoom.roomType === "board" && (
             <div className="w-full basis-full pt-3 mt-1 border-t border-white/[0.06]">
@@ -908,7 +910,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
         </div>
       )}
 
-      {activeTab === "ai_report" && canUseAi && (
+      {activeTab === "ai_report" && canUseAiTools && (
         <div className="space-y-5">
           <div className="fq-analytics-panel">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-white/[0.06] pb-4 mb-6">
@@ -990,7 +992,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
           open={endModalOpen}
           warRoom={warRoom}
           bugs={bugs}
-          canUseAi={canUseAi}
+          canUseAi={canUseAiTools}
           onClose={() => setEndModalOpen(false)}
           onEnded={() => setEndModalOpen(false)}
           onOpenAiReport={() => {

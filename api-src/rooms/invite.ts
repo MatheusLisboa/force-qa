@@ -17,6 +17,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       actorRole: authed.role,
       actorOrganizationId: authed.organizationId,
       isSuperadmin: authed.isSuperadmin,
+      isGuest: authed.isGuest,
       roomId: String(body.roomId || ""),
       email: String(body.email || ""),
       role: String(body.role || ""),

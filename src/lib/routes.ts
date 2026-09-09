@@ -62,11 +62,16 @@ export function adminOrganizationsPath(): string {
   return "/admin/organizations";
 }
 
+export function adminPermissionsPath(): string {
+  return "/admin/permissions";
+}
+
 export type AdminPagePath =
   | "/admin/board-views"
   | "/admin/users"
   | "/admin/integrations"
-  | "/admin/organizations";
+  | "/admin/organizations"
+  | "/admin/permissions";
 
 export function pushPath(path: string): void {
   const url = path.startsWith("http") ? path : `${window.location.origin}${path}`;

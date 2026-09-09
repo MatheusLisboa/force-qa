@@ -14,6 +14,7 @@ import { UserProfile, UserRole, WarRoom } from "../types";
 import { RoleBadge } from "./BugBadges";
 import { SquadSelect } from "./SquadSelect";
 import { useConfirm } from "../context/ConfirmContext";
+import { canGrantAdminRole } from "../lib/permissions";
 import { filterManagedUsers, roomsForOrganization } from "../lib/adminUsersView";
 import { formatRelativeTime } from "../lib/format";
 
@@ -120,6 +121,13 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
   const { adminCreateUser, profile } = useAuth();
   const { confirm } = useConfirm();
   const isSuperadmin = Boolean(profile?.isSuperadmin);
+  const roleOptions = useMemo(
+    () =>
+      ROLE_OPTIONS.filter(
+        (role) => role.value !== "admin" || canGrantAdminRole(profile?.role, profile?.isSuperadmin)
+      ),
+    [profile?.role, profile?.isSuperadmin]
+  );
 
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
@@ -481,7 +489,7 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
                   value={newUserRole}
                   onChange={(e) => setNewUserRole(e.target.value as UserRole)}
                 >
-                  {ROLE_OPTIONS.map((role) => (
+                  {roleOptions.map((role) => (
                     <option key={role.value} value={role.value}>
                       {role.label}
                     </option>
@@ -669,7 +677,7 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
                             onChange={(e) => setEditingRole(e.target.value as UserRole)}
                             className="fq-select text-sm py-1.5"
                           >
-                            {ROLE_OPTIONS.map((role) => (
+                            {roleOptions.map((role) => (
                               <option key={role.value} value={role.value}>
                                 {role.label}
                               </option>

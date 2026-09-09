@@ -16,10 +16,11 @@ import {
   Inbox,
   Webhook,
   Building2,
+  Shield,
 } from "lucide-react";
 import { AnimatePresence } from "motion/react";
 import { RoomStatusBadge, RoomTypeBadge } from "./BugBadges";
-import { canManageIntegrations, canManageOrganizations, canManageSpaces as roleCanManageSpaces, canManageUsers } from "../lib/permissions";
+import { canManageIntegrations, canManageOrganizations, canManageSpaces as roleCanManageSpaces, canManageUsers, canManageViews } from "../lib/permissions";
 import {
   dashboardPulse,
   PulseBug,
@@ -35,7 +36,7 @@ interface DashboardProps {
   allBugs: PulseBug[];
   loading: boolean;
   onSelectRoom: (roomId: string, pulse?: PulseKind) => void;
-  onOpenAdminPage?: (path: "/admin/board-views" | "/admin/users" | "/admin/integrations" | "/admin/organizations", projectId?: string) => void;
+  onOpenAdminPage?: (path: "/admin/board-views" | "/admin/users" | "/admin/integrations" | "/admin/organizations" | "/admin/permissions", projectId?: string) => void;
   onOpenInbox?: () => void;
 }
 
@@ -84,7 +85,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   });
   const spaceGroups = groupSpacesByProject(displayedSpaces);
 
-  const canManageSpaces = roleCanManageSpaces(profile?.role);
+  const canManageSpaces = roleCanManageSpaces(profile?.role, profile?.isSuperadmin, profile?.isGuest);
   const hasSpaces = spaces.length > 0;
 
   const copyInvite = (roomId: string, event: React.MouseEvent) => {
@@ -280,44 +281,57 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     Meus cards
                   </button>
                 )}
-                {onOpenAdminPage && canManageUsers(profile?.role, profile?.isSuperadmin) && (
+                {onOpenAdminPage && canManageUsers(profile?.role, profile?.isSuperadmin, profile?.isGuest) && (
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-neutral-200 hover:bg-white/[0.05]"
+                    onClick={() => {
+                      onOpenAdminPage("/admin/users");
+                      setMoreOpen(false);
+                    }}
+                  >
+                    <UserPlus className="w-3.5 h-3.5 text-neutral-500" />
+                    Usuários
+                  </button>
+                )}
+                {onOpenAdminPage && canManageViews(profile?.role, profile?.isSuperadmin, profile?.isGuest) && (
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-neutral-200 hover:bg-white/[0.05]"
+                    onClick={() => {
+                      onOpenAdminPage("/admin/board-views");
+                      setMoreOpen(false);
+                    }}
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5 text-neutral-500" />
+                    Visões
+                  </button>
+                )}
+                {onOpenAdminPage && canManageOrganizations(profile?.isSuperadmin) && (
                   <>
                     <button
                       type="button"
                       className="flex w-full items-center gap-2 px-3 py-2 text-sm text-neutral-200 hover:bg-white/[0.05]"
                       onClick={() => {
-                        onOpenAdminPage("/admin/users");
+                        onOpenAdminPage("/admin/organizations");
                         setMoreOpen(false);
                       }}
                     >
-                      <UserPlus className="w-3.5 h-3.5 text-neutral-500" />
-                      Usuários
+                      <Building2 className="w-3.5 h-3.5 text-neutral-500" />
+                      Organizações
                     </button>
                     <button
                       type="button"
                       className="flex w-full items-center gap-2 px-3 py-2 text-sm text-neutral-200 hover:bg-white/[0.05]"
                       onClick={() => {
-                        onOpenAdminPage("/admin/board-views");
+                        onOpenAdminPage("/admin/permissions");
                         setMoreOpen(false);
                       }}
                     >
-                      <LayoutGrid className="w-3.5 h-3.5 text-neutral-500" />
-                      Visões
+                      <Shield className="w-3.5 h-3.5 text-neutral-500" />
+                      Permissões
                     </button>
                   </>
-                )}
-                {onOpenAdminPage && canManageOrganizations(profile?.isSuperadmin) && (
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-neutral-200 hover:bg-white/[0.05]"
-                    onClick={() => {
-                      onOpenAdminPage("/admin/organizations");
-                      setMoreOpen(false);
-                    }}
-                  >
-                    <Building2 className="w-3.5 h-3.5 text-neutral-500" />
-                    Organizações
-                  </button>
                 )}
                 {onOpenAdminPage && canManageIntegrations(profile?.role, profile?.isSuperadmin, profile?.isGuest) && (
                   <button

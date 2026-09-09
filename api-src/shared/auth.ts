@@ -1,6 +1,12 @@
 import { createClient, SupabaseClient, User } from "@supabase/supabase-js";
 import { resolveOrganizationId } from "../../src/lib/organizations";
-import { canManageIntegrations } from "../../src/lib/permissions";
+import {
+  actorHasCapability,
+  DEFAULT_ROLE_MATRIX,
+  matrixFromRows,
+  type PermissionCapability,
+  type RolePermissionMatrix,
+} from "../../src/lib/permissions";
 
 export function envVar(key: string): string | undefined {
   const raw = process.env[key];
@@ -53,20 +59,35 @@ export async function requireUser(authHeader: string | undefined): Promise<Authe
   };
 }
 
-export async function requireAdmin(authHeader: string | undefined): Promise<AuthedUser> {
+export async function loadRolePermissionMatrix(): Promise<RolePermissionMatrix> {
+  const admin = getSupabaseAdmin();
+  const { data, error } = await admin.from("role_permissions").select("role, capability, allowed");
+  if (error || !data?.length) return DEFAULT_ROLE_MATRIX;
+  return matrixFromRows(data);
+}
+
+function actorFromAuthed(authed: AuthedUser) {
+  return { role: authed.role, isSuperadmin: authed.isSuperadmin, isGuest: authed.isGuest };
+}
+
+export async function requireCapability(
+  authHeader: string | undefined,
+  capability: PermissionCapability
+): Promise<AuthedUser> {
   const authed = await requireUser(authHeader);
-  if (authed.role !== "admin" && !authed.isSuperadmin) {
-    throw Object.assign(new Error("Apenas administradores podem executar esta operação."), { status: 403 });
+  const matrix = await loadRolePermissionMatrix();
+  if (!actorHasCapability(actorFromAuthed(authed), capability, matrix)) {
+    throw Object.assign(new Error("Você não tem permissão para esta operação."), { status: 403 });
   }
   return authed;
 }
 
+export async function requireAdmin(authHeader: string | undefined): Promise<AuthedUser> {
+  return requireCapability(authHeader, "manage_users");
+}
+
 export async function requireIntegrationsManager(authHeader: string | undefined): Promise<AuthedUser> {
-  const authed = await requireUser(authHeader);
-  if (!canManageIntegrations(authed.role, authed.isSuperadmin, authed.isGuest)) {
-    throw Object.assign(new Error("Apenas admin, QA ou Scrum Master podem gerenciar integrações."), { status: 403 });
-  }
-  return authed;
+  return requireCapability(authHeader, "manage_integrations");
 }
 
 export async function requireSuperadmin(authHeader: string | undefined): Promise<AuthedUser> {
@@ -93,10 +114,11 @@ export function assertAiRateLimit(userId: string): void {
   aiHits.set(userId, recent);
 }
 
-/** Viewer/guest cannot spend AI quota. */
+/** Viewer/guest cannot spend AI quota unless the matrix allows it. */
 export async function requireAiUser(authHeader: string | undefined): Promise<AuthedUser> {
   const authed = await requireUser(authHeader);
-  if (authed.isGuest || authed.role === "viewer") {
+  const matrix = await loadRolePermissionMatrix();
+  if (!actorHasCapability(actorFromAuthed(authed), "use_ai", matrix)) {
     throw Object.assign(new Error("Apenas quem escreve cards pode usar a IA."), { status: 403 });
   }
   assertAiRateLimit(authed.user.id);

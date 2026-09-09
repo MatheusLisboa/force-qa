@@ -110,7 +110,7 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
     setFormSubmitting(true);
     setFormError("");
     try {
-      if (!canWriteBugs(profile?.role)) {
+      if (!canWriteBugs(profile?.role, profile?.isSuperadmin, profile?.isGuest)) {
         throw new Error("Observadores não podem criar cards.");
       }
 

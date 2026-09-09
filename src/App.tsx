@@ -8,6 +8,7 @@ import { AdminBoardViews } from "./components/AdminBoardViews";
 import { AdminUsersPage } from "./components/AdminUsersPage";
 import { AdminIntegrationsPage } from "./components/AdminIntegrationsPage";
 import { AdminOrganizationsPage } from "./components/AdminOrganizationsPage";
+import { AdminPermissionsPage } from "./components/AdminPermissionsPage";
 import { LogOut, Lock, User, Bell, PanelLeft, PanelLeftClose } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useModalA11y } from "./hooks/useModalA11y";
@@ -16,11 +17,11 @@ import { subscribeNotifications } from "./lib/supabase";
 import { AppNotification } from "./types";
 import { ToastProvider } from "./context/ToastContext";
 import { ConfirmProvider } from "./context/ConfirmContext";
-import { adminBoardViewsPath, adminIntegrationsPath, adminOrganizationsPath, adminUsersPath, dashboardPath, inboxPath, pushPath, roomPath } from "./lib/routes";
+import { adminBoardViewsPath, adminIntegrationsPath, adminOrganizationsPath, adminPermissionsPath, adminUsersPath, dashboardPath, inboxPath, pushPath, roomPath } from "./lib/routes";
 import { parsePulseKind, PulseKind } from "./lib/dashboardPulse";
 import { formatRoleLabel } from "./lib/format";
 import { SquadSelect } from "./components/SquadSelect";
-import { canManageIntegrations, canManageOrganizations, canManageUsers } from "./lib/permissions";
+import { canManageIntegrations, canManageOrganizations, canManageUsers, canManageViews } from "./lib/permissions";
 import { RoomRail } from "./components/RoomRail";
 import { InboxPage } from "./components/InboxPage";
 import { useOrgSpaces } from "./hooks/useOrgSpaces";
@@ -31,7 +32,7 @@ function AppContent() {
   const [roomPulse, setRoomPulse] = useState<PulseKind>("all");
   const [focusBugId, setFocusBugId] = useState<string | null>(null);
   const [focusBugAt, setFocusBugAt] = useState(0);
-  const [adminPage, setAdminPage] = useState<"board-views" | "users" | "integrations" | "organizations" | null>(null);
+  const [adminPage, setAdminPage] = useState<"board-views" | "users" | "integrations" | "organizations" | "permissions" | null>(null);
   const [adminProjectId, setAdminProjectId] = useState<string | null>(null);
   const [inboxOpen, setInboxOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -83,6 +84,11 @@ function AppContent() {
     }
     if (path === "/admin/organizations") {
       setAdminPage("organizations");
+      setAdminProjectId(null);
+      return;
+    }
+    if (path === "/admin/permissions") {
+      setAdminPage("permissions");
       setAdminProjectId(null);
       return;
     }
@@ -226,7 +232,7 @@ function AppContent() {
     pushPath(dashboardPath());
   };
 
-  const handleOpenAdminPage = (path: "/admin/board-views" | "/admin/users" | "/admin/integrations" | "/admin/organizations", projectId?: string) => {
+  const handleOpenAdminPage = (path: "/admin/board-views" | "/admin/users" | "/admin/integrations" | "/admin/organizations" | "/admin/permissions", projectId?: string) => {
     setSelectedRoomId(null);
     setInboxOpen(false);
     setRailOpen(false);
@@ -246,6 +252,12 @@ function AppContent() {
       setAdminPage("organizations");
       setAdminProjectId(null);
       pushPath(adminOrganizationsPath());
+      return;
+    }
+    if (path === "/admin/permissions") {
+      setAdminPage("permissions");
+      setAdminProjectId(null);
+      pushPath(adminPermissionsPath());
       return;
     }
     setAdminPage("board-views");
@@ -484,13 +496,15 @@ function AppContent() {
             />
           )}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">
-        {adminPage === "organizations" && canManageOrganizations(profile?.isSuperadmin) ? (
+        {adminPage === "permissions" && canManageOrganizations(profile?.isSuperadmin) ? (
+          <AdminPermissionsPage onBack={handleBackToDashboard} />
+        ) : adminPage === "organizations" && canManageOrganizations(profile?.isSuperadmin) ? (
           <AdminOrganizationsPage onBack={handleBackToDashboard} />
-        ) : adminPage === "users" && canManageUsers(profile?.role, profile?.isSuperadmin) ? (
+        ) : adminPage === "users" && canManageUsers(profile?.role, profile?.isSuperadmin, profile?.isGuest) ? (
           <AdminUsersPage onBack={handleBackToDashboard} />
         ) : adminPage === "integrations" && canManageIntegrations(profile?.role, profile?.isSuperadmin, profile?.isGuest) ? (
           <AdminIntegrationsPage onBack={handleBackToDashboard} />
-        ) : adminPage === "board-views" && canManageUsers(profile?.role, profile?.isSuperadmin) ? (
+        ) : adminPage === "board-views" && canManageViews(profile?.role, profile?.isSuperadmin, profile?.isGuest) ? (
           <AdminBoardViews onBack={handleBackToDashboard} initialProjectId={adminProjectId} />
         ) : inboxOpen ? (
           <InboxPage
@@ -518,7 +532,8 @@ function AppContent() {
             loading={spacesLoading}
             onSelectRoom={handleSelectRoom}
             onOpenAdminPage={
-              canManageUsers(profile?.role, profile?.isSuperadmin) ||
+              canManageUsers(profile?.role, profile?.isSuperadmin, profile?.isGuest) ||
+              canManageViews(profile?.role, profile?.isSuperadmin, profile?.isGuest) ||
               canManageOrganizations(profile?.isSuperadmin) ||
               canManageIntegrations(profile?.role, profile?.isSuperadmin, profile?.isGuest)
                 ? handleOpenAdminPage

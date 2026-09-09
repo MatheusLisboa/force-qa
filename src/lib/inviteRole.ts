@@ -1,5 +1,5 @@
 import { UserRole } from "../types";
-import { canManageUsers, SIGNUP_ROLES } from "./permissions";
+import { canGrantAdminRole, SIGNUP_ROLES } from "./permissions";
 
 export const DEFAULT_INVITE_ROLE: UserRole = "developer";
 
@@ -24,7 +24,7 @@ export function inviteRolesForActor(
   role?: string | null,
   isSuperadmin?: boolean
 ): UserRole[] {
-  if (canManageUsers(role, isSuperadmin)) return ALL_INVITE_ROLES;
+  if (canGrantAdminRole(role, isSuperadmin)) return ALL_INVITE_ROLES;
   return [...SIGNUP_ROLES];
 }
 

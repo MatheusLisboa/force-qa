@@ -17,7 +17,7 @@ import {
   requireExportOrganization,
 } from "./api-src/shared/exportApi";
 import { getExportTokenMeta, revokeExportToken, rotateExportToken } from "./api-src/shared/exportTokenStore";
-import { canWriteBugs } from "./src/lib/permissions";
+import { canGrantAdminRole, canWriteBugs } from "./src/lib/permissions";
 import { wantsExportToken } from "./src/lib/vercelApiPath";
 
 dotenv.config();
@@ -75,6 +75,9 @@ app.post("/api/admin/create-user", async (req, res) => {
   try {
     const actor = await requireAdmin(req.headers.authorization);
     const { name, email, password, role, squad, organizationId: requestedOrgId } = req.body;
+    if (role === "admin" && !canGrantAdminRole(actor.role, actor.isSuperadmin)) {
+      throw Object.assign(new Error("Apenas um admin da org pode criar outro admin."), { status: 403 });
+    }
     const organizationId = await resolveActorOrganizationId(actor, requestedOrgId);
     const userId = await adminCreateUser({
       name,
@@ -166,6 +169,7 @@ app.post("/api/rooms/invite", async (req, res) => {
       actorRole: authed.role,
       actorOrganizationId: authed.organizationId,
       isSuperadmin: authed.isSuperadmin,
+      isGuest: authed.isGuest,
       roomId: String(req.body?.roomId || ""),
       email: String(req.body?.email || ""),
       role: String(req.body?.role || ""),

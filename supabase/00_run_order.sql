@@ -16,6 +16,7 @@
 -- 14. migration_security_hardening.sql  (RLS privilegiada, guest, storage, comentários)
 -- 15. migration_session_ops.sql         (anexos, duplicata, checklist, webhook da org)
 -- 16. migration_export_api.sql          (token SHA-256 para GET /api/export/*)
+-- 17. migration_role_permissions.sql    (matriz papel × permissão; superadmin edita)
 --
 -- Em ambiente já existente, rode apenas as migrations ainda não aplicadas.
 -- A migration_access_and_security.sql é obrigatória para convites, join e RLS de viewer.
@@ -27,4 +28,5 @@
 -- A migration_security_hardening.sql é obrigatória: trava is_superadmin/org, guest sem hop de tenant, bucket privado.
 -- A migration_session_ops.sql é obrigatória para vários anexos, duplicata, checklist e webhook.
 -- A migration_export_api.sql é obrigatória para a API de extração (GitLab puxar cards).
+-- A migration_role_permissions.sql é obrigatória para a tela Permissões do superadmin.
 -- Se o SQL Editor retornar deadlock (40P01), espere uns segundos e rode o arquivo de novo.

@@ -1,4 +1,5 @@
-import { getSupabaseAdmin } from "./auth";
+import { getSupabaseAdmin, loadRolePermissionMatrix } from "./auth";
+import { actorHasCapability } from "../../src/lib/permissions";
 import { resolveInviteRole } from "../../src/lib/inviteRole";
 import type { UserRole } from "../../src/types";
 
@@ -99,6 +100,7 @@ export async function inviteToRoom(params: {
   actorRole: string;
   actorOrganizationId: string;
   isSuperadmin: boolean;
+  isGuest?: boolean;
   roomId: string;
   email: string;
   role?: string;
@@ -113,8 +115,15 @@ export async function inviteToRoom(params: {
   if (!email || !email.includes("@")) {
     throw Object.assign(new Error("Informe um e-mail válido."), { status: 400 });
   }
-  if (!["admin", "qa", "scrum_master"].includes(params.actorRole) && !params.isSuperadmin) {
-    throw Object.assign(new Error("Apenas admin, QA ou Scrum Master podem convidar."), { status: 403 });
+  const matrix = await loadRolePermissionMatrix();
+  if (
+    !actorHasCapability(
+      { role: params.actorRole, isSuperadmin: params.isSuperadmin, isGuest: params.isGuest },
+      "invite_members",
+      matrix
+    )
+  ) {
+    throw Object.assign(new Error("Você não pode convidar pessoas para esta sala."), { status: 403 });
   }
   const inviteRole = resolveInviteRole(params.role, params.actorRole, params.isSuperadmin);
 

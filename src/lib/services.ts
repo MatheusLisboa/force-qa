@@ -28,6 +28,12 @@ import { safeMediaUrl, copyEvidenceToRoom } from "./evidence";
 import { attachmentsOf, makeAttachment, parseAttachments } from "./attachments";
 import { parseReproChecklist, reproForType } from "./reproChecklist";
 import { findMentionedUsers } from "./mentions";
+import {
+  DEFAULT_ROLE_MATRIX,
+  matrixFromRows,
+  matrixToRows,
+  type RolePermissionMatrix,
+} from "./permissions";
 
 function cleanUndefined<T extends object>(obj: T): T {
   const result = { ...obj } as Record<string, unknown>;
@@ -517,6 +523,27 @@ export async function applyLeftoverAction(
       skipWebhook: true,
     });
   }
+}
+
+export async function fetchRolePermissionMatrix(): Promise<RolePermissionMatrix> {
+  const { data, error } = await supabase.from("role_permissions").select("role, capability, allowed");
+  if (error) {
+    const missing =
+      error.code === "42P01" ||
+      error.code === "PGRST205" ||
+      /role_permissions/i.test(error.message || "");
+    if (missing) return DEFAULT_ROLE_MATRIX;
+    handleDbError(error, OperationType.LIST, "role_permissions");
+  }
+  if (!data?.length) return DEFAULT_ROLE_MATRIX;
+  return matrixFromRows(data);
+}
+
+export async function saveRolePermissionMatrix(matrix: RolePermissionMatrix): Promise<void> {
+  const now = new Date().toISOString();
+  const rows = matrixToRows(matrix).map((row) => ({ ...row, updated_at: now }));
+  const { error } = await supabase.from("role_permissions").upsert(rows, { onConflict: "role,capability" });
+  if (error) handleDbError(error, OperationType.UPDATE, "role_permissions");
 }
 
 export async function fetchOrgWebhookUrl(): Promise<string> {
