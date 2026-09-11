@@ -2,15 +2,17 @@ import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { isSupabaseConfigured } from "../lib/supabase";
 import { getAuthErrorCode, getAuthErrorMessage } from "../lib/authErrors";
+import { parseGuestInvite } from "../lib/routes";
 import { LogIn, AlertTriangle, Mail } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { SquadSelect } from "./SquadSelect";
 
 export const LoginScreen: React.FC = () => {
   const { loginWithEmail, loginAsGuest, requestPasswordReset } = useAuth();
+  const pendingInvite = parseGuestInvite(window.location.href);
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<"email" | "guest">("email");
+  const [activeTab, setActiveTab] = useState<"email" | "guest">(pendingInvite.token ? "guest" : "email");
 
   // Email form state
   const [email, setEmail] = useState("");
@@ -23,7 +25,9 @@ export const LoginScreen: React.FC = () => {
   // Guest form state
   const [guestName, setGuestName] = useState("");
   const [guestSquad, setGuestSquad] = useState("");
-  const [warRoomName, setWarRoomName] = useState("");
+  const [warRoomName, setWarRoomName] = useState(
+    pendingInvite.token ? window.location.href.split("#")[0] : ""
+  );
   const [guestLoading, setGuestLoading] = useState(false);
   const [guestError, setGuestError] = useState("");
 
@@ -83,7 +87,11 @@ export const LoginScreen: React.FC = () => {
     }
 
     if (!warRoomName.trim()) {
-      setGuestError("Por favor, digite o ID da WarRoom que deseja entrar.");
+      setGuestError("Cole o link de convite completo da sala.");
+      return;
+    }
+    if (!parseGuestInvite(warRoomName).token) {
+      setGuestError("Esse link não tem o convite de convidado. Peça o link completo a quem te chamou.");
       return;
     }
 
@@ -141,7 +149,7 @@ export const LoginScreen: React.FC = () => {
               Entre para continuar
             </h1>
             <p className="text-neutral-400 text-sm max-w-sm mx-auto mb-6 leading-relaxed">
-              Use o e-mail cadastrado pelo admin. Convidado cola o link da sala.
+              Use o e-mail cadastrado pelo admin. Convidado cola o link de convite.
             </p>
           </div>
 
@@ -287,11 +295,11 @@ export const LoginScreen: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="fq-label">Link ou ID da sala</label>
+                    <label className="fq-label">Link de convite</label>
                     <input
                       type="text"
                       required
-                      placeholder="Cole o link da sala ou o ID"
+                      placeholder="Cole o link completo (com guest=gst_…)"
                       className="fq-input"
                       value={warRoomName}
                       onChange={(e) => setWarRoomName(e.target.value)}

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { subscribeWarRoom, subscribeBugsByRoom, subscribeBoardViews, subscribeProjectByWarRoomId } from "../lib/supabase";
-import { updateBugField, updateWarRoom, deleteWarRoom } from "../lib/services";
+import { fetchGuestInviteUrl, rotateGuestInviteUrl, updateBugField, updateWarRoom, deleteWarRoom } from "../lib/services";
 import { useToast } from "../context/ToastContext";
 import { useConfirm } from "../context/ConfirmContext";
 import { useAuth } from "../context/AuthContext";
@@ -26,7 +26,7 @@ import { RoomTypeBadge } from "./BugBadges";
 import { canInviteToRoom, canUseAi, canWriteBugs } from "../lib/permissions";
 import { useRoomShortcuts } from "../hooks/useRoomShortcuts";
 import { bugMatchesPulse, parsePulseKind, PulseKind, roomHeadlineParts } from "../lib/dashboardPulse";
-import { roomInviteUrl, roomPath, pushPath } from "../lib/routes";
+import { roomPath, pushPath } from "../lib/routes";
 import {
   ArrowLeft,
   Plus,
@@ -587,20 +587,57 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
                   Relatório IA
                 </button>
                 )}
+                {canInvite && (
                 <button
                   type="button"
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-neutral-200 hover:bg-white/[0.05]"
                   onClick={() => {
-                    navigator.clipboard.writeText(roomInviteUrl(roomId));
-                    setCopied(true);
-                    toast("Convite copiado.", { kind: "success" });
-                    setTimeout(() => setCopied(false), 2000);
-                    setRoomMoreOpen(false);
+                    void (async () => {
+                      try {
+                        const url = await fetchGuestInviteUrl(roomId);
+                        await navigator.clipboard.writeText(url);
+                        setCopied(true);
+                        toast(
+                          warRoom?.guestAccessDisabled
+                            ? "Convite copiado, mas convidados estão bloqueados nesta sala."
+                            : "Convite de convidado copiado.",
+                          { kind: "success" }
+                        );
+                        setTimeout(() => setCopied(false), 2000);
+                      } catch (err) {
+                        toast(err instanceof Error ? err.message : "Não foi possível copiar o convite.", { kind: "error" });
+                      } finally {
+                        setRoomMoreOpen(false);
+                      }
+                    })();
                   }}
                 >
                   {copied ? <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-neutral-500" />}
                   Copiar convite
                 </button>
+                )}
+                {canInvite && (
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-neutral-200 hover:bg-white/[0.05]"
+                  onClick={() => {
+                    void (async () => {
+                      try {
+                        const url = await rotateGuestInviteUrl(roomId);
+                        await navigator.clipboard.writeText(url);
+                        toast("Convite renovado e copiado. O link antigo deixa de funcionar.", { kind: "success" });
+                      } catch (err) {
+                        toast(err instanceof Error ? err.message : "Não foi possível renovar o convite.", { kind: "error" });
+                      } finally {
+                        setRoomMoreOpen(false);
+                      }
+                    })();
+                  }}
+                >
+                  <Copy className="w-3.5 h-3.5 text-neutral-500" />
+                  Renovar convite
+                </button>
+                )}
               </div>
             )}
           </div>

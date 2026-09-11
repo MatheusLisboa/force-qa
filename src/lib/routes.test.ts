@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { adminBoardViewsPath, adminIntegrationsPath, adminOrganizationsPath, adminPermissionsPath, adminUsersPath, cardUrl, dashboardPath, inboxPath, parseRoomInvite, roomPath } from "./routes";
+import { adminBoardViewsPath, adminIntegrationsPath, adminOrganizationsPath, adminPermissionsPath, adminUsersPath, cardUrl, dashboardPath, inboxPath, parseGuestInvite, parseRoomInvite, roomInviteUrl, roomPath } from "./routes";
 
 describe("routes", () => {
   it("builds dashboard, room and admin paths", () => {
@@ -21,5 +21,17 @@ describe("routes", () => {
     expect(parseRoomInvite("https://app.example/?room=sala-1")).toBe("sala-1");
     expect(parseRoomInvite("/?room=sala-1&pulse=open")).toBe("sala-1");
     expect(parseRoomInvite("sala-1")).toBe("sala-1");
+  });
+
+  it("builds and parses guest invite links", () => {
+    expect(roomInviteUrl("sala-1", "https://app.example", "gst_abc123def456ghi789")).toBe(
+      "https://app.example/?room=sala-1&guest=gst_abc123def456ghi789"
+    );
+    expect(parseGuestInvite("https://app.example/?room=sala-1&guest=gst_abc123def456ghi789")).toEqual({
+      roomId: "sala-1",
+      token: "gst_abc123def456ghi789",
+    });
+    expect(parseGuestInvite("gst_abc123def456ghi789").token).toBe("gst_abc123def456ghi789");
+    expect(parseGuestInvite("sala-1")).toEqual({ roomId: "sala-1", token: "" });
   });
 });

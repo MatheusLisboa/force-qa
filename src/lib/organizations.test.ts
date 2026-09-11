@@ -20,6 +20,8 @@ describe("belongsToOrganization", () => {
     expect(belongsToOrganization(DEFAULT_ORGANIZATION_ID, DEFAULT_ORGANIZATION_ID)).toBe(true);
     expect(belongsToOrganization("other", DEFAULT_ORGANIZATION_ID)).toBe(false);
     expect(belongsToOrganization("other", DEFAULT_ORGANIZATION_ID, true)).toBe(true);
+    expect(belongsToOrganization(DEFAULT_ORGANIZATION_ID, "")).toBe(false);
+    expect(belongsToOrganization(DEFAULT_ORGANIZATION_ID, undefined)).toBe(false);
   });
 });
 

@@ -136,7 +136,7 @@ export const AdminIntegrationsPage: React.FC<AdminIntegrationsPageProps> = ({ on
           <div>
             <h2 className="text-[15px] font-semibold text-neutral-100">Webhook Slack / Discord</h2>
             <p className="text-neutral-500 text-[13px] mt-0.5 leading-relaxed">
-              Dispara quando um card vira blocker ou entra em Pronto para QA.
+              Dispara quando um card vira blocker ou entra em Pronto para QA. Só aceita webhook https do Slack ou Discord.
             </p>
           </div>
           <input

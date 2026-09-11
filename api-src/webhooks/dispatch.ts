@@ -1,8 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { clientErrorMessage, httpErrorStatus, readJsonBody, requireUser, getSupabaseAdmin } from "../shared/auth";
+import { clientErrorMessage, getSupabaseAdmin, httpErrorStatus, readJsonBody, requireCapability } from "../shared/auth";
 import { assertActorCanAccessRoom } from "../shared/rooms";
 import { dispatchRoomWebhook, type WebhookKind } from "../shared/webhooks";
-import { canWriteBugs } from "../../src/lib/permissions";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
@@ -11,10 +10,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const actor = await requireUser(req.headers.authorization);
-    if (!canWriteBugs(actor.role) || actor.isGuest) {
-      throw Object.assign(new Error("Sem permissão para disparar webhook."), { status: 403 });
-    }
+    const actor = await requireCapability(req.headers.authorization, "write_cards");
     const body = readJsonBody(req.body);
     const roomId = String(body.roomId || "").trim();
     const bugId = String(body.bugId || "").trim();

@@ -1,3 +1,5 @@
+import { looksLikeGuestToken } from "./guestInvite";
+
 export function dashboardPath(): string {
   return "/";
 }
@@ -18,30 +20,67 @@ export function cardUrl(roomId: string, cardId: string, origin = window.location
   return `${origin}${roomPath(roomId, null, cardId)}`;
 }
 
-export function roomInviteUrl(roomId: string, origin = window.location.origin): string {
-  return `${origin}${roomPath(roomId)}`;
+export function roomInviteUrl(
+  roomId: string,
+  origin = window.location.origin,
+  guestToken?: string | null
+): string {
+  const params = new URLSearchParams();
+  params.set("room", roomId);
+  if (guestToken) params.set("guest", guestToken);
+  return `${origin}/?${params.toString()}`;
+}
+
+function decodeParam(raw: string | undefined): string {
+  if (!raw) return "";
+  try {
+    return decodeURIComponent(raw).trim();
+  } catch {
+    return raw.trim();
+  }
 }
 
 /** Accepts a share link (`/?room=`), a full URL, or a raw room id/name. */
 export function parseRoomInvite(input: string): string {
+  return parseGuestInvite(input).roomId;
+}
+
+export function parseGuestInvite(input: string): { roomId: string; token: string } {
   const trimmed = input.trim();
-  if (!trimmed) return "";
+  if (!trimmed) return { roomId: "", token: "" };
+
+  const fromSearch = (params: URLSearchParams): { roomId: string; token: string } => ({
+    roomId: (params.get("room") || "").trim(),
+    token: (params.get("guest") || params.get("g") || "").trim(),
+  });
+
   try {
     const url = new URL(trimmed);
-    const room = url.searchParams.get("room");
-    if (room) return room.trim();
+    const parsed = fromSearch(url.searchParams);
+    if (parsed.roomId || parsed.token) return parsed;
   } catch {
-    /* not an absolute URL */
+    /* relative or raw */
   }
-  const queryMatch = trimmed.match(/[?&]room=([^&]+)/i);
-  if (queryMatch) {
-    try {
-      return decodeURIComponent(queryMatch[1]).trim();
-    } catch {
-      return queryMatch[1].trim();
+
+  const query = trimmed.startsWith("/") || trimmed.includes("?") ? trimmed : "";
+  if (query.includes("?")) {
+    const qs = query.slice(query.indexOf("?") + 1);
+    const parsed = fromSearch(new URLSearchParams(qs));
+    if (parsed.roomId || parsed.token) {
+      parsed.roomId = decodeParam(parsed.roomId);
+      parsed.token = decodeParam(parsed.token);
+      return parsed;
     }
   }
-  return trimmed;
+
+  const roomMatch = trimmed.match(/[?&]room=([^&]+)/i);
+  const guestMatch = trimmed.match(/[?&](?:guest|g)=([^&]+)/i);
+  if (roomMatch || guestMatch) {
+    return { roomId: decodeParam(roomMatch?.[1]), token: decodeParam(guestMatch?.[1]) };
+  }
+
+  if (looksLikeGuestToken(trimmed)) return { roomId: "", token: trimmed };
+  return { roomId: trimmed, token: "" };
 }
 
 export function adminBoardViewsPath(projectId?: string | null): string {

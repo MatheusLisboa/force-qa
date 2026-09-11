@@ -48,16 +48,19 @@ export const supabase: SupabaseClient = createClient(
 // ---------------------------------------------------------------------------
 
 export function toUserProfile(row: Record<string, unknown>): UserProfile {
+  const isGuest = Boolean(row.is_guest);
   return {
     id: row.id as string,
     name: row.name as string,
     email: row.email as string,
     role: row.role as UserProfile["role"],
     squad: normalizeArea((row.squad as string) || ""),
-    organizationId: resolveOrganizationId(row.organization_id as string | undefined),
+    organizationId: isGuest
+      ? String(row.organization_id || "")
+      : resolveOrganizationId(row.organization_id as string | undefined),
     isSuperadmin: Boolean(row.is_superadmin),
     avatarUrl: (row.avatar_url as string) || undefined,
-    isGuest: Boolean(row.is_guest),
+    isGuest,
     createdAt: row.created_at as string,
   };
 }

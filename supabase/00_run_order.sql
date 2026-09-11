@@ -16,7 +16,8 @@
 -- 14. migration_security_hardening.sql  (RLS privilegiada, guest, storage, comentários)
 -- 15. migration_session_ops.sql         (anexos, duplicata, checklist, webhook da org)
 -- 16. migration_export_api.sql          (token SHA-256 para GET /api/export/*)
--- 17. migration_role_permissions.sql    (matriz papel × permissão; superadmin edita)
+-- 17. migration_role_permissions.sql    (matriz editável; tela Permissões)
+-- 18. migration_guest_invite_lock.sql   (signup off, guest sem org, token de convite)
 --
 -- Em ambiente já existente, rode apenas as migrations ainda não aplicadas.
 -- A migration_access_and_security.sql é obrigatória para convites, join e RLS de viewer.
@@ -29,4 +30,7 @@
 -- A migration_session_ops.sql é obrigatória para vários anexos, duplicata, checklist e webhook.
 -- A migration_export_api.sql é obrigatória para a API de extração (GitLab puxar cards).
 -- A migration_role_permissions.sql é obrigatória para a tela Permissões do superadmin.
--- Se o SQL Editor retornar deadlock (40P01), espere uns segundos e rode o arquivo de novo.
+-- A migration_guest_invite_lock.sql é obrigatória: trava signup, isola guest e exige token no convite.
+-- No Auth do Supabase: Authentication → Providers → Email → desmarque "Allow new users to sign up".
+-- Se o SQL Editor retornar deadlock (40P01), espere 10s e rode o arquivo de novo
+-- (as migrations com COMMIT + LOCK TABLE são idempotentes). Não abra duas abas.

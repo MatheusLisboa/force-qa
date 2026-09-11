@@ -4,10 +4,9 @@ import {
   supabase,
   toUserProfile,
 } from "../lib/supabase";
-import { isUserAlreadyRegistered } from "../lib/authErrors";
 import { UserProfile, UserRole } from "../types";
 import { SIGNUP_ROLES, resetRolePermissionMatrix, setRolePermissionMatrix } from "../lib/permissions";
-import { fetchRolePermissionMatrix, joinWarRoom } from "../lib/services";
+import { fetchRolePermissionMatrix } from "../lib/services";
 import { authFetch, readApiError } from "../lib/apiClient";
 import { normalizeArea } from "../lib/squads";
 import { resolveOrganizationId, DEFAULT_ORGANIZATION_ID } from "../lib/organizations";
@@ -53,7 +52,7 @@ async function saveProfile(profile: UserProfile): Promise<void> {
     email: profile.email,
     role: profile.role,
     squad: normalizeArea(profile.squad),
-    organization_id: resolveOrganizationId(profile.organizationId),
+    organization_id: profile.isGuest ? null : resolveOrganizationId(profile.organizationId),
     avatar_url: profile.avatarUrl || null,
     is_guest: profile.isGuest ?? false,
     created_at: profile.createdAt || new Date().toISOString(),
@@ -174,13 +173,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isSignUp: boolean
   ): Promise<User> => {
     if (isSignUp) {
-      const { data, error } = await supabase.auth.signUp({
-        email: email.trim(),
-        password,
-      });
-      if (error) throw error;
-      if (!data.user) throw new Error("Falha ao criar conta.");
-      return data.user;
+      throw new Error("Cadastro público desativado. Peça um convite a um admin.");
     }
 
     const { data, error } = await supabase.auth.signInWithPassword({
@@ -193,86 +186,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signUpUser = async (
-    name: string,
-    email: string,
-    password: string,
-    role: UserRole,
-    squad: string
+    _name: string,
+    _email: string,
+    _password: string,
+    _role: UserRole,
+    _squad: string
   ): Promise<User> => {
-    const trimmedEmail = email.trim().toLowerCase();
-    const safeRole: UserRole = SIGNUP_ROLES.includes(role) ? role : "viewer";
-    const newUserProfile: UserProfile = {
-      id: "",
-      name: name.trim(),
-      email: trimmedEmail,
-      role: safeRole,
-      squad: normalizeArea(squad),
-      organizationId: DEFAULT_ORGANIZATION_ID,
-      isGuest: false,
-      createdAt: new Date().toISOString(),
-    };
-
-    let authUser: User | null = null;
-
-    const signUpResult = await supabase.auth.signUp({
-      email: trimmedEmail,
-      password,
-      options: {
-          data: {
-            name: newUserProfile.name,
-            squad: newUserProfile.squad,
-            is_guest: false,
-          },
-      },
-    });
-
-    if (isUserAlreadyRegistered(signUpResult.error)) {
-      const loginResult = await supabase.auth.signInWithPassword({
-        email: trimmedEmail,
-        password,
-      });
-
-      if (loginResult.error) {
-        throw new Error(
-          "Este e-mail já foi registrado em uma tentativa anterior que não completou o cadastro, e a senha não confere. " +
-            "No Supabase → Authentication → Users, exclua este e-mail e cadastre-se novamente, " +
-            "ou redefina a senha pelo painel do Supabase."
-        );
-      }
-
-      authUser = loginResult.data.user;
-      if (!loginResult.data.session) {
-        throw new Error("Não foi possível iniciar sessão com este e-mail.");
-      }
-    } else if (signUpResult.error) {
-      throw signUpResult.error;
-    } else {
-      if (!signUpResult.data.user) throw new Error("Falha ao criar conta.");
-
-      if (!signUpResult.data.session) {
-        throw new Error(
-          "Conta criada, mas o login exige confirmação de e-mail. " +
-            "Confirme o e-mail ou desative 'Confirm email' em Supabase → Authentication → Email."
-        );
-      }
-
-      authUser = signUpResult.data.user;
-    }
-
-    if (!authUser) throw new Error("Falha ao autenticar após cadastro.");
-
-    newUserProfile.id = authUser.id;
-
-    const existing = await fetchProfile(authUser.id);
-    if (!existing) {
-      await saveProfile(newUserProfile);
-      applyProfile(newUserProfile);
-    } else {
-      applyProfile(existing);
-    }
-
-    setUser(authUser);
-    return authUser;
+    throw new Error("Cadastro público desativado. Peça um convite a um admin.");
   };
 
   const loginAsGuest = async (
@@ -283,51 +203,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const validateRes = await fetch("/api/guest/validate-room", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ input: warRoomName }),
+      body: JSON.stringify({
+        input: warRoomName,
+        join: true,
+        name: name.trim(),
+        squad: normalizeArea(squad),
+      }),
     });
     if (!validateRes.ok) {
       const errData = await validateRes.json().catch(() => ({}));
-      throw new Error(errData.error || "Não foi possível validar a sala.");
+      throw new Error(errData.error || "Não foi possível entrar como convidado.");
     }
-    const room = await validateRes.json() as { id: string };
-
-    const tempEmail = `guest_${Date.now()}_${Math.floor(Math.random() * 1000)}@guest.forceqa.com`;
-    const tempPassword = `guestPass_${crypto.randomUUID()}`;
+    const room = (await validateRes.json()) as { roomId: string; email: string; password: string };
 
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email: tempEmail,
-        password: tempPassword,
-        options: {
-          data: {
-            name: name.trim(),
-            squad: normalizeArea(squad),
-            is_guest: true,
-          },
-        },
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: room.email,
+        password: room.password,
       });
       if (error) throw error;
       if (!data.user || !data.session) {
         throw new Error("Falha ao criar sessão de convidado.");
       }
 
-      const guestProfile: UserProfile = {
-        id: data.user.id,
-        name: name.trim(),
-        email: tempEmail,
-        role: "viewer",
-        squad: normalizeArea(squad),
-        organizationId: DEFAULT_ORGANIZATION_ID,
-        isGuest: true,
-        createdAt: new Date().toISOString(),
-      };
-
-      await saveProfile(guestProfile);
-      applyProfile(guestProfile);
+      const existing = await fetchProfile(data.user.id);
+      if (existing) applyProfile(existing);
       setUser(data.user);
-
-      const joinedId = await joinWarRoom(room.id);
-      return joinedId;
+      return room.roomId;
     } catch (error) {
       await supabase.auth.signOut();
       applyProfile(null);

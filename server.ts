@@ -3,11 +3,11 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import { generateExecutiveReportForRoom } from "./api-src/ai/generate-report";
-import { clientErrorMessage, getSupabaseAdmin, httpErrorStatus, requireAdmin, requireAiUser, requireIntegrationsManager, requireSuperadmin, requireUser } from "./api-src/shared/auth";
+import { clientErrorMessage, getSupabaseAdmin, httpErrorStatus, requireAdmin, requireAiUser, requireCapability, requireIntegrationsManager, requireSuperadmin, requireUser } from "./api-src/shared/auth";
 import { adminCreateUser, adminDeleteUser, adminMoveUser } from "./api-src/shared/adminUsers";
 import { createOrganizationWithAdmin, resolveActorOrganizationId } from "./api-src/shared/organizations";
 import { appRedirectTo } from "./api-src/shared/appUrl";
-import { assertActorCanAccessRoom, inviteToRoom, joinRoom, validateGuestRoom } from "./api-src/shared/rooms";
+import { assertActorCanAccessRoom, inviteToRoom, joinAsGuest, joinRoom, validateGuestRoom } from "./api-src/shared/rooms";
 import { detectDuplicate, suggestBugFields } from "./api-src/shared/geminiBugs";
 import { dispatchRoomWebhook, getOrgWebhookUrl, setOrgWebhookUrl, type WebhookKind } from "./api-src/shared/webhooks";
 import {
@@ -17,7 +17,7 @@ import {
   requireExportOrganization,
 } from "./api-src/shared/exportApi";
 import { getExportTokenMeta, revokeExportToken, rotateExportToken } from "./api-src/shared/exportTokenStore";
-import { canGrantAdminRole, canWriteBugs } from "./src/lib/permissions";
+import { canGrantAdminRole } from "./src/lib/permissions";
 import { wantsExportToken } from "./src/lib/vercelApiPath";
 
 dotenv.config();
@@ -139,8 +139,18 @@ app.post("/api/admin/move-user", async (req, res) => {
 
 app.post("/api/guest/validate-room", async (req, res) => {
   try {
-    const result = await validateGuestRoom(String(req.body?.input || req.body?.warRoomName || ""));
-    res.json(result);
+    const input = String(req.body?.input || req.body?.warRoomName || "");
+    if (req.body?.join === true || req.body?.join === "true") {
+      res.json(
+        await joinAsGuest({
+          input,
+          name: String(req.body?.name || ""),
+          squad: String(req.body?.squad || ""),
+        })
+      );
+      return;
+    }
+    res.json(await validateGuestRoom(input));
   } catch (error) {
     sendError(res, error, "Falha ao validar a sala.");
   }
@@ -253,10 +263,7 @@ app.options("/api/export/cards", (_req, res) => {
 
 app.post("/api/webhooks/dispatch", async (req, res) => {
   try {
-    const actor = await requireUser(req.headers.authorization);
-    if (!canWriteBugs(actor.role) || actor.isGuest) {
-      throw Object.assign(new Error("Sem permissão para disparar webhook."), { status: 403 });
-    }
+    const actor = await requireCapability(req.headers.authorization, "write_cards");
     const roomId = String(req.body?.roomId || "").trim();
     const bugId = String(req.body?.bugId || "").trim();
     const kind: WebhookKind | "" =

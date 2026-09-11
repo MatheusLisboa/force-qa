@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { joinWarRoom } from "../lib/services";
+import { joinWarRoom, fetchGuestInviteUrl } from "../lib/services";
 import { fetchDashboardExportBugs } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
@@ -20,13 +20,12 @@ import {
 } from "lucide-react";
 import { AnimatePresence } from "motion/react";
 import { RoomStatusBadge, RoomTypeBadge } from "./BugBadges";
-import { canManageIntegrations, canManageOrganizations, canManageSpaces as roleCanManageSpaces, canManageUsers, canManageViews } from "../lib/permissions";
+import { canInviteToRoom, canManageIntegrations, canManageOrganizations, canManageSpaces as roleCanManageSpaces, canManageUsers, canManageViews } from "../lib/permissions";
 import {
   dashboardPulse,
   PulseBug,
   PulseKind,
 } from "../lib/dashboardPulse";
-import { roomInviteUrl } from "../lib/routes";
 import { decorateSpaces, groupSpacesByProject, SpaceRow, UNGROUPED_PROJECT_LABEL } from "../lib/spaces";
 import { CreateWarRoomModal } from "./CreateWarRoomModal";
 import { CreateProjectModal } from "./CreateProjectModal";
@@ -86,12 +85,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const spaceGroups = groupSpacesByProject(displayedSpaces);
 
   const canManageSpaces = roleCanManageSpaces(profile?.role, profile?.isSuperadmin, profile?.isGuest);
+  const canInvite = canInviteToRoom(profile?.role, profile?.isSuperadmin, profile?.isGuest);
   const hasSpaces = spaces.length > 0;
 
-  const copyInvite = (roomId: string, event: React.MouseEvent) => {
+  const copyInvite = async (roomId: string, event: React.MouseEvent) => {
     event.stopPropagation();
-    navigator.clipboard.writeText(roomInviteUrl(roomId));
-    toast("Convite copiado.", { kind: "success" });
+    try {
+      const url = await fetchGuestInviteUrl(roomId);
+      await navigator.clipboard.writeText(url);
+      toast("Convite de convidado copiado.", { kind: "success" });
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Não foi possível copiar o convite.", { kind: "error" });
+    }
   };
 
   const selectPulse = (kind: Exclude<PulseKind, "all">) => {
@@ -213,9 +218,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
             )}
           </div>
           <div className="flex gap-1.5 items-center">
-            <button onClick={(e) => copyInvite(space.roomId, e)} className="fq-btn-icon !p-1.5" title="Copiar convite">
-              <Share2 className="w-3.5 h-3.5" />
-            </button>
+            {canInvite ? (
+              <button onClick={(e) => void copyInvite(space.roomId, e)} className="fq-btn-icon !p-1.5" title="Copiar convite de convidado">
+                <Share2 className="w-3.5 h-3.5" />
+              </button>
+            ) : null}
             <span className="flex items-center gap-1 text-[12px] text-neutral-500 transition group-hover:text-neutral-200">
               Abrir <ExternalLink className="w-3 h-3" />
             </span>

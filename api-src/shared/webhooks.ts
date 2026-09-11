@@ -1,15 +1,12 @@
+import { isAllowedWebhookUrl } from "../../src/lib/webhookHosts";
 import { getSupabaseAdmin } from "./auth";
 import { appRedirectTo } from "./appUrl";
 
 export type WebhookKind = "blocker" | "ready_for_qa";
+export { isAllowedWebhookUrl };
 
 function isHttpsWebhook(url: string): boolean {
-  try {
-    const parsed = new URL(url.trim());
-    return parsed.protocol === "https:";
-  } catch {
-    return false;
-  }
+  return isAllowedWebhookUrl(url);
 }
 
 export function webhookPayload(input: {
@@ -38,7 +35,7 @@ export async function setOrgWebhookUrl(organizationId: string, webhookUrl: strin
   const admin = getSupabaseAdmin();
   const trimmed = (webhookUrl || "").trim();
   if (trimmed && !isHttpsWebhook(trimmed)) {
-    throw Object.assign(new Error("O webhook precisa ser um URL https://"), { status: 400 });
+    throw Object.assign(new Error("O webhook precisa ser https:// do Slack ou Discord."), { status: 400 });
   }
   const { error } = await admin.from("organization_integrations").upsert({
     organization_id: organizationId,
@@ -71,6 +68,7 @@ export async function dispatchRoomWebhook(input: {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    redirect: "error",
   });
   if (!response.ok) {
     throw Object.assign(new Error(`Webhook respondeu ${response.status}.`), { status: 502 });

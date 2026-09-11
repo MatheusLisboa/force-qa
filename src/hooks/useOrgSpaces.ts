@@ -44,12 +44,17 @@ export function useOrgSpaces(organizationId: string | undefined, enabled = true)
   }, [enabled]);
 
   const orgRooms = useMemo(
-    () => warRooms.filter((room) => belongsToOrganization(room.organizationId, organizationId)),
+    () =>
+      organizationId
+        ? warRooms.filter((room) => belongsToOrganization(room.organizationId, organizationId))
+        : warRooms,
     [warRooms, organizationId]
   );
   const orgProjects = useMemo(
     () =>
-      projects.filter((project) => belongsToOrganization(project.organizationId, organizationId)),
+      organizationId
+        ? projects.filter((project) => belongsToOrganization(project.organizationId, organizationId))
+        : projects,
     [projects, organizationId]
   );
   const spaces = useMemo<SpaceRow[]>(

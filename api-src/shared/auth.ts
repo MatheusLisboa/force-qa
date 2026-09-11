@@ -50,11 +50,14 @@ export async function requireUser(authHeader: string | undefined): Promise<Authe
     .eq("id", user.id)
     .maybeSingle();
 
+  const isGuest = Boolean(profile?.is_guest);
   return {
     user,
     role: (profile?.role as string) || "viewer",
-    isGuest: Boolean(profile?.is_guest),
-    organizationId: resolveOrganizationId(profile?.organization_id as string | undefined),
+    isGuest,
+    organizationId: isGuest
+      ? String(profile?.organization_id || "")
+      : resolveOrganizationId(profile?.organization_id as string | undefined),
     isSuperadmin: Boolean(profile?.is_superadmin),
   };
 }

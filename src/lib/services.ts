@@ -6,7 +6,8 @@ import {
   toWarRoom,
   findWarRoomByIdOrName,
 } from "./supabase";
-import { parseRoomInvite } from "./routes";
+import { parseGuestInvite, parseRoomInvite, roomInviteUrl } from "./routes";
+import { generateGuestInviteToken } from "./guestInvite";
 import {
   WarRoom,
   Bug,
@@ -80,7 +81,7 @@ function warRoomToRow(data: Omit<WarRoom, "id" | "createdAt">, customId: string)
     room_type: data.roomType,
     created_by: data.createdBy,
     created_by_name: data.createdByName,
-    guest_access_disabled: data.guestAccessDisabled ?? false,
+    guest_access_disabled: data.guestAccessDisabled ?? true,
     kanban_columns: data.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS,
     organization_id: resolveOrganizationId(data.organizationId),
   });
@@ -608,15 +609,16 @@ async function joinWarRoomViaApi(input: string): Promise<string> {
 }
 
 export async function joinWarRoom(input: string): Promise<string> {
-  const trimmed = parseRoomInvite(input);
-  if (!trimmed) throw new Error("Cole o link da sala ou o ID.");
-
+  const parsed = parseGuestInvite(input);
+  const roomKey = parsed.roomId || parseRoomInvite(input);
   const { data: sessionData } = await supabase.auth.getSession();
   const userId = sessionData.session?.user.id;
   if (!userId) throw new Error("Sessão expirada. Faça login novamente.");
 
-  const visible = await findWarRoomByIdOrName(trimmed);
-  if (visible) return visible.id;
+  if (roomKey) {
+    const visible = await findWarRoomByIdOrName(roomKey);
+    if (visible) return visible.id;
+  }
 
   const { data: profile } = await supabase
     .from("users")
@@ -624,33 +626,44 @@ export async function joinWarRoom(input: string): Promise<string> {
     .eq("id", userId)
     .maybeSingle();
 
-  if (!profile?.is_guest) {
-    throw new Error(
-      "Você não tem acesso a esta sala. Peça a um admin para marcar o board em Usuários."
-    );
+  if (profile?.is_guest) {
+    return joinWarRoomViaApi(input);
   }
 
-  const { error } = await supabase.from("room_members").insert({
-    war_room_id: trimmed,
-    user_id: userId,
-    added_by: userId,
+  throw new Error(
+    "Você não tem acesso a esta sala. Peça a um admin para marcar o board em Usuários."
+  );
+}
+
+export async function fetchGuestInviteUrl(
+  roomId: string,
+  origin = window.location.origin
+): Promise<string> {
+  const { data, error } = await supabase
+    .from("room_guest_invites")
+    .select("token")
+    .eq("war_room_id", roomId)
+    .maybeSingle();
+  if (error || !data?.token) {
+    throw new Error("Você não tem permissão para copiar o convite de convidado.");
+  }
+  return roomInviteUrl(roomId, origin, String(data.token));
+}
+
+export async function rotateGuestInviteUrl(
+  roomId: string,
+  origin = window.location.origin
+): Promise<string> {
+  const token = generateGuestInviteToken();
+  const { error } = await supabase.from("room_guest_invites").upsert({
+    war_room_id: roomId,
+    token,
+    created_at: new Date().toISOString(),
   });
-  if (!error || error.code === "23505") {
-    return trimmed;
+  if (error) {
+    throw new Error("Não foi possível renovar o convite de convidado.");
   }
-  if (error.code === "23503") {
-    try {
-      return await joinWarRoomViaApi(trimmed);
-    } catch {
-      throw new Error("Sala não encontrada. Confira o link.");
-    }
-  }
-
-  try {
-    return await joinWarRoomViaApi(trimmed);
-  } catch {
-    throw new Error(error.message || "Não foi possível entrar na sala.");
-  }
+  return roomInviteUrl(roomId, origin, token);
 }
 
 export async function fetchMembershipPairs(): Promise<Array<{ userId: string; roomId: string }>> {
