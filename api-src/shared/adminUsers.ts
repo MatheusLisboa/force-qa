@@ -35,7 +35,7 @@ function isAuthDatabaseError(error: unknown): boolean {
 
 function formatCreateUserError(error: unknown): string {
   if (isAuthDatabaseError(error)) {
-    return "O Auth recusou criar o usuário. Rode de novo supabase/migration_public_signup.sql no SQL Editor (versão com EXCEPTION) e, se o e-mail já aparecer em Authentication → Users, apague-o antes de tentar de novo.";
+    return "O Auth ainda recusa criar o usuário. Cole de novo supabase/migration_public_signup.sql no SQL Editor (o arquivo agora dá COMMIT e REMOVE o trigger). Se o e-mail já aparecer em Authentication → Users, apague-o e tente de novo.";
   }
   return errorMessage(error).trim() || "Não foi possível criar a conta.";
 }
@@ -124,7 +124,6 @@ export async function adminCreateUser(params: {
     email,
     password: params.password,
     email_confirm: true,
-    app_metadata: { role },
     user_metadata: {
       name,
       squad,
