@@ -22,6 +22,24 @@ function isEmailTakenError(error: unknown): boolean {
   );
 }
 
+function isAuthDatabaseError(error: unknown): boolean {
+  const message = errorMessage(error).trim();
+  const code = errorCode(error).toLowerCase();
+  return (
+    !message ||
+    message === "{}" ||
+    /database error creating new user/i.test(message) ||
+    code === "unexpected_failure"
+  );
+}
+
+function formatCreateUserError(error: unknown): string {
+  if (isAuthDatabaseError(error)) {
+    return "O Auth recusou criar o usuário. Rode de novo supabase/migration_public_signup.sql no SQL Editor (versão com EXCEPTION) e, se o e-mail já aparecer em Authentication → Users, apague-o antes de tentar de novo.";
+  }
+  return errorMessage(error).trim() || "Não foi possível criar a conta.";
+}
+
 const ALLOWED_ROLES = ["admin", "qa", "developer", "dba", "devops", "scrum_master", "viewer"] as const;
 
 async function findAuthUserIdByEmail(
@@ -99,10 +117,10 @@ export async function adminCreateUser(params: {
     );
   }
 
-  // The Auth trigger inserts public.users in the same transaction. A brand-new
-  // organization_id in metadata can fail that insert; GoTrue then reports it as
-  // "email already registered". Stamp the default org at signup, then move.
-  let { data, error } = await admin.auth.admin.createUser({
+  // Do not put organization_id in app_metadata: a missing org aborts the Auth
+  // trigger and GoTrue reports "{}" / "email already registered". Stamp the
+  // default org in the trigger, then move the profile with the service role.
+  const authPayload = {
     email,
     password: params.password,
     email_confirm: true,
@@ -112,24 +130,24 @@ export async function adminCreateUser(params: {
       squad,
       role,
     },
-  });
-  if (error && isEmailTakenError(error) && params.adoptOrphan) {
+  };
+  let { data, error } = await admin.auth.admin.createUser(authPayload);
+  if (error && (isEmailTakenError(error) || isAuthDatabaseError(error))) {
     const orphanId = await findAuthUserIdByEmail(admin, email);
     if (orphanId) {
       const { data: profile } = await admin.from("users").select("id").eq("id", orphanId).maybeSingle();
       if (!profile) {
         await admin.auth.admin.deleteUser(orphanId);
-        ({ data, error } = await admin.auth.admin.createUser({
-          email,
+        ({ data, error } = await admin.auth.admin.createUser(authPayload));
+      } else if (params.adoptOrphan) {
+        await stampAdoptedUser(admin, orphanId, {
+          name,
           password: params.password,
-          email_confirm: true,
-          app_metadata: { role },
-          user_metadata: {
-            name,
-            squad,
-            role,
-          },
-        }));
+          role,
+          squad,
+          organizationId,
+        });
+        return orphanId;
       }
     }
   }
@@ -141,33 +159,13 @@ export async function adminCreateUser(params: {
         { status: 409 }
       );
     }
-    const raw = errorMessage(error).trim();
-    const friendly =
-      !raw || raw === "{}" || /database error creating new user/i.test(raw)
-        ? "Não foi possível criar a conta. Rode migration_public_signup.sql no SQL Editor do Supabase e tente de novo."
-        : raw;
-    throw Object.assign(new Error(friendly), { status: 500 });
+    throw Object.assign(new Error(formatCreateUserError(error)), { status: 500 });
   }
   if (!data.user) throw new Error("Falha ao criar usuário no Auth.");
 
-  const { data: moved, error: profileError } = await admin
-    .from("users")
-    .update({
-      name,
-      email,
-      squad,
-      is_guest: false,
-      organization_id: organizationId,
-    })
-    .eq("id", data.user.id)
-    .select("id")
-    .maybeSingle();
-  if (profileError) {
-    await admin.auth.admin.deleteUser(data.user.id);
-    throw wrapThrownError(profileError, "Falha ao salvar o perfil do admin.");
-  }
-  if (!moved) {
-    const { error: insertProfileError } = await admin.from("users").upsert({
+  const { data: profile } = await admin.from("users").select("id").eq("id", data.user.id).maybeSingle();
+  if (!profile) {
+    const { error: insertError } = await admin.from("users").insert({
       id: data.user.id,
       name,
       email,
@@ -176,10 +174,22 @@ export async function adminCreateUser(params: {
       is_guest: false,
       organization_id: organizationId,
     });
-    if (insertProfileError) {
+    if (insertError) {
       await admin.auth.admin.deleteUser(data.user.id);
-      throw wrapThrownError(insertProfileError, "Falha ao salvar o perfil do admin.");
+      throw wrapThrownError(insertError, "Falha ao salvar o perfil.");
     }
+  } else {
+    const { error: profileError } = await admin
+      .from("users")
+      .update({
+        name,
+        email,
+        squad,
+        is_guest: false,
+        organization_id: organizationId,
+      })
+      .eq("id", data.user.id);
+    if (profileError) throw wrapThrownError(profileError, "Falha ao salvar o perfil.");
   }
 
   const { error: roleError } = await admin.from("users").update({ role }).eq("id", data.user.id);

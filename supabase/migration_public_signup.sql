@@ -1,6 +1,6 @@
--- ForceQA — o cadastro da tela de login (API admin createUser) não pode
--- abortar o INSERT em auth.users. Rode no SQL Editor depois de
--- migration_guest_invite_lock.sql. Só troca a function; sem lock de tabela.
+-- ForceQA — cadastro pela tela Cadastrar não pode abortar auth.users.
+-- Rode de novo mesmo se já tiver rodado a versão anterior: substitui a function
+-- e garante EXECUTE para o Auth. Sem lock de tabela.
 
 CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
 RETURNS TRIGGER
@@ -14,29 +14,18 @@ DECLARE
   meta_role TEXT;
   org_id UUID;
   is_service_guest BOOLEAN;
+  display_name TEXT;
 BEGIN
-  is_service_guest := COALESCE((NEW.raw_app_meta_data->>'guest')::boolean, false);
+  is_service_guest := lower(coalesce(NEW.raw_app_meta_data->>'guest', '')) IN ('true', 't', '1');
   app_role := NULLIF(TRIM(NEW.raw_app_meta_data->>'role'), '');
   meta_role := NULLIF(TRIM(NEW.raw_user_meta_data->>'role'), '');
-
-  IF is_service_guest THEN
-    INSERT INTO public.users (id, name, email, role, squad, is_guest, organization_id)
-    VALUES (
-      NEW.id,
-      COALESCE(NULLIF(TRIM(NEW.raw_user_meta_data->>'name'), ''), split_part(NEW.email, '@', 1)),
-      LOWER(NEW.email),
-      'viewer',
-      COALESCE(NULLIF(TRIM(NEW.raw_user_meta_data->>'squad'), ''), ''),
-      true,
-      NULL
-    )
-    ON CONFLICT (id) DO UPDATE SET
-      name = EXCLUDED.name,
-      email = EXCLUDED.email,
-      squad = CASE WHEN EXCLUDED.squad <> '' THEN EXCLUDED.squad ELSE public.users.squad END,
-      is_guest = true,
-      organization_id = NULL;
-    RETURN NEW;
+  display_name := COALESCE(
+    NULLIF(TRIM(NEW.raw_user_meta_data->>'name'), ''),
+    NULLIF(split_part(COALESCE(NEW.email, ''), '@', 1), ''),
+    'Usuario'
+  );
+  IF char_length(display_name) > 100 THEN
+    display_name := left(display_name, 100);
   END IF;
 
   IF app_role IS NOT NULL AND app_role NOT IN ('admin', 'qa', 'developer', 'dba', 'devops', 'scrum_master', 'viewer') THEN
@@ -45,36 +34,68 @@ BEGIN
   IF meta_role IS NOT NULL AND meta_role NOT IN ('admin', 'qa', 'developer', 'dba', 'devops', 'scrum_master', 'viewer') THEN
     meta_role := NULL;
   END IF;
-
   assigned_role := COALESCE(app_role, meta_role, 'viewer');
 
   BEGIN
     org_id := NULLIF(TRIM(NEW.raw_app_meta_data->>'organization_id'), '')::uuid;
-  EXCEPTION WHEN invalid_text_representation THEN
+  EXCEPTION WHEN OTHERS THEN
     org_id := NULL;
   END;
 
   IF org_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.organizations WHERE id = org_id) THEN
     org_id := NULL;
   END IF;
+  org_id := COALESCE(org_id, public.default_organization_id());
 
-  INSERT INTO public.users (id, name, email, role, squad, is_guest, organization_id)
-  VALUES (
-    NEW.id,
-    COALESCE(NULLIF(TRIM(NEW.raw_user_meta_data->>'name'), ''), split_part(NEW.email, '@', 1)),
-    LOWER(NEW.email),
-    assigned_role,
-    COALESCE(NULLIF(TRIM(NEW.raw_user_meta_data->>'squad'), ''), ''),
-    false,
-    COALESCE(org_id, public.default_organization_id())
-  )
-  ON CONFLICT (id) DO UPDATE SET
-    name = EXCLUDED.name,
-    email = EXCLUDED.email,
-    squad = CASE WHEN EXCLUDED.squad <> '' THEN EXCLUDED.squad ELSE public.users.squad END,
-    is_guest = public.users.is_guest,
-    organization_id = COALESCE(public.users.organization_id, EXCLUDED.organization_id);
+  BEGIN
+    IF is_service_guest THEN
+      INSERT INTO public.users (id, name, email, role, squad, is_guest, organization_id)
+      VALUES (
+        NEW.id,
+        display_name,
+        LOWER(COALESCE(NEW.email, '')),
+        'viewer',
+        COALESCE(NULLIF(TRIM(NEW.raw_user_meta_data->>'squad'), ''), ''),
+        true,
+        NULL
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        name = EXCLUDED.name,
+        email = EXCLUDED.email,
+        squad = CASE WHEN EXCLUDED.squad <> '' THEN EXCLUDED.squad ELSE public.users.squad END,
+        is_guest = true,
+        organization_id = NULL;
+    ELSE
+      INSERT INTO public.users (id, name, email, role, squad, is_guest, organization_id)
+      VALUES (
+        NEW.id,
+        display_name,
+        LOWER(COALESCE(NEW.email, '')),
+        assigned_role,
+        COALESCE(NULLIF(TRIM(NEW.raw_user_meta_data->>'squad'), ''), ''),
+        false,
+        org_id
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        name = EXCLUDED.name,
+        email = EXCLUDED.email,
+        squad = CASE WHEN EXCLUDED.squad <> '' THEN EXCLUDED.squad ELSE public.users.squad END,
+        is_guest = public.users.is_guest,
+        organization_id = COALESCE(public.users.organization_id, EXCLUDED.organization_id);
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'handle_new_auth_user: %', SQLERRM;
+  END;
 
   RETURN NEW;
 END;
 $$;
+
+ALTER FUNCTION public.handle_new_auth_user() OWNER TO postgres;
+GRANT EXECUTE ON FUNCTION public.handle_new_auth_user() TO postgres, supabase_auth_admin, service_role;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_new_auth_user();
