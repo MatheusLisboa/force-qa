@@ -186,13 +186,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signUpUser = async (
-    _name: string,
-    _email: string,
-    _password: string,
-    _role: UserRole,
-    _squad: string
+    name: string,
+    email: string,
+    password: string,
+    role: UserRole,
+    squad: string
   ): Promise<User> => {
-    throw new Error("Cadastro público desativado. Peça um convite a um admin.");
+    const trimmedEmail = email.trim().toLowerCase();
+    const response = await fetch("/api/guest/validate-room", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        register: true,
+        name: name.trim(),
+        email: trimmedEmail,
+        password,
+        role,
+        squad: normalizeArea(squad),
+      }),
+    });
+    if (!response.ok && response.status !== 409) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error || "Não foi possível criar a conta.");
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: trimmedEmail,
+      password,
+    });
+    if (error) throw error;
+    if (!data.user || !data.session) throw new Error("Falha ao autenticar após o cadastro.");
+
+    const existing = await fetchProfile(data.user.id);
+    if (existing) applyProfile(existing);
+    setUser(data.user);
+    return data.user;
   };
 
   const loginAsGuest = async (

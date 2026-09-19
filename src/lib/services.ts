@@ -620,19 +620,7 @@ export async function joinWarRoom(input: string): Promise<string> {
     if (visible) return visible.id;
   }
 
-  const { data: profile } = await supabase
-    .from("users")
-    .select("is_guest")
-    .eq("id", userId)
-    .maybeSingle();
-
-  if (profile?.is_guest) {
-    return joinWarRoomViaApi(input);
-  }
-
-  throw new Error(
-    "Você não tem acesso a esta sala. Peça a um admin para marcar o board em Usuários."
-  );
+  return joinWarRoomViaApi(input);
 }
 
 export async function fetchGuestInviteUrl(

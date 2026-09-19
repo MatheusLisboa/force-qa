@@ -187,10 +187,14 @@ export async function joinRoom(
     .eq("user_id", userId)
     .maybeSingle();
   if (membership) return roomId;
-  throw Object.assign(
-    new Error("Você não tem acesso a esta sala. Peça a um admin para adicionar você em Usuários."),
-    { status: 403 }
-  );
+
+  const { error } = await admin.from("room_members").insert({
+    war_room_id: roomId,
+    user_id: userId,
+    added_by: userId,
+  });
+  if (error && error.code !== "23505") throw error;
+  return roomId;
 }
 
 export async function inviteToRoom(params: {

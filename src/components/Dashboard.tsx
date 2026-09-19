@@ -384,6 +384,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     Entrar com o link
                   </button>
                 )}
+                {!profile?.isGuest && (
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-neutral-200 hover:bg-white/[0.05]"
+                    onClick={() => {
+                      setEnterIdOpen(true);
+                      setMoreOpen(false);
+                    }}
+                  >
+                    <Link2 className="w-3.5 h-3.5 text-neutral-500" />
+                    Entrar com o ID da sala
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -448,13 +461,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
       </div>
 
-      {enterIdOpen && profile?.isGuest && (
+      {enterIdOpen && (
         <form onSubmit={handleEnterRoomById} className="flex max-w-xl gap-2">
           <input
             type="text"
             required
             autoFocus
-            placeholder="Cole o link da sala"
+            placeholder={profile?.isGuest ? "Cole o link da sala" : "ID da war room, board ou link com ?room="}
             className="fq-input flex-1"
             value={enterRoomIdInput}
             onChange={(e) => setEnterRoomIdInput(e.target.value)}
@@ -477,18 +490,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
             {profile?.isGuest
               ? "Cole o link da sala para entrar como convidado."
               : canManageSpaces
-                ? "Crie uma war room ou um projeto para começar."
-                : "Peça a um admin para marcar o acesso em Usuários."}
+                ? "Crie uma war room ou um projeto, ou entre com o ID de uma sala."
+                : "Cole o ID da war room ou do board, ou peça a um admin para marcar o acesso."}
           </p>
-          {profile?.isGuest && (
-            <button
-              type="button"
-              className="fq-btn-primary text-sm mt-4"
-              onClick={() => setEnterIdOpen(true)}
-            >
-              Entrar com o link
-            </button>
-          )}
+          <button
+            type="button"
+            className="fq-btn-primary text-sm mt-4"
+            onClick={() => setEnterIdOpen(true)}
+          >
+            {profile?.isGuest ? "Entrar com o link" : "Entrar com o ID da sala"}
+          </button>
         </div>
       ) : displayedSpaces.length === 0 ? (
         <p className="text-sm text-neutral-500">

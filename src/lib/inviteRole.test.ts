@@ -4,6 +4,7 @@ import {
   inviteRoleHint,
   inviteRolesForActor,
   resolveInviteRole,
+  resolvePublicSignupRole,
 } from "./inviteRole";
 
 describe("inviteRole", () => {
@@ -24,5 +25,11 @@ describe("inviteRole", () => {
     expect(inviteRoleHint("viewer")).toMatch(/lê/i);
     expect(inviteRoleHint("developer")).toMatch(/escrever/i);
     expect(inviteRoleHint("admin")).toMatch(/cuidado/i);
+  });
+
+  it("ignores admin on public signup and falls back to developer", () => {
+    expect(resolvePublicSignupRole("qa")).toBe("qa");
+    expect(resolvePublicSignupRole("admin")).toBe(DEFAULT_INVITE_ROLE);
+    expect(resolvePublicSignupRole("")).toBe(DEFAULT_INVITE_ROLE);
   });
 });
