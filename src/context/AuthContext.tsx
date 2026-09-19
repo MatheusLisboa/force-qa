@@ -17,7 +17,6 @@ interface AuthContextType {
   loading: boolean;
   passwordRecovery: boolean;
   loginWithEmail: (email: string, password: string, isSignUp: boolean) => Promise<User>;
-  signUpUser: (name: string, email: string, password: string, role: UserRole, squad: string) => Promise<User>;
   loginAsGuest: (name: string, squad: string, warRoomName: string) => Promise<string>;
   adminCreateUser: (name: string, email: string, password: string, role: UserRole, squad: string, organizationId?: string) => Promise<string>;
   changePassword: (newPassword: string) => Promise<void>;
@@ -185,44 +184,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return data.user;
   };
 
-  const signUpUser = async (
-    name: string,
-    email: string,
-    password: string,
-    role: UserRole,
-    squad: string
-  ): Promise<User> => {
-    const trimmedEmail = email.trim().toLowerCase();
-    const response = await fetch("/api/guest/validate-room", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        register: true,
-        name: name.trim(),
-        email: trimmedEmail,
-        password,
-        role,
-        squad: normalizeArea(squad),
-      }),
-    });
-    if (!response.ok && response.status !== 409) {
-      const errData = await response.json().catch(() => ({}));
-      throw new Error(errData.error || "Não foi possível criar a conta.");
-    }
-
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: trimmedEmail,
-      password,
-    });
-    if (error) throw error;
-    if (!data.user || !data.session) throw new Error("Falha ao autenticar após o cadastro.");
-
-    const existing = await fetchProfile(data.user.id);
-    if (existing) applyProfile(existing);
-    setUser(data.user);
-    return data.user;
-  };
-
   const loginAsGuest = async (
     name: string,
     squad: string,
@@ -367,7 +328,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loading,
         passwordRecovery,
         loginWithEmail,
-        signUpUser,
         loginAsGuest,
         adminCreateUser,
         changePassword,

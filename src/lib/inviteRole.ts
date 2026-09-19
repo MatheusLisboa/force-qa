@@ -3,22 +3,6 @@ import { canGrantAdminRole, SIGNUP_ROLES } from "./permissions";
 
 export const DEFAULT_INVITE_ROLE: UserRole = "developer";
 
-export const PUBLIC_SIGNUP_ROLE_OPTIONS: { value: UserRole; label: string }[] = [
-  { value: "qa", label: "QA" },
-  { value: "developer", label: "Developer" },
-  { value: "dba", label: "DBA" },
-  { value: "devops", label: "DevOps" },
-  { value: "scrum_master", label: "Scrum Master" },
-  { value: "viewer", label: "Viewer" },
-];
-
-export function resolvePublicSignupRole(requested?: string | null): UserRole {
-  if (requested && SIGNUP_ROLES.includes(requested as UserRole)) {
-    return requested as UserRole;
-  }
-  return DEFAULT_INVITE_ROLE;
-}
-
 const ALL_INVITE_ROLES: UserRole[] = ["admin", ...SIGNUP_ROLES];
 
 export function inviteRoleHint(role: UserRole): string {

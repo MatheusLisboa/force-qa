@@ -8,7 +8,6 @@ import { adminCreateUser, adminDeleteUser, adminMoveUser } from "./api-src/share
 import { createOrganizationWithAdmin, resolveActorOrganizationId } from "./api-src/shared/organizations";
 import { appRedirectTo } from "./api-src/shared/appUrl";
 import { assertActorCanAccessRoom, inviteToRoom, joinAsGuest, joinRoom, validateGuestRoom } from "./api-src/shared/rooms";
-import { publicSignUp } from "./api-src/shared/signup";
 import { detectDuplicate, suggestBugFields } from "./api-src/shared/geminiBugs";
 import { dispatchRoomWebhook, getOrgWebhookUrl, setOrgWebhookUrl, type WebhookKind } from "./api-src/shared/webhooks";
 import {
@@ -140,18 +139,6 @@ app.post("/api/admin/move-user", async (req, res) => {
 
 app.post("/api/guest/validate-room", async (req, res) => {
   try {
-    if (req.body?.register === true || req.body?.register === "true") {
-      res.json(
-        await publicSignUp({
-          name: String(req.body?.name || ""),
-          email: String(req.body?.email || ""),
-          password: String(req.body?.password || ""),
-          role: String(req.body?.role || ""),
-          squad: String(req.body?.squad || ""),
-        })
-      );
-      return;
-    }
     const input = String(req.body?.input || req.body?.warRoomName || "");
     if (req.body?.join === true || req.body?.join === "true") {
       res.json(

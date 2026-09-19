@@ -2,21 +2,17 @@ import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { isSupabaseConfigured } from "../lib/supabase";
 import { getAuthErrorCode, getAuthErrorMessage } from "../lib/authErrors";
-import { parseGuestInvite, parseRoomInvite } from "../lib/routes";
-import { DEFAULT_INVITE_ROLE, PUBLIC_SIGNUP_ROLE_OPTIONS } from "../lib/inviteRole";
-import { UserRole } from "../types";
-import { LogIn, AlertTriangle, Mail, UserPlus } from "lucide-react";
+import { parseGuestInvite } from "../lib/routes";
+import { LogIn, AlertTriangle, Mail } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { SquadSelect } from "./SquadSelect";
 
 export const LoginScreen: React.FC = () => {
-  const { loginWithEmail, loginAsGuest, signUpUser, requestPasswordReset } = useAuth();
+  const { loginWithEmail, loginAsGuest, requestPasswordReset } = useAuth();
   const pendingInvite = parseGuestInvite(window.location.href);
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<"email" | "signup" | "guest">(
-    pendingInvite.token ? "guest" : "email"
-  );
+  const [activeTab, setActiveTab] = useState<"email" | "guest">(pendingInvite.token ? "guest" : "email");
 
   // Email form state
   const [email, setEmail] = useState("");
@@ -34,18 +30,6 @@ export const LoginScreen: React.FC = () => {
   );
   const [guestLoading, setGuestLoading] = useState(false);
   const [guestError, setGuestError] = useState("");
-
-  const [signName, setSignName] = useState("");
-  const [signEmail, setSignEmail] = useState("");
-  const [signPassword, setSignPassword] = useState("");
-  const [signRole, setSignRole] = useState<UserRole>(DEFAULT_INVITE_ROLE);
-  const [signSquad, setSignSquad] = useState("");
-  const [signLoading, setSignLoading] = useState(false);
-  const [signError, setSignError] = useState("");
-  const [signStep, setSignStep] = useState<"account" | "room">("account");
-  const [joinRoomInput, setJoinRoomInput] = useState(
-    pendingInvite.token ? "" : pendingInvite.roomId || ""
-  );
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -125,52 +109,6 @@ export const LoginScreen: React.FC = () => {
     }
   };
 
-  const handleSignUpSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!signName.trim() || !signEmail.trim() || !signPassword) {
-      setSignError("Preencha nome, e-mail e senha.");
-      return;
-    }
-    if (signPassword.length < 6) {
-      setSignError("A senha deve conter no mínimo 6 caracteres.");
-      return;
-    }
-    if (!signSquad.trim()) {
-      setSignError("Informe a sua área (ex: QA, Dev).");
-      return;
-    }
-
-    setSignLoading(true);
-    setSignError("");
-    try {
-      setSignStep("room");
-    } finally {
-      setSignLoading(false);
-    }
-  };
-
-  const handleJoinAfterSignUp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const input = joinRoomInput.trim();
-    if (!input) {
-      setSignError("Informe o ID da war room ou do board.");
-      return;
-    }
-    const roomId = parseRoomInvite(input) || input;
-    setSignLoading(true);
-    setSignError("");
-    try {
-      window.history.replaceState({}, "", `/?room=${encodeURIComponent(roomId)}`);
-      await signUpUser(signName, signEmail, signPassword, signRole, signSquad);
-    } catch (err: unknown) {
-      console.error(err);
-      window.history.replaceState({}, "", "/");
-      setSignError(err instanceof Error ? err.message : "Não foi possível criar a conta.");
-    } finally {
-      setSignLoading(false);
-    }
-  };
-
   return (
     <div className="fq-shell relative flex min-h-screen flex-col justify-between overflow-hidden">
       <div className="fq-header z-10 !relative">
@@ -211,23 +149,17 @@ export const LoginScreen: React.FC = () => {
               Entre para continuar
             </h1>
             <p className="text-neutral-400 text-sm max-w-sm mx-auto mb-6 leading-relaxed">
-              Entre com o e-mail, cadastre-se ou cole o convite de convidado.
+              Use o e-mail cadastrado pelo admin. Convidado cola o link de convite.
             </p>
           </div>
 
           {/* Premium Selector Tabs */}
-          <div className="fq-segmented mb-6 grid-cols-3 text-center text-sm font-medium">
+          <div className="fq-segmented mb-6 grid-cols-2 text-center text-sm font-medium">
             <button
               onClick={() => setActiveTab("email")}
               className={`fq-segment ${activeTab === "email" ? "fq-segment--active" : ""}`}
             >
               Entrar
-            </button>
-            <button
-              onClick={() => setActiveTab("signup")}
-              className={`fq-segment ${activeTab === "signup" ? "fq-segment--active" : ""}`}
-            >
-              Cadastrar
             </button>
             <button
               onClick={() => setActiveTab("guest")}
@@ -326,146 +258,6 @@ export const LoginScreen: React.FC = () => {
                     )}
                   </button>
                 </form>
-              </motion.div>
-            )}
-
-            {activeTab === "signup" && (
-              <motion.div
-                key="signup"
-                initial={{ opacity: 0, y: 5 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -5 }}
-                transition={{ duration: 0.15 }}
-              >
-                {signError && (
-                  <div className="fq-alert-error mb-4 flex items-start gap-2">
-                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                    <span>{signError}</span>
-                  </div>
-                )}
-
-                {signStep === "account" ? (
-                  <form onSubmit={handleSignUpSubmit} className="space-y-4">
-                    <div>
-                      <label className="fq-label">Nome</label>
-                      <input
-                        type="text"
-                        required
-                        className="fq-input"
-                        placeholder="Como você aparece no Kanban"
-                        value={signName}
-                        onChange={(e) => setSignName(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label className="fq-label">E-mail</label>
-                      <div className="relative">
-                        <input
-                          type="email"
-                          required
-                          className="fq-input pl-10"
-                          placeholder="Ex: qa@empresa.com"
-                          value={signEmail}
-                          onChange={(e) => setSignEmail(e.target.value)}
-                        />
-                        <Mail className="absolute left-3.5 top-3 w-4 h-4 text-neutral-500" />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="fq-label">Função</label>
-                      <select
-                        className="fq-input"
-                        value={signRole}
-                        onChange={(e) => setSignRole(e.target.value as UserRole)}
-                      >
-                        {PUBLIC_SIGNUP_ROLE_OPTIONS.map((role) => (
-                          <option key={role.value} value={role.value}>
-                            {role.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="fq-label">Área</label>
-                      <SquadSelect required value={signSquad} onChange={setSignSquad} />
-                    </div>
-                    <div>
-                      <label className="fq-label">Senha</label>
-                      <input
-                        type="password"
-                        required
-                        autoComplete="new-password"
-                        className="fq-input"
-                        placeholder="Mínimo 6 caracteres"
-                        value={signPassword}
-                        onChange={(e) => setSignPassword(e.target.value)}
-                      />
-                    </div>
-                    <button type="submit" disabled={signLoading} className="fq-btn-primary w-full">
-                      {signLoading ? (
-                        <span className="w-5 h-5 border-2 border-zinc-900 border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <>
-                          <UserPlus className="w-4 h-4" />
-                          Criar conta
-                        </>
-                      )}
-                    </button>
-                  </form>
-                ) : (
-                  <form onSubmit={handleJoinAfterSignUp} className="space-y-4">
-                    <p className="text-sm text-neutral-400 leading-relaxed">
-                      Agora cole o ID da war room ou do board para abrir o Kanban.
-                    </p>
-                    <div>
-                      <label className="fq-label">ID da sala ou do board</label>
-                      <input
-                        type="text"
-                        required
-                        autoFocus
-                        className="fq-input"
-                        placeholder="room-…, board-… ou o link com ?room="
-                        value={joinRoomInput}
-                        onChange={(e) => setJoinRoomInput(e.target.value)}
-                      />
-                    </div>
-                    <button type="submit" disabled={signLoading} className="fq-btn-primary w-full">
-                      {signLoading ? (
-                        <span className="w-5 h-5 border-2 border-zinc-900 border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        "Abrir sala"
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      className="w-full text-[11px] text-neutral-400 hover:text-neutral-200 font-mono"
-                      disabled={signLoading}
-                      onClick={() => {
-                        setSignError("");
-                        setSignStep("account");
-                      }}
-                    >
-                      Voltar
-                    </button>
-                    <button
-                      type="button"
-                      className="w-full text-[11px] text-neutral-400 hover:text-neutral-200 font-mono"
-                      disabled={signLoading}
-                      onClick={async () => {
-                        setSignLoading(true);
-                        setSignError("");
-                        try {
-                          await signUpUser(signName, signEmail, signPassword, signRole, signSquad);
-                        } catch (err: unknown) {
-                          setSignError(err instanceof Error ? err.message : "Não foi possível criar a conta.");
-                          setSignLoading(false);
-                        }
-                      }}
-                    >
-                      Criar conta e entrar sem sala
-                    </button>
-                  </form>
-                )}
               </motion.div>
             )}
 

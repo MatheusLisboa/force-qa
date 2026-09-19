@@ -32,8 +32,8 @@
 -- A migration_export_api.sql é obrigatória para a API de extração (GitLab puxar cards).
 -- A migration_role_permissions.sql é obrigatória para a tela Permissões do superadmin.
 -- A migration_guest_invite_lock.sql é obrigatória: isola guest e exige token no convite.
--- A migration_public_signup.sql é obrigatória para a aba Cadastrar: remove o trigger em auth.users.
+-- A migration_public_signup.sql é obrigatória para createUser (admin/convidado) não abortar no Auth.
 -- No Auth do Supabase: Authentication → Providers → Email → desmarque "Allow new users to sign up"
--- (o cadastro da tela Cadastrar usa a API admin, não o signup anônimo).
+-- (o cadastro no app usa a API admin, não o signup anônimo).
 -- Se o SQL Editor retornar deadlock (40P01), espere 10s e rode o arquivo de novo
 -- (as migrations com COMMIT + LOCK TABLE são idempotentes). Não abra duas abas.
