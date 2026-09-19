@@ -38,11 +38,9 @@ DECLARE
   app_role TEXT;
   org_id UUID;
   is_service_guest BOOLEAN;
-  is_email_invite BOOLEAN;
 BEGIN
   is_service_guest := COALESCE((NEW.raw_app_meta_data->>'guest')::boolean, false);
   app_role := NULLIF(TRIM(NEW.raw_app_meta_data->>'role'), '');
-  is_email_invite := NEW.invited_at IS NOT NULL;
 
   IF is_service_guest THEN
     INSERT INTO public.users (id, name, email, role, squad, is_guest, organization_id)
@@ -64,15 +62,14 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  IF app_role IS NULL AND NOT is_email_invite THEN
-    RAISE EXCEPTION 'Cadastro público desativado. Peça um convite a um admin.';
-  END IF;
-
   IF app_role IS NOT NULL AND app_role NOT IN ('admin', 'qa', 'developer', 'dba', 'devops', 'scrum_master', 'viewer') THEN
-    RAISE EXCEPTION 'Cadastro público desativado. Peça um convite a um admin.';
+    app_role := NULL;
   END IF;
 
-  assigned_role := COALESCE(app_role, 'viewer');
+  assigned_role := COALESCE(app_role, NULLIF(TRIM(NEW.raw_user_meta_data->>'role'), ''), 'viewer');
+  IF assigned_role NOT IN ('admin', 'qa', 'developer', 'dba', 'devops', 'scrum_master', 'viewer') THEN
+    assigned_role := 'viewer';
+  END IF;
 
   BEGIN
     org_id := NULLIF(TRIM(NEW.raw_app_meta_data->>'organization_id'), '')::uuid;

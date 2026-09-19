@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { httpErrorStatus, readJsonBody } from "../shared/auth";
+import { clientErrorMessage, httpErrorStatus, readJsonBody } from "../shared/auth";
 import { joinAsGuest, validateGuestRoom } from "../shared/rooms";
 import { publicSignUp } from "../shared/signup";
 
@@ -33,8 +33,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const result = await validateGuestRoom(input);
     return res.status(200).json(result);
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Falha ao validar a sala.";
+    const message = clientErrorMessage(error, "Falha ao validar a sala.");
+    const readable = !message || message === "{}" ? "Não foi possível concluir. Tente de novo." : message;
     console.error("validate-room:", error);
-    return res.status(httpErrorStatus(error)).json({ error: message });
+    return res.status(httpErrorStatus(error)).json({ error: readable });
   }
 }

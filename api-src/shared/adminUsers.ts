@@ -110,6 +110,7 @@ export async function adminCreateUser(params: {
     user_metadata: {
       name,
       squad,
+      role,
     },
   });
   if (error && isEmailTakenError(error) && params.adoptOrphan) {
@@ -126,22 +127,26 @@ export async function adminCreateUser(params: {
           user_metadata: {
             name,
             squad,
+            role,
           },
         }));
       }
     }
   }
   if (error) {
-    console.error("adminCreateUser auth:", { code: errorCode(error), message: errorMessage(error) });
+    console.error("adminCreateUser auth:", { code: errorCode(error), message: errorMessage(error), error });
     if (isEmailTakenError(error)) {
       throw Object.assign(
         new Error("Este e-mail já existe no Auth. Apague-o em Authentication → Users e tente de novo."),
         { status: 409 }
       );
     }
-    throw Object.assign(new Error(errorMessage(error) || "Falha ao criar usuário no Auth."), {
-      status: 500,
-    });
+    const raw = errorMessage(error).trim();
+    const friendly =
+      !raw || raw === "{}" || /database error creating new user/i.test(raw)
+        ? "Não foi possível criar a conta. Rode migration_public_signup.sql no SQL Editor do Supabase e tente de novo."
+        : raw;
+    throw Object.assign(new Error(friendly), { status: 500 });
   }
   if (!data.user) throw new Error("Falha ao criar usuário no Auth.");
 
