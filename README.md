@@ -18,7 +18,7 @@ npm install
 
 ### 2. Configurar Supabase
 
-1. Acesse o [Dashboard Supabase](https://supabase.com/dashboard/project/bdvpzgrgwgcvfgflelbn)
+1. Crie um projeto no [Supabase](https://supabase.com/dashboard)
 2. Em **SQL Editor**, siga a ordem em [`supabase/00_run_order.sql`](supabase/00_run_order.sql). Em um banco já existente, rode [`supabase/migration_access_and_security.sql`](supabase/migration_access_and_security.sql) e [`supabase/migration_room_access_ui.sql`](supabase/migration_room_access_ui.sql)
 3. Em **Authentication → Providers**, habilite **Email** e desative **Confirm email** (para login imediato em dev)
 4. Em **Project Settings → API**, copie:
@@ -34,7 +34,7 @@ cp .env.example .env
 Edite `.env` com suas chaves:
 
 ```env
-VITE_SUPABASE_URL=https://bdvpzgrgwgcvfgflelbn.supabase.co
+VITE_SUPABASE_URL=https://SEU_PROJETO.supabase.co
 VITE_SUPABASE_ANON_KEY=sua_anon_key
 SUPABASE_SERVICE_ROLE_KEY=sua_service_role_key
 GEMINI_API_KEY=sua_gemini_key       # opcional
@@ -48,6 +48,21 @@ npm run dev
 ```
 
 Acesse `http://localhost:3000`
+
+## Qualidade e testes
+
+O projeto tem testes automatizados em três camadas, todas rodando no CI a cada pull request:
+
+| Camada | Ferramenta | Escopo |
+|--------|-----------|--------|
+| Estática | ESLint + TypeScript (`npm run lint`) | Tipos e padrões de código |
+| Unitária | Vitest (`npm test`) | 74 testes de regras de negócio e da API de exportação |
+| E2E | Playwright (`npm run test:e2e`) | 9 testes do fluxo de login/cadastro em Chromium |
+
+- Os testes E2E rodam contra um build com **Supabase falso**, então nunca tocam o backend real e são determinísticos.
+- No CI, falhas geram `trace` na primeira repetição (2 retries) e o `playwright-report` é publicado como artefato por 7 dias.
+- Workflow: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (jobs `check` e `e2e`).
+- Relatório de auditoria de segurança: [`docs/security-audit`](docs/security-audit).
 
 ## Primeiro acesso
 
