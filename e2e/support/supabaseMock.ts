@@ -1,5 +1,5 @@
 import type { Page, Route } from "@playwright/test";
-import { bugs, notifications, orgUsers, projects, rooms, userRow, USER_ID } from "./fixtures";
+import { bugs, comments, notifications, orgUsers, projects, rooms, userRow, USER_ID } from "./fixtures";
 
 const ORIGIN = "https://e2e.supabase.test";
 export const STORAGE_KEY = "sb-e2e-auth-token";
@@ -63,6 +63,8 @@ function tableRows(table: string, profile: Record<string, unknown>): unknown[] {
       return notifications;
     case "projects":
       return projects;
+    case "bug_comments":
+      return comments;
     default:
       return [];
   }
@@ -148,11 +150,33 @@ export async function mockSupabase(page: Page, options: MockOptions = {}): Promi
   });
 
   // Storage e demais chamadas: nada a assinar.
-  await page.route(`${ORIGIN}/storage/v1/**`, (route) => json(route, { error: "not found" }, 404));
+  await page.route(`${ORIGIN}/storage/v1/**`, (route) => {
+    const request = route.request();
+    if (request.method() === "OPTIONS") {
+      return route.fulfill({ status: 204, headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "*" } });
+    }
+    // Upload: aceita e registra. Qualquer outra coisa (assinatura de URL) não existe no mock.
+    const pathname = new URL(request.url()).pathname;
+    // Imagem pública (print colado num comentário): devolve um SVG ilustrativo.
+    if (request.method() === "GET" && pathname.includes("/object/public/evidence/")) {
+      return route.fulfill({
+        status: 200,
+        contentType: "image/svg+xml",
+        headers: { "access-control-allow-origin": "*" },
+        body: `<svg xmlns="http://www.w3.org/2000/svg" width="360" height="160" viewBox="0 0 360 160"><rect width="360" height="160" rx="8" fill="#1f2937"/><rect x="12" y="12" width="336" height="22" rx="4" fill="#374151"/><circle cx="26" cy="23" r="4" fill="#ef4444"/><circle cx="40" cy="23" r="4" fill="#f59e0b"/><circle cx="54" cy="23" r="4" fill="#10b981"/><rect x="24" y="56" width="200" height="12" rx="3" fill="#6b7280"/><rect x="24" y="80" width="260" height="12" rx="3" fill="#4b5563"/><rect x="24" y="112" width="120" height="26" rx="5" fill="#ef4444"/><text x="40" y="129" font-family="sans-serif" font-size="12" fill="#fff">504 Gateway</text></svg>`,
+      });
+    }
+    if (pathname.includes("/object/sign/")) return json(route, { error: "not found" }, 404);
+    if (request.method() === "POST" || request.method() === "PUT") {
+      handle.writes.push({ method: request.method(), table: "storage:" + pathname, body: null });
+      return json(route, { Key: "evidence/ok", Id: "mock" });
+    }
+    return json(route, { error: "not found" }, 404);
+  });
   await page.route("**/api/**", (route) => json(route, { error: "mock" }, 404));
 
   // Realtime (Phoenix channels v2): aceita joins e devolve "ok" com os bindings.
-  await page.routeWebSocket(/mock\.supabase\.co\/realtime\/v1\/websocket/, (ws) => {
+  await page.routeWebSocket(/e2e\.supabase\.test\/realtime\/v1\/websocket/, (ws) => {
     ws.onMessage((raw) => {
       if (typeof raw !== "string") return;
       let frame: unknown;

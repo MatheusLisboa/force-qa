@@ -18,6 +18,7 @@ import { canManageIntegrations, canManageOrganizations, canManageUsers, canManag
 import { RoomRail } from "./components/RoomRail";
 import { useOrgSpaces } from "./hooks/useOrgSpaces";
 import { lazyNamed } from "./lib/lazyNamed";
+import { applyRoomFilters, parseRoomFilters } from "./lib/roomFilters";
 const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const DesignSystemPage = lazyNamed(() => import("./components/DesignSystemPage"), "DesignSystemPage");
 import { PageSkeleton } from "./components/ui/Skeleton";
@@ -214,6 +215,13 @@ function AppContent() {
     document.title = unreadCount > 0 ? `(${unreadCount}) ForceQA • Agile War Room` : "ForceQA • Agile War Room";
   }, [unreadCount]);
 
+  /** Ao abrir a mesma sala que já está na URL (link compartilhado), mantém os filtros dela. */
+  const keepRoomFilters = (path: string, roomId: string) => {
+    if (new URLSearchParams(window.location.search).get("room") !== roomId) return path;
+    const [base, query = ""] = path.split("?");
+    return `${base}${applyRoomFilters(`?${query}`, parseRoomFilters(window.location.search))}`;
+  };
+
   const openRoom = useCallback(async (roomId: string, pulse: PulseKind = "all", bugId?: string | null) => {
     setJoinError("");
     setInboxOpen(false);
@@ -221,14 +229,14 @@ function AppContent() {
     setFocusBugAt(Date.now());
     if (selectedRoomId === roomId) {
       setRoomPulse(pulse);
-      pushPath(roomPath(roomId, pulse, bugId));
+      pushPath(keepRoomFilters(roomPath(roomId, pulse, bugId), roomId));
       return;
     }
     try {
       const joined = await joinWarRoom(roomId);
       setSelectedRoomId(joined);
       setRoomPulse(pulse);
-      pushPath(roomPath(joined, pulse, bugId));
+      pushPath(keepRoomFilters(roomPath(joined, pulse, bugId), roomId));
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Não foi possível abrir a sala.";
       setJoinError(message);

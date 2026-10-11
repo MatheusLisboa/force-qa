@@ -289,14 +289,20 @@ DROP POLICY IF EXISTS "users_delete" ON public.users;
 CREATE POLICY "users_select" ON public.users
   FOR SELECT TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "users_insert" ON public.users;
+
 CREATE POLICY "users_insert" ON public.users
   FOR INSERT TO authenticated
   WITH CHECK (id = auth.uid() OR public.is_admin());
+
+DROP POLICY IF EXISTS "users_update" ON public.users;
 
 CREATE POLICY "users_update" ON public.users
   FOR UPDATE TO authenticated
   USING (id = auth.uid() OR public.is_admin())
   WITH CHECK (id = auth.uid() OR public.is_admin());
+
+DROP POLICY IF EXISTS "users_delete" ON public.users;
 
 CREATE POLICY "users_delete" ON public.users
   FOR DELETE TO authenticated
@@ -311,6 +317,8 @@ CREATE POLICY "war_rooms_select" ON public.war_rooms
   FOR SELECT TO authenticated
   USING (public.is_room_member(id));
 
+DROP POLICY IF EXISTS "war_rooms_insert" ON public.war_rooms;
+
 CREATE POLICY "war_rooms_insert" ON public.war_rooms
   FOR INSERT TO authenticated
   WITH CHECK (
@@ -321,9 +329,13 @@ CREATE POLICY "war_rooms_insert" ON public.war_rooms
     )
   );
 
+DROP POLICY IF EXISTS "war_rooms_update" ON public.war_rooms;
+
 CREATE POLICY "war_rooms_update" ON public.war_rooms
   FOR UPDATE TO authenticated
   USING (created_by = auth.uid() OR public.is_admin());
+
+DROP POLICY IF EXISTS "war_rooms_delete" ON public.war_rooms;
 
 CREATE POLICY "war_rooms_delete" ON public.war_rooms
   FOR DELETE TO authenticated
@@ -336,6 +348,8 @@ DROP POLICY IF EXISTS "room_members_delete" ON public.room_members;
 CREATE POLICY "room_members_select" ON public.room_members
   FOR SELECT TO authenticated
   USING (public.is_room_member(war_room_id) OR user_id = auth.uid());
+
+DROP POLICY IF EXISTS "room_members_insert" ON public.room_members;
 
 CREATE POLICY "room_members_insert" ON public.room_members
   FOR INSERT TO authenticated
@@ -350,6 +364,8 @@ CREATE POLICY "room_members_insert" ON public.room_members
       AND public.is_room_member(war_room_id)
     )
   );
+
+DROP POLICY IF EXISTS "room_members_delete" ON public.room_members;
 
 CREATE POLICY "room_members_delete" ON public.room_members
   FOR DELETE TO authenticated
@@ -371,6 +387,8 @@ CREATE POLICY "bugs_select" ON public.bugs
   FOR SELECT TO authenticated
   USING (public.is_room_member(war_room_id));
 
+DROP POLICY IF EXISTS "bugs_insert" ON public.bugs;
+
 CREATE POLICY "bugs_insert" ON public.bugs
   FOR INSERT TO authenticated
   WITH CHECK (
@@ -379,12 +397,16 @@ CREATE POLICY "bugs_insert" ON public.bugs
     AND public.can_write_bugs()
   );
 
+DROP POLICY IF EXISTS "bugs_update" ON public.bugs;
+
 CREATE POLICY "bugs_update" ON public.bugs
   FOR UPDATE TO authenticated
   USING (
     public.is_room_member(war_room_id)
     AND public.can_write_bugs()
   );
+
+DROP POLICY IF EXISTS "bugs_delete" ON public.bugs;
 
 CREATE POLICY "bugs_delete" ON public.bugs
   FOR DELETE TO authenticated
@@ -402,17 +424,25 @@ DROP POLICY IF EXISTS "comments_insert" ON public.bug_comments;
 DROP POLICY IF EXISTS "comments_update" ON public.bug_comments;
 DROP POLICY IF EXISTS "comments_delete" ON public.bug_comments;
 
+DROP POLICY IF EXISTS "comments_select" ON public.bug_comments;
+
 CREATE POLICY "comments_select" ON public.bug_comments
   FOR SELECT TO authenticated
   USING (public.is_room_member(war_room_id));
+
+DROP POLICY IF EXISTS "comments_insert" ON public.bug_comments;
 
 CREATE POLICY "comments_insert" ON public.bug_comments
   FOR INSERT TO authenticated
   WITH CHECK (user_id = auth.uid() AND public.is_room_member(war_room_id));
 
+DROP POLICY IF EXISTS "comments_update" ON public.bug_comments;
+
 CREATE POLICY "comments_update" ON public.bug_comments
   FOR UPDATE TO authenticated
   USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "comments_delete" ON public.bug_comments;
 
 CREATE POLICY "comments_delete" ON public.bug_comments
   FOR DELETE TO authenticated
@@ -438,6 +468,8 @@ CREATE POLICY "projects_select" ON public.projects
   FOR SELECT TO authenticated
   USING (public.is_room_member(war_room_id));
 
+DROP POLICY IF EXISTS "projects_insert" ON public.projects;
+
 CREATE POLICY "projects_insert" ON public.projects
   FOR INSERT TO authenticated
   WITH CHECK (
@@ -449,10 +481,14 @@ CREATE POLICY "projects_insert" ON public.projects
     )
   );
 
+DROP POLICY IF EXISTS "projects_update" ON public.projects;
+
 CREATE POLICY "projects_update" ON public.projects
   FOR UPDATE TO authenticated
   USING (created_by = auth.uid() OR public.is_admin())
   WITH CHECK (created_by = auth.uid() OR public.is_admin());
+
+DROP POLICY IF EXISTS "projects_delete" ON public.projects;
 
 CREATE POLICY "projects_delete" ON public.projects
   FOR DELETE TO authenticated
@@ -463,9 +499,13 @@ DROP POLICY IF EXISTS "notifications_insert" ON public.notifications;
 DROP POLICY IF EXISTS "notifications_update" ON public.notifications;
 DROP POLICY IF EXISTS "notifications_delete" ON public.notifications;
 
+DROP POLICY IF EXISTS "notifications_select" ON public.notifications;
+
 CREATE POLICY "notifications_select" ON public.notifications
   FOR SELECT TO authenticated
   USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "notifications_insert" ON public.notifications;
 
 CREATE POLICY "notifications_insert" ON public.notifications
   FOR INSERT TO authenticated
@@ -475,10 +515,14 @@ CREATE POLICY "notifications_insert" ON public.notifications
     AND (war_room_id IS NULL OR public.is_room_member(war_room_id))
   );
 
+DROP POLICY IF EXISTS "notifications_update" ON public.notifications;
+
 CREATE POLICY "notifications_update" ON public.notifications
   FOR UPDATE TO authenticated
   USING (user_id = auth.uid())
   WITH CHECK (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "notifications_delete" ON public.notifications;
 
 CREATE POLICY "notifications_delete" ON public.notifications
   FOR DELETE TO authenticated
@@ -510,6 +554,8 @@ CREATE POLICY "evidence_select" ON storage.objects
   FOR SELECT TO public
   USING (bucket_id = 'evidence');
 
+DROP POLICY IF EXISTS "evidence_insert" ON storage.objects;
+
 CREATE POLICY "evidence_insert" ON storage.objects
   FOR INSERT TO authenticated
   WITH CHECK (
@@ -517,9 +563,13 @@ CREATE POLICY "evidence_insert" ON storage.objects
     AND public.can_write_bugs()
   );
 
+DROP POLICY IF EXISTS "evidence_update" ON storage.objects;
+
 CREATE POLICY "evidence_update" ON storage.objects
   FOR UPDATE TO authenticated
   USING (bucket_id = 'evidence' AND public.can_write_bugs());
+
+DROP POLICY IF EXISTS "evidence_delete" ON storage.objects;
 
 CREATE POLICY "evidence_delete" ON storage.objects
   FOR DELETE TO authenticated

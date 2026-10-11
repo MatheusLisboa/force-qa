@@ -7,6 +7,8 @@ import { LogIn, AlertTriangle, Mail } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { SquadSelect } from "./SquadSelect";
 import { logger } from "../lib/logger";
+import { friendlyError, isNetworkError, NETWORK_ERROR_MESSAGE } from "../lib/networkErrors";
+import { BackendStatusBanner } from "./BackendStatusBanner";
 
 export const LoginScreen: React.FC = () => {
   const { loginWithEmail, loginAsGuest, requestPasswordReset } = useAuth();
@@ -52,7 +54,9 @@ export const LoginScreen: React.FC = () => {
       const code = getAuthErrorCode(err);
       const msg = getAuthErrorMessage(err);
 
-      if (code === "invalid_credentials" || msg.includes("Invalid login credentials")) {
+      if (isNetworkError(err)) {
+        setEmailError(NETWORK_ERROR_MESSAGE);
+      } else if (code === "invalid_credentials" || msg.includes("Invalid login credentials")) {
         setEmailError(
           "E-mail ou senha incorretos. Se não lembra a senha, use Recuperar senha."
         );
@@ -104,7 +108,7 @@ export const LoginScreen: React.FC = () => {
       window.location.href = `/?room=${roomId}`;
     } catch (err: any) {
       logger.error(err);
-      setGuestError(err.message || "Erro ao conectar como convidado.");
+      setGuestError(friendlyError(err, err.message || "Erro ao conectar como convidado."));
     } finally {
       setGuestLoading(false);
     }
@@ -139,6 +143,8 @@ export const LoginScreen: React.FC = () => {
                 <strong>novo deploy</strong> — variáveis só entram no build, não em runtime.
               </div>
             )}
+
+            {isSupabaseConfigured() && <BackendStatusBanner />}
 
             <div className="mb-5 inline-flex rounded-2xl border p-3"
               style={{ backgroundColor: "var(--color-fq-accent-muted)", borderColor: "rgba(45, 212, 191, 0.25)" }}

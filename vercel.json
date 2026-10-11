@@ -8,7 +8,19 @@
     }
   },
   "rewrites": [
-    { "source": "/api/admin/org-export-token", "destination": "/api/admin/org-webhook?tab=export-token" },
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    {
+      "source": "/api/admin/org-export-token",
+      "destination": "/api/admin/org-webhook?tab=export-token"
+    },
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/keepalive",
+      "schedule": "0 9 * * *"
+    }
   ]
 }

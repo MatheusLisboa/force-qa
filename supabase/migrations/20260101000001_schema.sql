@@ -138,16 +138,22 @@ ALTER TABLE public.bug_comments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.activity_logs ENABLE ROW LEVEL SECURITY;
 
 -- users
+DROP POLICY IF EXISTS "users_select" ON public.users;
 CREATE POLICY "users_select" ON public.users FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "users_insert" ON public.users;
 CREATE POLICY "users_insert" ON public.users FOR INSERT TO authenticated
   WITH CHECK (id = auth.uid() OR public.is_admin());
+DROP POLICY IF EXISTS "users_update" ON public.users;
 CREATE POLICY "users_update" ON public.users FOR UPDATE TO authenticated
   USING (id = auth.uid() OR public.is_admin());
+DROP POLICY IF EXISTS "users_delete" ON public.users;
 CREATE POLICY "users_delete" ON public.users FOR DELETE TO authenticated
   USING (public.is_admin());
 
 -- war_rooms
+DROP POLICY IF EXISTS "war_rooms_select" ON public.war_rooms;
 CREATE POLICY "war_rooms_select" ON public.war_rooms FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "war_rooms_insert" ON public.war_rooms;
 CREATE POLICY "war_rooms_insert" ON public.war_rooms FOR INSERT TO authenticated
   WITH CHECK (
     (
@@ -156,29 +162,41 @@ CREATE POLICY "war_rooms_insert" ON public.war_rooms FOR INSERT TO authenticated
     )
     AND created_by = auth.uid()
   );
+DROP POLICY IF EXISTS "war_rooms_update" ON public.war_rooms;
 CREATE POLICY "war_rooms_update" ON public.war_rooms FOR UPDATE TO authenticated
   USING (created_by = auth.uid() OR public.is_admin());
+DROP POLICY IF EXISTS "war_rooms_delete" ON public.war_rooms;
 CREATE POLICY "war_rooms_delete" ON public.war_rooms FOR DELETE TO authenticated
   USING (created_by = auth.uid() OR public.is_admin());
 
 -- bugs
+DROP POLICY IF EXISTS "bugs_select" ON public.bugs;
 CREATE POLICY "bugs_select" ON public.bugs FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "bugs_insert" ON public.bugs;
 CREATE POLICY "bugs_insert" ON public.bugs FOR INSERT TO authenticated
   WITH CHECK (created_by = auth.uid());
+DROP POLICY IF EXISTS "bugs_update" ON public.bugs;
 CREATE POLICY "bugs_update" ON public.bugs FOR UPDATE TO authenticated USING (true);
+DROP POLICY IF EXISTS "bugs_delete" ON public.bugs;
 CREATE POLICY "bugs_delete" ON public.bugs FOR DELETE TO authenticated USING (true);
 
 -- bug_comments
+DROP POLICY IF EXISTS "comments_select" ON public.bug_comments;
 CREATE POLICY "comments_select" ON public.bug_comments FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "comments_insert" ON public.bug_comments;
 CREATE POLICY "comments_insert" ON public.bug_comments FOR INSERT TO authenticated
   WITH CHECK (user_id = auth.uid());
+DROP POLICY IF EXISTS "comments_update" ON public.bug_comments;
 CREATE POLICY "comments_update" ON public.bug_comments FOR UPDATE TO authenticated
   USING (user_id = auth.uid());
+DROP POLICY IF EXISTS "comments_delete" ON public.bug_comments;
 CREATE POLICY "comments_delete" ON public.bug_comments FOR DELETE TO authenticated
   USING (user_id = auth.uid());
 
 -- activity_logs (immutable audit trail)
+DROP POLICY IF EXISTS "logs_select" ON public.activity_logs;
 CREATE POLICY "logs_select" ON public.activity_logs FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "logs_insert" ON public.activity_logs;
 CREATE POLICY "logs_insert" ON public.activity_logs FOR INSERT TO authenticated
   WITH CHECK (user_id = auth.uid());
 
@@ -200,18 +218,26 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.board_views;
 
 ALTER TABLE public.board_views ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "board_views_select" ON public.board_views;
+
 CREATE POLICY "board_views_select" ON public.board_views
   FOR SELECT TO authenticated
   USING (is_active = true OR public.is_admin());
+
+DROP POLICY IF EXISTS "board_views_insert" ON public.board_views;
 
 CREATE POLICY "board_views_insert" ON public.board_views
   FOR INSERT TO authenticated
   WITH CHECK (public.is_admin());
 
+DROP POLICY IF EXISTS "board_views_update" ON public.board_views;
+
 CREATE POLICY "board_views_update" ON public.board_views
   FOR UPDATE TO authenticated
   USING (public.is_admin())
   WITH CHECK (public.is_admin());
+
+DROP POLICY IF EXISTS "board_views_delete" ON public.board_views;
 
 CREATE POLICY "board_views_delete" ON public.board_views
   FOR DELETE TO authenticated
@@ -235,8 +261,12 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.projects;
 
 ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "projects_select" ON public.projects;
+
 CREATE POLICY "projects_select" ON public.projects
   FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "projects_insert" ON public.projects;
 
 CREATE POLICY "projects_insert" ON public.projects
   FOR INSERT TO authenticated
@@ -248,10 +278,14 @@ CREATE POLICY "projects_insert" ON public.projects
     AND created_by = auth.uid()
   );
 
+DROP POLICY IF EXISTS "projects_update" ON public.projects;
+
 CREATE POLICY "projects_update" ON public.projects
   FOR UPDATE TO authenticated
   USING (created_by = auth.uid() OR public.is_admin())
   WITH CHECK (created_by = auth.uid() OR public.is_admin());
+
+DROP POLICY IF EXISTS "projects_delete" ON public.projects;
 
 CREATE POLICY "projects_delete" ON public.projects
   FOR DELETE TO authenticated

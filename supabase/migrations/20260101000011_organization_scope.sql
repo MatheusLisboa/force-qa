@@ -117,14 +117,20 @@ CREATE POLICY "users_select" ON public.users
     OR organization_id IS NOT DISTINCT FROM public.current_organization_id()
   );
 
+DROP POLICY IF EXISTS "users_insert" ON public.users;
+
 CREATE POLICY "users_insert" ON public.users
   FOR INSERT TO authenticated
   WITH CHECK (id = auth.uid() OR public.can_admin_org(organization_id));
+
+DROP POLICY IF EXISTS "users_update" ON public.users;
 
 CREATE POLICY "users_update" ON public.users
   FOR UPDATE TO authenticated
   USING (id = auth.uid() OR public.can_admin_org(organization_id))
   WITH CHECK (id = auth.uid() OR public.can_admin_org(organization_id));
+
+DROP POLICY IF EXISTS "users_delete" ON public.users;
 
 CREATE POLICY "users_delete" ON public.users
   FOR DELETE TO authenticated
@@ -139,18 +145,26 @@ DROP POLICY IF EXISTS "organizations_insert" ON public.organizations;
 DROP POLICY IF EXISTS "organizations_update" ON public.organizations;
 DROP POLICY IF EXISTS "organizations_delete" ON public.organizations;
 
+DROP POLICY IF EXISTS "organizations_select" ON public.organizations;
+
 CREATE POLICY "organizations_select" ON public.organizations
   FOR SELECT TO authenticated
   USING (id IS NOT DISTINCT FROM public.current_organization_id() OR public.is_superadmin());
+
+DROP POLICY IF EXISTS "organizations_insert" ON public.organizations;
 
 CREATE POLICY "organizations_insert" ON public.organizations
   FOR INSERT TO authenticated
   WITH CHECK (public.is_superadmin());
 
+DROP POLICY IF EXISTS "organizations_update" ON public.organizations;
+
 CREATE POLICY "organizations_update" ON public.organizations
   FOR UPDATE TO authenticated
   USING (public.is_superadmin())
   WITH CHECK (public.is_superadmin());
+
+DROP POLICY IF EXISTS "organizations_delete" ON public.organizations;
 
 CREATE POLICY "organizations_delete" ON public.organizations
   FOR DELETE TO authenticated
@@ -175,9 +189,13 @@ CREATE POLICY "war_rooms_insert" ON public.war_rooms
     )
   );
 
+DROP POLICY IF EXISTS "war_rooms_update" ON public.war_rooms;
+
 CREATE POLICY "war_rooms_update" ON public.war_rooms
   FOR UPDATE TO authenticated
   USING (created_by = auth.uid() OR public.can_admin_org(organization_id));
+
+DROP POLICY IF EXISTS "war_rooms_delete" ON public.war_rooms;
 
 CREATE POLICY "war_rooms_delete" ON public.war_rooms
   FOR DELETE TO authenticated
@@ -200,6 +218,8 @@ CREATE POLICY "room_members_insert" ON public.room_members
       AND public.is_room_member(war_room_id)
     )
   );
+
+DROP POLICY IF EXISTS "room_members_delete" ON public.room_members;
 
 CREATE POLICY "room_members_delete" ON public.room_members
   FOR DELETE TO authenticated
@@ -255,10 +275,14 @@ CREATE POLICY "projects_insert" ON public.projects
     )
   );
 
+DROP POLICY IF EXISTS "projects_update" ON public.projects;
+
 CREATE POLICY "projects_update" ON public.projects
   FOR UPDATE TO authenticated
   USING (created_by = auth.uid() OR public.can_admin_org(organization_id))
   WITH CHECK (created_by = auth.uid() OR public.can_admin_org(organization_id));
+
+DROP POLICY IF EXISTS "projects_delete" ON public.projects;
 
 CREATE POLICY "projects_delete" ON public.projects
   FOR DELETE TO authenticated
@@ -273,6 +297,8 @@ DROP POLICY IF EXISTS "board_views_insert" ON public.board_views;
 DROP POLICY IF EXISTS "board_views_update" ON public.board_views;
 DROP POLICY IF EXISTS "board_views_delete" ON public.board_views;
 
+DROP POLICY IF EXISTS "board_views_select" ON public.board_views;
+
 CREATE POLICY "board_views_select" ON public.board_views
   FOR SELECT TO authenticated
   USING (
@@ -283,14 +309,20 @@ CREATE POLICY "board_views_select" ON public.board_views
     )
   );
 
+DROP POLICY IF EXISTS "board_views_insert" ON public.board_views;
+
 CREATE POLICY "board_views_insert" ON public.board_views
   FOR INSERT TO authenticated
   WITH CHECK (public.can_admin_org(organization_id));
+
+DROP POLICY IF EXISTS "board_views_update" ON public.board_views;
 
 CREATE POLICY "board_views_update" ON public.board_views
   FOR UPDATE TO authenticated
   USING (public.can_admin_org(organization_id))
   WITH CHECK (public.can_admin_org(organization_id));
+
+DROP POLICY IF EXISTS "board_views_delete" ON public.board_views;
 
 CREATE POLICY "board_views_delete" ON public.board_views
   FOR DELETE TO authenticated

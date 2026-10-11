@@ -31,6 +31,7 @@ const GROUPS: Array<{ title: string; items: Array<{ keys: string[]; label: strin
       { keys: ["←", "→"], label: "Ir para a coluna vizinha" },
       { keys: ["Shift", "←/→"], label: "Mover o card de coluna" },
       { keys: ["Enter"], label: "Abrir o card" },
+      { keys: ["Espaço"], label: "Marcar para ação em lote" },
     ],
   },
 ];

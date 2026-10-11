@@ -45,3 +45,26 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+  rls:
+    name: RLS (Postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Migrations do zero + testes de isolamento
+        run: npm run test:rls
+        env:
+          RLS_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres

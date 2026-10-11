@@ -282,6 +282,8 @@ function subscribeMappedList<T>(options: {
   // Eventos perdidos durante uma queda não voltam sozinhos: ressincroniza ao reconectar
   // e ao voltar para a aba.
   let wasDown = false;
+  // Depois de cancelar a inscrição o Supabase ainda emite "CLOSED": isso NÃO é queda de conexão.
+  let unsubscribed = false;
   const resync = () => {
     if (document.visibilityState === "visible") void load();
   };
@@ -319,6 +321,7 @@ function subscribeMappedList<T>(options: {
       }
     )
     .subscribe((status) => {
+      if (unsubscribed) return;
       if (status === "SUBSCRIBED") {
         connection.setChannelHealthy(options.channelName, true);
         if (wasDown) void load();
@@ -330,6 +333,7 @@ function subscribeMappedList<T>(options: {
     });
 
   return () => {
+    unsubscribed = true;
     if (refetchTimer) clearTimeout(refetchTimer);
     window.removeEventListener("online", resync);
     document.removeEventListener("visibilitychange", resync);

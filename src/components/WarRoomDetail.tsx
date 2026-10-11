@@ -1,6 +1,6 @@
 import React, { Suspense, useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { subscribeWarRoom, subscribeBugsByRoom, subscribeBoardViews, subscribeProjectByWarRoomId } from "../lib/supabase";
-import { fetchGuestInviteUrl, rotateGuestInviteUrl, updateBugField, updateWarRoom, deleteWarRoom } from "../lib/services";
+import { fetchGuestInviteUrl, fetchUsersList, rotateGuestInviteUrl, updateBugField, updateWarRoom, deleteWarRoom } from "../lib/services";
 import { useToast } from "../context/ToastContext";
 import { useConfirm } from "../context/ConfirmContext";
 import { useAuth } from "../context/AuthContext";
@@ -21,12 +21,17 @@ import {
   displayColumnLabel,
 } from "../lib/kanbanColumns";
 import { RoomTypeBadge } from "./BugBadges";
-import { canInviteToRoom, canUseAi, canWriteBugs } from "../lib/permissions";
+import { canAssignBugs, canInviteToRoom, canUseAi, canWriteBugs } from "../lib/permissions";
+import { applyRoomFilters, hasActiveRoomFilters, parseRoomFilters } from "../lib/roomFilters";
+import { runBulk, type BulkResult } from "../lib/bulkActions";
+import { MetricsPanel } from "./MetricsPanel";
 import { useRoomShortcuts } from "../hooks/useRoomShortcuts";
 import { bugMatchesPulse, parsePulseKind, PulseKind, roomHeadlineParts } from "../lib/dashboardPulse";
 import { roomPath, pushPath } from "../lib/routes";
 import {
   ArrowLeft,
+  BarChart3,
+  Link2,
   Plus,
   Kanban,
   Brain,
@@ -76,7 +81,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
   const [warRoom, setWarRoom] = useState<WarRoom | null>(null);
   const [bugs, setBugs] = useState<Bug[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"kanban" | "ai_report">("kanban");
+  const [activeTab, setActiveTab] = useState<"kanban" | "ai_report" | "metrics">("kanban");
   const [isBugModalOpen, setIsBugModalOpen] = useState(false);
   const [createPresetType, setCreatePresetType] = useState<BugType>("bug");
   const [selectedBug, setSelectedBug] = useState<Bug | null>(null);
@@ -88,13 +93,15 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
     setIsBugModalOpen(true);
   }, []);
 
-  const [envFilter, setEnvFilter] = useState<string>("all");
-  const [typeFilter, setTypeFilter] = useState<string>("all");
-  const [ownerFilter, setOwnerFilter] = useState<string>("all");
-  const [severityFilter, setSeverityFilter] = useState<string>("all");
+  // Filtros vivem na URL: dá para compartilhar a visão e ela sobrevive a recarregar a página.
+  const [initialFilters] = useState(() => parseRoomFilters(window.location.search));
+  const [envFilter, setEnvFilter] = useState<string>(initialFilters.env);
+  const [typeFilter, setTypeFilter] = useState<string>(initialFilters.type);
+  const [ownerFilter, setOwnerFilter] = useState<string>(initialFilters.owner);
+  const [severityFilter, setSeverityFilter] = useState<string>(initialFilters.severity);
   const [pulseFilter, setPulseFilter] = useState<PulseKind>(initialPulse);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(initialFilters.q);
   const [newColumnLabel, setNewColumnLabel] = useState("");
   const [isSavingColumns, setIsSavingColumns] = useState(false);
 
@@ -141,13 +148,134 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
     setOwnerFilter((current) => (current === profile.id ? "all" : profile.id));
   }, [profile]);
 
+  const roomFilters = useMemo(
+    () => ({ q: searchQuery, env: envFilter, type: typeFilter, severity: severityFilter, owner: ownerFilter }),
+    [searchQuery, envFilter, typeFilter, severityFilter, ownerFilter]
+  );
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (!new URLSearchParams(window.location.search).has("room")) return;
+      const next = applyRoomFilters(window.location.search, roomFilters);
+      if (next !== window.location.search) {
+        window.history.replaceState(window.history.state, "", `${window.location.pathname}${next}${window.location.hash}`);
+      }
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [roomFilters]);
+
+  const clearFilters = () => {
+    setSearchQuery("");
+    setEnvFilter("all");
+    setTypeFilter("all");
+    setSeverityFilter("all");
+    setOwnerFilter("all");
+    setPulseFilter("all");
+  };
+
+  const copyViewLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      toast("Link desta visão copiado.", { kind: "success" });
+    } catch {
+      toast("Não foi possível copiar. Copie o endereço do navegador.", { kind: "error" });
+    }
+  };
+
+  // --- Ações em lote -------------------------------------------------------
+  const [bulkIds, setBulkIds] = useState<Set<string>>(() => new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [assignableUsers, setAssignableUsers] = useState<Array<{ id: string; name: string }>>([]);
+  const canAssign = canAssignBugs(profile?.role, profile?.isSuperadmin, profile?.isGuest);
+
+  const toggleBulk = useCallback((bugId: string) => {
+    setBulkIds((current) => {
+      const next = new Set(current);
+      if (next.has(bugId)) next.delete(bugId);
+      else next.add(bugId);
+      return next;
+    });
+  }, []);
+
+  // Cards que saíram da sala (arquivados, apagados) deixam a seleção.
+  useEffect(() => {
+    setBulkIds((current) => {
+      if (current.size === 0) return current;
+      const alive = new Set(bugs.map((b) => b.id));
+      const next = new Set([...current].filter((id) => alive.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [bugs]);
+
+  useEffect(() => {
+    if (bulkIds.size === 0 || !canAssign || assignableUsers.length > 0) return;
+    fetchUsersList().then((list) => setAssignableUsers(list.map((u) => ({ id: u.id, name: u.name }))));
+  }, [bulkIds.size, canAssign, assignableUsers.length]);
+
+  const reportBulk = (verb: string, result: BulkResult) => {
+    if (result.failed.length === 0) {
+      toast(`${result.ok.length} ${result.ok.length === 1 ? "card" : "cards"} ${verb}.`, { kind: "success" });
+    } else {
+      toast(`${result.ok.length} ${verb}, ${result.failed.length} falharam.`, { kind: "error" });
+    }
+  };
+
+  const bulkMoveTo = async (columnId: string) => {
+    if (!profile || !warRoom || bulkBusy) return;
+    const columns = resolveKanbanColumns(warRoom.kanbanColumns);
+    const column = columns.find((c) => c.id === columnId);
+    if (!column) return;
+    const targets = bugs.filter((b) => bulkIds.has(b.id) && resolveBugColumnId(b, columns) !== column.id);
+    if (targets.length === 0) return;
+    const previous = new Map(targets.map((b) => [b.id, { status: b.status, columnId: resolveBugColumnId(b, columns) }]));
+    setBulkBusy(true);
+    targets.forEach((b) => moveBugLocally(b.id, column.status, column.id));
+    const result = await runBulk(targets.map((b) => b.id), (id) =>
+      updateBugField(id, roomId, { status: column.status, kanbanColumnId: column.id }, profile.id, profile.name, `Moveu card para a coluna "${displayColumnLabel(column)}"`)
+    );
+    result.failed.forEach(({ id }) => {
+      const before = previous.get(id);
+      if (before) moveBugLocally(id, before.status, before.columnId);
+    });
+    reportBulk(`movidos para ${displayColumnLabel(column)}`, result);
+    setBulkIds(new Set(result.failed.map((f) => f.id)));
+    setBulkBusy(false);
+  };
+
+  const bulkAssignTo = async (userId: string) => {
+    if (!profile || bulkBusy) return;
+    const owner = assignableUsers.find((u) => u.id === userId);
+    if (!owner) return;
+    const targets = bugs.filter((b) => bulkIds.has(b.id) && b.ownerId !== owner.id);
+    if (targets.length === 0) return;
+    const previous = new Map(targets.map((b) => [b.id, { ownerId: b.ownerId, ownerName: b.ownerName }]));
+    const setOwner = (id: string, ownerId: string | null, ownerName: string | null) =>
+      setBugs((current) => current.map((b) => (b.id === id ? { ...b, ownerId, ownerName } : b)));
+    setBulkBusy(true);
+    targets.forEach((b) => setOwner(b.id, owner.id, owner.name));
+    const result = await runBulk(targets.map((b) => b.id), (id) =>
+      updateBugField(id, roomId, { ownerId: owner.id, ownerName: owner.name }, profile.id, profile.name, `Atribuiu a responsabilidade da tarefa para ${owner.name}`)
+    );
+    result.failed.forEach(({ id }) => {
+      const before = previous.get(id);
+      if (before) setOwner(id, before.ownerId, before.ownerName);
+    });
+    reportBulk(`atribuídos a ${owner.name}`, result);
+    setBulkIds(new Set(result.failed.map((f) => f.id)));
+    setBulkBusy(false);
+  };
+
   const handleShortcutEscape = useCallback(() => {
+    if (bulkIds.size > 0) {
+      setBulkIds(new Set());
+      return;
+    }
     if (searchQuery) {
       setSearchQuery("");
       return;
     }
     setFiltersOpen(false);
-  }, [searchQuery]);
+  }, [searchQuery, bulkIds.size]);
 
   useRoomShortcuts(
     {
@@ -587,6 +715,17 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
                   type="button"
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-neutral-200 hover:bg-white/[0.05]"
                   onClick={() => {
+                    setActiveTab("metrics");
+                    setRoomMoreOpen(false);
+                  }}
+                >
+                  <BarChart3 className="w-3.5 h-3.5 text-neutral-500" />
+                  Métricas
+                </button>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-neutral-200 hover:bg-white/[0.05]"
+                  onClick={() => {
                     triggerCsvDownload();
                     setRoomMoreOpen(false);
                   }}
@@ -667,7 +806,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
       {activeTab !== "kanban" && (
         <div className="flex items-center justify-between rounded-lg border border-white/[0.06] px-3 py-2">
           <span className="text-sm text-neutral-400">
-            Relatório de IA desta sala
+            {activeTab === "metrics" ? "Métricas desta sala" : "Relatório de IA desta sala"}
           </span>
           <button type="button" className="fq-btn-ghost text-sm" onClick={() => setActiveTab("kanban")}>
             Voltar ao kanban
@@ -872,6 +1011,16 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
         </div>
 
         <div className="flex flex-wrap gap-2 items-center w-full md:w-auto">
+          {(hasActiveRoomFilters(roomFilters) || pulseFilter !== "all") && (
+            <>
+              <button type="button" onClick={clearFilters} className="fq-filter-chip" data-testid="clear-filters">
+                <X className="h-3 w-3" aria-hidden /> Limpar filtros
+              </button>
+              <button type="button" onClick={() => void copyViewLink()} className="fq-filter-chip" data-testid="copy-view-link">
+                <Link2 className="h-3 w-3" aria-hidden /> Copiar link da visão
+              </button>
+            </>
+          )}
           {pulseFilter !== "all" && (
             <button
               type="button"
@@ -963,8 +1112,50 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
             onDrop={handleDrop}
             onOpenBug={openBug}
             onMoveToColumn={handleMoveToColumn}
+            bulkSelectedIds={canWrite ? bulkIds : undefined}
+            onToggleBulk={canWrite ? toggleBulk : undefined}
           />
+          {canWrite && bulkIds.size > 0 && (
+            <div className="fq-bulk-bar" role="region" aria-label="Ações em lote">
+              <span className="text-[13px] font-medium text-neutral-100" aria-live="polite">
+                {bulkIds.size} {bulkIds.size === 1 ? "selecionado" : "selecionados"}
+              </span>
+              <select
+                className="fq-select !w-auto text-xs"
+                aria-label="Mover selecionados para"
+                value=""
+                disabled={bulkBusy}
+                onChange={(e) => e.target.value && void bulkMoveTo(e.target.value)}
+              >
+                <option value="">Mover para…</option>
+                {kanbanColumns.map((column) => (
+                  <option key={column.id} value={column.id}>{displayColumnLabel(column)}</option>
+                ))}
+              </select>
+              {canAssign && (
+                <select
+                  className="fq-select !w-auto text-xs"
+                  aria-label="Atribuir selecionados a"
+                  value=""
+                  disabled={bulkBusy || assignableUsers.length === 0}
+                  onChange={(e) => e.target.value && void bulkAssignTo(e.target.value)}
+                >
+                  <option value="">Atribuir a…</option>
+                  {assignableUsers.map((user) => (
+                    <option key={user.id} value={user.id}>{user.name}</option>
+                  ))}
+                </select>
+              )}
+              <button type="button" className="fq-btn-ghost !min-h-0 !px-2 !py-1.5 text-xs" onClick={() => setBulkIds(new Set())} disabled={bulkBusy}>
+                Limpar seleção
+              </button>
+            </div>
+          )}
         </div>
+      )}
+
+      {activeTab === "metrics" && (
+        <MetricsPanel warRoom={warRoom} bugs={bugs} />
       )}
 
       {activeTab === "ai_report" && canUseAiTools && (

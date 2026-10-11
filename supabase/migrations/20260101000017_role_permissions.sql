@@ -185,6 +185,8 @@ CREATE POLICY "users_insert" ON public.users
     )
   );
 
+DROP POLICY IF EXISTS "users_update" ON public.users;
+
 CREATE POLICY "users_update" ON public.users
   FOR UPDATE TO authenticated
   USING (
@@ -203,6 +205,8 @@ CREATE POLICY "users_update" ON public.users
       AND organization_id IS NOT DISTINCT FROM public.current_organization_id()
     )
   );
+
+DROP POLICY IF EXISTS "users_delete" ON public.users;
 
 CREATE POLICY "users_delete" ON public.users
   FOR DELETE TO authenticated
@@ -237,6 +241,8 @@ CREATE POLICY "room_members_insert" ON public.room_members
       AND public.is_room_member(war_room_id)
     )
   );
+
+DROP POLICY IF EXISTS "room_members_delete" ON public.room_members;
 
 CREATE POLICY "room_members_delete" ON public.room_members
   FOR DELETE TO authenticated
@@ -275,6 +281,8 @@ DROP POLICY IF EXISTS "board_views_insert" ON public.board_views;
 DROP POLICY IF EXISTS "board_views_update" ON public.board_views;
 DROP POLICY IF EXISTS "board_views_delete" ON public.board_views;
 
+DROP POLICY IF EXISTS "board_views_select" ON public.board_views;
+
 CREATE POLICY "board_views_select" ON public.board_views
   FOR SELECT TO authenticated
   USING (
@@ -285,6 +293,8 @@ CREATE POLICY "board_views_select" ON public.board_views
     )
   );
 
+DROP POLICY IF EXISTS "board_views_insert" ON public.board_views;
+
 CREATE POLICY "board_views_insert" ON public.board_views
   FOR INSERT TO authenticated
   WITH CHECK (
@@ -294,6 +304,8 @@ CREATE POLICY "board_views_insert" ON public.board_views
       AND organization_id IS NOT DISTINCT FROM public.current_organization_id()
     )
   );
+
+DROP POLICY IF EXISTS "board_views_update" ON public.board_views;
 
 CREATE POLICY "board_views_update" ON public.board_views
   FOR UPDATE TO authenticated
@@ -311,6 +323,8 @@ CREATE POLICY "board_views_update" ON public.board_views
       AND organization_id IS NOT DISTINCT FROM public.current_organization_id()
     )
   );
+
+DROP POLICY IF EXISTS "board_views_delete" ON public.board_views;
 
 CREATE POLICY "board_views_delete" ON public.board_views
   FOR DELETE TO authenticated

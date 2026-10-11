@@ -245,6 +245,8 @@ CREATE POLICY "evidence_select" ON storage.objects
     AND public.is_room_member(split_part(name, '/', 1))
   );
 
+DROP POLICY IF EXISTS "evidence_insert" ON storage.objects;
+
 CREATE POLICY "evidence_insert" ON storage.objects
   FOR INSERT TO authenticated
   WITH CHECK (
@@ -253,6 +255,8 @@ CREATE POLICY "evidence_insert" ON storage.objects
     AND public.is_room_member(split_part(name, '/', 1))
   );
 
+DROP POLICY IF EXISTS "evidence_update" ON storage.objects;
+
 CREATE POLICY "evidence_update" ON storage.objects
   FOR UPDATE TO authenticated
   USING (
@@ -260,6 +264,8 @@ CREATE POLICY "evidence_update" ON storage.objects
     AND public.can_write_bugs()
     AND public.is_room_member(split_part(name, '/', 1))
   );
+
+DROP POLICY IF EXISTS "evidence_delete" ON storage.objects;
 
 CREATE POLICY "evidence_delete" ON storage.objects
   FOR DELETE TO authenticated

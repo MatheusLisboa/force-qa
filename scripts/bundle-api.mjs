@@ -20,6 +20,7 @@ const entries = [
   { entry: "api-src/rooms/join.ts", outfile: "api/rooms/join.js" },
   { entry: "api-src/webhooks/dispatch.ts", outfile: "api/webhooks/dispatch.js" },
   { entry: "api-src/export/router.ts", outfile: "api/export/[...path].js" },
+  { entry: "api-src/cron/keepalive.ts", outfile: "api/cron/keepalive.js" },
 ];
 
 const stale = [

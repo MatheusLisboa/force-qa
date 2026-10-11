@@ -13,23 +13,39 @@ CREATE TABLE IF NOT EXISTS public.board_views (
 CREATE INDEX IF NOT EXISTS idx_board_views_active_order
   ON public.board_views (is_active, order_index);
 
-ALTER PUBLICATION supabase_realtime ADD TABLE public.board_views;
+-- Idempotente: o schema.sql (001) já inclui esta tabela na publication.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'board_views'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.board_views;
+  END IF;
+END $$;
 
 ALTER TABLE public.board_views ENABLE ROW LEVEL SECURITY;
 
 -- Leitura: views ativas para todos; admins veem também inativas
+DROP POLICY IF EXISTS "board_views_select" ON public.board_views;
 CREATE POLICY "board_views_select" ON public.board_views
   FOR SELECT TO authenticated
   USING (is_active = true OR public.is_admin());
+
+DROP POLICY IF EXISTS "board_views_insert" ON public.board_views;
 
 CREATE POLICY "board_views_insert" ON public.board_views
   FOR INSERT TO authenticated
   WITH CHECK (public.is_admin());
 
+DROP POLICY IF EXISTS "board_views_update" ON public.board_views;
+
 CREATE POLICY "board_views_update" ON public.board_views
   FOR UPDATE TO authenticated
   USING (public.is_admin())
   WITH CHECK (public.is_admin());
+
+DROP POLICY IF EXISTS "board_views_delete" ON public.board_views;
 
 CREATE POLICY "board_views_delete" ON public.board_views
   FOR DELETE TO authenticated

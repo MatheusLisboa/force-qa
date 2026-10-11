@@ -20,6 +20,9 @@ interface KanbanBoardProps {
   onOpenBug: (bug: Bug) => void;
   onMoveToColumn: (bug: Bug, column: KanbanColumn) => void;
   selectedBugId?: string;
+  /** Seleção em lote (checkbox no card). Omitir desliga o recurso. */
+  bulkSelectedIds?: ReadonlySet<string>;
+  onToggleBulk?: (bugId: string) => void;
 }
 
 export const KanbanBoard: React.FC<KanbanBoardProps> = ({
@@ -33,6 +36,8 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   onOpenBug,
   onMoveToColumn,
   selectedBugId,
+  bulkSelectedIds,
+  onToggleBulk,
 }) => {
   const canWrite = canWriteBugs(role);
   const canDrag = canWrite && !isCoarsePointer;
@@ -50,7 +55,18 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
     if (event.target !== event.currentTarget) return;
     const key = event.key;
 
-    if (key === "Enter" || key === " ") {
+    if (key === "Enter") {
+      event.preventDefault();
+      onOpenBug(bug);
+      return;
+    }
+    // Espaço marca/desmarca para ação em lote (padrão de listas selecionáveis).
+    if (key === " " && onToggleBulk && canWrite) {
+      event.preventDefault();
+      onToggleBulk(bug.id);
+      return;
+    }
+    if (key === " ") {
       event.preventDefault();
       onOpenBug(bug);
       return;
@@ -132,10 +148,24 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                       onDragStart={(e) => onDragStart(e, bug.id)}
                       onClick={() => onOpenBug(bug)}
                       onKeyDown={(e) => handleCardKeyDown(e, bug, columnIndex, cardIndex)}
+                      aria-pressed={onToggleBulk && canWrite ? bulkSelectedIds?.has(bug.id) ?? false : undefined}
                       className={`group fq-kanban-card ${sla ? "ring-1 ring-red-500/40" : ""} ${
                         selectedBugId === bug.id ? "fq-kanban-card--selected" : ""
-                      }`}
+                      } ${bulkSelectedIds?.has(bug.id) ? "fq-kanban-card--bulk" : ""}`}
                     >
+                      {onToggleBulk && canWrite && (
+                        <label
+                          className={`fq-kanban-check ${bulkSelectedIds?.has(bug.id) || (bulkSelectedIds?.size ?? 0) > 0 ? "fq-kanban-check--visible" : ""}`}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={bulkSelectedIds?.has(bug.id) ?? false}
+                            onChange={() => onToggleBulk(bug.id)}
+                            aria-label={`Selecionar ${bug.title}`}
+                          />
+                        </label>
+                      )}
                       <span
                         className={`fq-kanban-card-stripe ${getSeverityStripeClass(bug.criticism)}`}
                         title={severity.label}

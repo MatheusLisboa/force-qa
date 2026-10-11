@@ -102,6 +102,21 @@ test.describe("conexão", () => {
   });
 });
 
+test.describe("conexão (regressão)", () => {
+  test("navegar entre telas não deixa a faixa 'Reconectando' presa", async ({ page }) => {
+    await mockSupabase(page);
+    await page.goto("/");
+    await page.getByText("Sprint 42: Checkout").first().waitFor();
+    await page.getByText("Sprint 42: Checkout").first().click();
+    await page.getByRole("button", { name: /^Pagamento com Pix/ }).waitFor();
+    await page.getByRole("button", { name: /Voltar/ }).first().click();
+    await page.getByText("Suas salas").waitFor();
+    await page.waitForTimeout(500);
+    await expect(page.getByText(/Reconectando ao tempo real/)).toHaveCount(0);
+    await expect(page.getByText(/Você está offline/)).toHaveCount(0);
+  });
+});
+
 test.describe("acessibilidade básica", () => {
   test("link de pulo, landmarks e nome acessível dos botões do cabeçalho", async ({ page }) => {
     await mockSupabase(page);

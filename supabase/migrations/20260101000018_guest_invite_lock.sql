@@ -198,6 +198,8 @@ CREATE POLICY "room_guest_invites_select" ON public.room_guest_invites
     )
   );
 
+DROP POLICY IF EXISTS "room_guest_invites_write" ON public.room_guest_invites;
+
 CREATE POLICY "room_guest_invites_write" ON public.room_guest_invites
   FOR ALL TO authenticated
   USING (

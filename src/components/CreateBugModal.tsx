@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { CheckCircle, Sparkles, Upload } from "lucide-react";
 import { useModalA11y } from "../hooks/useModalA11y";
@@ -12,6 +12,9 @@ import { BUG_TYPE_OPTIONS, ENVIRONMENT_LABELS } from "../lib/bugLabels";
 import { Bug, BugAttachment, BugPriority, BugType, SeverityLevel } from "../types";
 import { SeverityPicker } from "./SeverityPicker";
 import { logger } from "../lib/logger";
+import { descriptionTemplate, isUntouchedTemplate } from "../lib/bugTemplates";
+import { findSimilarBugs } from "../lib/similarBugs";
+import { cardUrl } from "../lib/routes";
 
 interface CreateBugModalProps {
   open: boolean;
@@ -42,6 +45,12 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
   useEffect(() => {
     if (open) setBugType(presetType);
   }, [open, presetType]);
+
+  // Modelo de descrição por tipo: só substitui se a pessoa ainda não escreveu nada.
+  useEffect(() => {
+    if (!open) return;
+    setBugDesc((current) => (isUntouchedTemplate(current) ? descriptionTemplate(bugType) : current));
+  }, [open, bugType]);
   const [bugPriority, setBugPriority] = useState<BugPriority>("medium");
   const [bugUrl, setBugUrl] = useState("");
   const [bugTagsInput, setBugTagsInput] = useState("");
@@ -58,6 +67,11 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
     score: number;
     duplicateOfBugId: string | null;
   } | null>(null);
+
+  const similarBugs = useMemo(
+    () => (bugTitle.trim().length >= 8 ? findSimilarBugs(bugTitle, existingBugs) : []),
+    [bugTitle, existingBugs]
+  );
 
   const resetForm = useCallback(() => {
     setBugTitle("");
@@ -136,7 +150,7 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
       await createBug({
         warRoomId: roomId,
         title: bugTitle.trim(),
-        description: bugDesc.trim(),
+        description: isUntouchedTemplate(bugDesc) ? "" : bugDesc.trim(),
         criticism: bugCrit,
         status: "new",
         kanbanColumnId: "new",
@@ -175,7 +189,7 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
     try {
       const triage = await fetchAIDuplicateCheck(
         bugTitle,
-        bugDesc,
+        isUntouchedTemplate(bugDesc) ? "" : bugDesc,
         existingBugs.map((b) => ({ id: b.id, title: b.title, description: b.description || "" }))
       );
       if (triage.isDuplicate && (triage.confidenceScore ?? 0) >= 70) {
@@ -261,7 +275,28 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
                 placeholder="Ex: Erro 500 ao confirmar transação PIX"
                 value={bugTitle}
                 onChange={(e) => setBugTitle(e.target.value)}
+                aria-describedby={similarBugs.length ? "similar-bugs" : undefined}
               />
+              {similarBugs.length > 0 && (
+                <div id="similar-bugs" role="status" className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2.5 text-[12px] text-amber-300">
+                  <p className="font-medium">Já existe algo parecido nesta sala:</p>
+                  <ul className="mt-1 space-y-0.5">
+                    {similarBugs.map((similar) => (
+                      <li key={similar.id}>
+                        <a
+                          href={cardUrl(roomId, similar.id)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline underline-offset-2 hover:text-amber-200"
+                        >
+                          {similar.title}
+                        </a>{" "}
+                        <span className="text-amber-300/70">({Math.round(similar.similarity * 100)}%)</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
 
             <div>

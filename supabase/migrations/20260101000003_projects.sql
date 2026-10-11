@@ -15,12 +15,25 @@ CREATE TABLE IF NOT EXISTS public.projects (
 CREATE INDEX IF NOT EXISTS idx_projects_war_room ON public.projects (war_room_id);
 CREATE INDEX IF NOT EXISTS idx_projects_squad ON public.projects (squad);
 
-ALTER PUBLICATION supabase_realtime ADD TABLE public.projects;
+-- Idempotente: o schema.sql (001) já inclui esta tabela na publication.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'projects'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.projects;
+  END IF;
+END $$;
 
 ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "projects_select" ON public.projects;
+
 CREATE POLICY "projects_select" ON public.projects
   FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "projects_insert" ON public.projects;
 
 CREATE POLICY "projects_insert" ON public.projects
   FOR INSERT TO authenticated
@@ -32,10 +45,14 @@ CREATE POLICY "projects_insert" ON public.projects
     AND created_by = auth.uid()
   );
 
+DROP POLICY IF EXISTS "projects_update" ON public.projects;
+
 CREATE POLICY "projects_update" ON public.projects
   FOR UPDATE TO authenticated
   USING (created_by = auth.uid() OR public.is_admin())
   WITH CHECK (created_by = auth.uid() OR public.is_admin());
+
+DROP POLICY IF EXISTS "projects_delete" ON public.projects;
 
 CREATE POLICY "projects_delete" ON public.projects
   FOR DELETE TO authenticated

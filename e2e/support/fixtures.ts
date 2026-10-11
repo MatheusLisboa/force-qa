@@ -181,3 +181,28 @@ export const orgUsers = [
   userRow({ id: "44444444-4444-4444-4444-000000000003", name: "Camila Duarte", email: "camila@acme.dev", role: "qa", squad: "Pagamentos", is_superadmin: false }),
   userRow({ id: "44444444-4444-4444-4444-000000000004", name: "Bruno Alves", email: "bruno@acme.dev", role: "scrum_master", squad: "Logística", is_superadmin: false }),
 ];
+
+export const STORAGE_IMAGE = "https://e2e.supabase.test/storage/v1/object/public/evidence/room/print.png";
+
+export const comments = [
+  {
+    id: "com-0001",
+    bug_id: bugs[0].id,
+    war_room_id: ROOM_WAR,
+    user_id: orgUsers[1].id,
+    user_name: "Rafael Lima",
+    avatar_url: "",
+    text: `Reproduzi em **homologação**. @Marina Souza veja o print:\n![print](${STORAGE_IMAGE})\n- erro 504 no gateway\n- veja https://status.acme.dev/incidente\n\n\`\`\`\nPOST /pix/confirm 504\n\`\`\``,
+    created_at: daysAgo(0, 3),
+  },
+  {
+    id: "com-0002",
+    bug_id: bugs[0].id,
+    war_room_id: ROOM_WAR,
+    user_id: USER_ID,
+    user_name: "Marina Souza",
+    avatar_url: "",
+    text: "<img src=x onerror=window.__xss=1> [clique](javascript:window.__xss=1)",
+    created_at: daysAgo(0, 2),
+  },
+];

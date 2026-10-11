@@ -1484,3 +1484,74 @@
   .fq-header { padding-left: 0.5rem; padding-right: 0.5rem; }
   .fq-header > div:last-child { gap: 0.125rem; }
 }
+
+/* Seleção em lote no Kanban */
+.fq-kanban-card { position: relative; }
+.fq-kanban-check {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  z-index: 2;
+  display: flex;
+  height: 1.5rem;
+  width: 1.5rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.35rem;
+  opacity: 0;
+  transition: opacity var(--fq-duration-fast);
+  cursor: pointer;
+}
+.fq-kanban-card:hover .fq-kanban-check,
+.fq-kanban-card:focus-within .fq-kanban-check,
+.fq-kanban-card:focus-visible .fq-kanban-check,
+.fq-kanban-check--visible { opacity: 1; }
+.fq-kanban-check input { height: 0.95rem; width: 0.95rem; accent-color: var(--color-fq-accent); cursor: pointer; }
+.fq-kanban-card--bulk { outline: 2px solid var(--color-fq-accent); outline-offset: -2px; background-color: var(--color-fq-accent-muted); }
+@media (pointer: coarse) { .fq-kanban-check { opacity: 1; } }
+
+.fq-bulk-bar {
+  position: sticky;
+  bottom: 0.75rem;
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.75rem auto 0;
+  width: fit-content;
+  max-width: 100%;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-fq-border);
+  background: var(--color-fq-surface);
+  box-shadow: var(--shadow-fq-lg);
+  animation: var(--animate-fq-pop);
+}
+
+/* Impressão / PDF: só a área marcada, em papel claro. */
+@media print {
+  body * { visibility: hidden !important; }
+  .fq-print-area, .fq-print-area * { visibility: visible !important; }
+  .fq-print-area { position: absolute; left: 0; top: 0; width: 100%; padding: 0; }
+  .fq-no-print { display: none !important; }
+  .fq-shell { background: #fff !important; }
+  @page { margin: 14mm; }
+}
+
+/* Lista de @menções do compositor de comentários (acima da caixa de texto). */
+.fq-mention-list {
+  position: absolute;
+  left: 0.75rem;
+  bottom: calc(100% + 0.25rem);
+  z-index: 30;
+  width: min(16rem, calc(100% - 1.5rem));
+  max-height: 13rem;
+  overflow-y: auto;
+  padding: 0.25rem 0;
+  border-radius: 0.75rem;
+  background-color: var(--color-fq-elevated);
+  border: 1px solid var(--color-fq-border);
+  box-shadow: var(--shadow-fq-lg);
+  list-style: none;
+}

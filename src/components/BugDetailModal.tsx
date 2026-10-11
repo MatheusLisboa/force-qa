@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { subscribeBug, subscribeBugComments, subscribeActivityLogs } from "../lib/supabase";
 import { updateBugField, createComment, fetchUsersList, archiveBug, copyBugToRoom, fetchAccessibleRooms } from "../lib/services";
 import { useToast } from "../context/ToastContext";
@@ -34,6 +34,9 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { logger } from "../lib/logger";
+import { CommentBody } from "./CommentBody";
+import { CommentComposer } from "./CommentComposer";
+import { friendlyError } from "../lib/networkErrors";
 
 interface BugDetailModalProps {
   bug: Bug;
@@ -57,8 +60,6 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, roomBugs = 
   const [activeBug, setActiveBug] = useState<Bug>(bug);
   const [comments, setComments] = useState<BugComment[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
-  const [newComment, setNewComment] = useState("");
-  const [submittingComment, setSubmittingComment] = useState(false);
   const [users, setUsers] = useState<any[]>([]);
   const [isFullscreenEvidence, setIsFullscreenEvidence] = useState(false);
   const [fullscreenUrl, setFullscreenUrl] = useState<string | null>(null);
@@ -183,11 +184,10 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, roomBugs = 
     }
   };
 
-  const handlePostComment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newComment.trim() || !profile) return;
+  const mentionNames = useMemo(() => users.map((user) => user.name), [users]);
 
-    setSubmittingComment(true);
+  const handlePostComment = async (text: string) => {
+    if (!text.trim() || !profile) return;
     try {
       await createComment({
         bugId: activeBug.id,
@@ -195,13 +195,12 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, roomBugs = 
         userId: profile.id,
         userName: profile.name,
         avatarUrl: profile.avatarUrl || "",
-        text: newComment.trim(),
+        text: text.trim(),
       }, profile.name);
-      setNewComment("");
     } catch (err) {
       logger.error(err);
-    } finally {
-      setSubmittingComment(false);
+      toast(friendlyError(err, "Não foi possível enviar o comentário."), { kind: "error" });
+      throw err;
     }
   };
 
@@ -665,9 +664,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, roomBugs = 
                             {com.createdAt ? new Date(com.createdAt).toLocaleString() : ""}
                           </span>
                         </div>
-                        <p className="text-xs text-neutral-400 leading-relaxed pl-1 whitespace-pre-wrap">
-                          {com.text}
-                        </p>
+                        <CommentBody text={com.text} mentionNames={mentionNames} />
                       </div>
                     );
                   })
@@ -856,24 +853,11 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, roomBugs = 
           </aside>
         </div>
 
-        <form onSubmit={handlePostComment} className="fq-bug-modal-comment">
-          <textarea
-            required
-            rows={2}
-            className="fq-textarea text-sm leading-relaxed"
-            placeholder="Escreva um comentário... Use @Nome para mencionar"
-            value={newComment}
-            onChange={(e) => setNewComment(e.target.value)}
-          />
-          <button
-            type="submit"
-            disabled={submittingComment || !newComment.trim()}
-            className="fq-btn-primary text-xs shrink-0"
-          >
-            <Send className="w-3 h-3" />
-            Enviar
-          </button>
-        </form>
+        <CommentComposer
+          roomId={activeBug.warRoomId}
+          users={users}
+          onSubmit={handlePostComment}
+        />
       </motion.div>
 
       <AnimatePresence>

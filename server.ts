@@ -20,6 +20,7 @@ import { getExportTokenMeta, revokeExportToken, rotateExportToken } from "./api-
 import { canGrantAdminRole } from "./src/lib/permissions";
 import { wantsExportToken } from "./src/lib/vercelApiPath";
 import { logger } from "./api-src/shared/logger";
+import { clientIp, enforceRateLimit } from "./api-src/shared/rateLimit";
 
 dotenv.config();
 
@@ -140,6 +141,11 @@ app.post("/api/admin/move-user", async (req, res) => {
 
 app.post("/api/guest/validate-room", async (req, res) => {
   try {
+    await enforceRateLimit(getSupabaseAdmin(), "validate-room", clientIp(req.headers), {
+      windowMs: 60 * 1000,
+      max: 30,
+      message: "Muitas tentativas. Aguarde um minuto e tente de novo.",
+    });
     const input = String(req.body?.input || req.body?.warRoomName || "");
     if (req.body?.join === true || req.body?.join === "true") {
       res.json(

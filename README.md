@@ -56,8 +56,9 @@ O projeto tem testes automatizados em três camadas, todas rodando no CI a cada 
 | Camada | Ferramenta | Escopo |
 |--------|-----------|--------|
 | Estática | TypeScript (`npm run lint`) | Tipos, incluindo o React |
-| Unitária | Vitest (`npm test`) | 115 testes: regras de negócio em `src/lib` e auth, rate limit e logger em `api-src` |
-| E2E | Playwright (`npm run test:e2e`) | Login, painel, paleta de comandos, tema, Kanban por teclado, conexão e acessibilidade, em Chromium |
+| Unitária | Vitest (`npm test`) | ~195 testes: regras de negócio em `src/lib`; auth, rate limit, logger, keep-alive e `adminUsers` (isolamento entre organizações) em `api-src` |
+| E2E | Playwright (`npm run test:e2e`) | Login, painel, paleta, tema, Kanban por teclado, comentários, filtros na URL, ações em lote, métricas, conexão e acessibilidade, em Chromium |
+| RLS | PostgreSQL (`npm run test:rls`) | ~80 asserções que aplicam as migrations do zero num Postgres descartável e tentam ler/alterar dados de outra organização como cada papel |
 
 - Os testes E2E rodam contra um build com **Supabase simulado** (Auth, REST e Realtime em `e2e/support/supabaseMock.ts`), então nunca tocam o backend real e são determinísticos.
 - No CI, falhas geram `trace` na primeira repetição e o `playwright-report` é publicado como artefato por 7 dias.
@@ -122,7 +123,13 @@ As rotas `/api/*` na Vercel são funções serverless. Defina `SUPABASE_SERVICE_
 - **Paleta de comandos** (`⌘K` / `Ctrl+K`): salas, páginas e ações. `?` lista os atalhos.
 - **Tema claro e escuro** (segue o sistema; o botão do cabeçalho fixa a escolha).
 - **Kanban por teclado**: `↑↓` percorrem a coluna, `←→` trocam de coluna, `Shift+←/→` movem o card.
-- **Instalável (PWA)** e aviso de conexão quando o tempo real cai.
+- **Instalável (PWA)** e aviso de conexão quando o tempo real cai (com ressincronização ao reconectar).
+- **Comentários ricos**: cole um print com `Ctrl+V` (ou arraste), `@` autocompleta pessoas, e há markdown seguro (negrito, itálico, código, listas, links https). `Ctrl+Enter` envia.
+- **Filtros na URL**: busca, ambiente, tipo, severidade e responsável viram parâmetros; "Copiar link da visão" compartilha o recorte.
+- **Ações em lote** no Kanban: `Espaço` (ou a caixa do card) marca vários cards; depois mover de coluna ou atribuir de uma vez.
+- **Novo card**: modelo de descrição por tipo e aviso de cards parecidos antes de salvar.
+- **Métricas** (Mais → Métricas): criados × resolvidos por semana, backlog, tempo mediano de resolução, reabertura e SLA, com **Exportar PDF**.
+- Erro de rede claro no login e aviso quando o servidor não responde (projeto pausado, bloqueio, deploy sem variáveis).
 - Respeita `prefers-reduced-motion`.
 
 ## Design system
@@ -134,6 +141,7 @@ Tokens (cores, sombras, movimento) em `src/index.css` (`@theme` e `:root`); o te
 - API: `api-src/shared/logger.ts` emite JSON por linha em produção, com tokens e senhas mascarados.
 - Navegador: defina `VITE_SENTRY_DSN` para enviar erros ao Sentry (carregado só quando há DSN).
 - Rate limit compartilhado entre instâncias: depende da migration `20260101000020_rate_limits`; sem ela, cai para contagem em memória.
+- **Keep-alive diário** (`/api/cron/keepalive`, agendado em `vercel.json`): uma leitura barata mantém o projeto do Supabase ativo (o plano gratuito pausa por inatividade) e, se o banco não responder, avisa o `ALERT_WEBHOOK_URL` (formato Slack/Discord/Teams). Defina `CRON_SECRET` para que só a Vercel consiga chamá-lo.
 
 ## API de extração (GitLab e similares)
 
