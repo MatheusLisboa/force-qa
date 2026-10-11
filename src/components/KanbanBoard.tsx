@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { Bug, KanbanColumn, UserRole } from "../types";
 import { BugTypeTag } from "./BugTypeTag";
 import { evidenceLabel, isImageEvidence } from "../lib/evidence";
@@ -34,16 +34,68 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   onMoveToColumn,
   selectedBugId,
 }) => {
-  const canDrag = canWriteBugs(role) && !isCoarsePointer;
+  const canWrite = canWriteBugs(role);
+  const canDrag = canWrite && !isCoarsePointer;
+  const boardRef = useRef<HTMLDivElement>(null);
+  const [announcement, setAnnouncement] = useState("");
+
+  const focusCard = useCallback((bugId: string) => {
+    requestAnimationFrame(() => {
+      boardRef.current?.querySelector<HTMLElement>(`[data-bug-id="${bugId}"]`)?.focus();
+    });
+  }, []);
+
+  /** Setas: ↑↓ percorrem a coluna, ←→ pulam para a coluna vizinha. Shift+←→ movem o card. */
+  const handleCardKeyDown = (event: React.KeyboardEvent, bug: Bug, columnIndex: number, cardIndex: number) => {
+    if (event.target !== event.currentTarget) return;
+    const key = event.key;
+
+    if (key === "Enter" || key === " ") {
+      event.preventDefault();
+      onOpenBug(bug);
+      return;
+    }
+
+    const horizontal = key === "ArrowLeft" || key === "ArrowRight";
+    const vertical = key === "ArrowUp" || key === "ArrowDown";
+    if (!horizontal && !vertical) return;
+    event.preventDefault();
+
+    if (vertical) {
+      const list = bugsByColumn[columns[columnIndex].id] ?? [];
+      const target = list[cardIndex + (key === "ArrowDown" ? 1 : -1)];
+      if (target) focusCard(target.id);
+      return;
+    }
+
+    const nextIndex = columnIndex + (key === "ArrowRight" ? 1 : -1);
+    const nextColumn = columns[nextIndex];
+    if (!nextColumn) return;
+
+    if (event.shiftKey) {
+      if (!canWrite) return;
+      onMoveToColumn(bug, nextColumn);
+      setAnnouncement(`${bug.title} movido para ${displayColumnLabel(nextColumn)}.`);
+      focusCard(bug.id);
+      return;
+    }
+
+    const neighbours = bugsByColumn[nextColumn.id] ?? [];
+    const target = neighbours[Math.min(cardIndex, neighbours.length - 1)];
+    if (target) focusCard(target.id);
+  };
 
   return (
-    <div className="fq-kanban-board">
-      {columns.map((column) => {
+    <div className="fq-kanban-board" ref={boardRef} role="group" aria-label="Quadro Kanban">
+      <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
+      {columns.map((column, columnIndex) => {
         const list = bugsByColumn[column.id] ?? [];
         return (
           <div
             key={column.id}
             className="fq-kanban-column"
+            role="group"
+            aria-label={`${displayColumnLabel(column)}, ${list.length} cards`}
             onDragOver={onDragOver}
             onDrop={(e) => onDrop(e, column.id)}
           >
@@ -57,20 +109,29 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
 
             <div className={`fq-kanban-column-body${list.length > 5 ? " fq-kanban-column-body--scroll" : ""}`}>
               {list.length === 0 ? (
-                <div className="text-center py-10 text-neutral-500 text-[13px] border border-dashed border-white/[0.06] rounded-lg">
-                  Nenhum card nesta coluna
+                <div className="fq-empty !py-8" role="note">
+                  <p className="fq-empty-title">Coluna vazia</p>
+                  <p className="fq-empty-desc">
+                    {canDrag ? "Arraste um card até aqui." : "Nenhum card nesta coluna."}
+                  </p>
                 </div>
               ) : (
-                list.map((bug) => {
+                list.map((bug, cardIndex) => {
                   const sla = isSlaBreached(bug);
                   const severity = getSeverityConfig(bug.criticism);
                   const thumb = primaryAttachmentUrl(bug);
                   return (
                     <div
                       key={bug.id}
+                      data-bug-id={bug.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`${bug.title}. Severidade ${severity.label}. ${bug.ownerName ? `Responsável ${bug.ownerName}` : "Sem responsável"}.${sla ? " Atrasado." : ""}`}
+                      aria-keyshortcuts={canWrite ? "Shift+ArrowLeft Shift+ArrowRight" : undefined}
                       draggable={canDrag}
                       onDragStart={(e) => onDragStart(e, bug.id)}
                       onClick={() => onOpenBug(bug)}
+                      onKeyDown={(e) => handleCardKeyDown(e, bug, columnIndex, cardIndex)}
                       className={`group fq-kanban-card ${sla ? "ring-1 ring-red-500/40" : ""} ${
                         selectedBugId === bug.id ? "fq-kanban-card--selected" : ""
                       }`}

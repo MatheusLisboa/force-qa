@@ -19,6 +19,7 @@ import {
 import { getExportTokenMeta, revokeExportToken, rotateExportToken } from "./api-src/shared/exportTokenStore";
 import { canGrantAdminRole } from "./src/lib/permissions";
 import { wantsExportToken } from "./src/lib/vercelApiPath";
+import { logger } from "./api-src/shared/logger";
 
 dotenv.config();
 
@@ -29,7 +30,7 @@ const PORT = 3000;
 
 function sendError(res: express.Response, error: unknown, fallback: string) {
   const message = clientErrorMessage(error, fallback);
-  console.error(fallback, error);
+  logger.error(fallback, error);
   res.status(httpErrorStatus(error)).json({ error: message });
 }
 

@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { clientErrorMessage, httpErrorStatus } from "../shared/auth";
 import { applyExportCors, listExportCards, requireExportOrganization } from "../shared/exportApi";
+import { logger } from "../shared/logger";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   applyExportCors(res);
@@ -16,7 +17,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json(payload);
   } catch (error: unknown) {
     const message = clientErrorMessage(error, "Falha ao listar cards.");
-    console.error("export/cards:", error);
+    logger.error("export/cards:", error);
     return res.status(httpErrorStatus(error)).json({ error: message });
   }
 }

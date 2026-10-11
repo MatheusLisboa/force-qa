@@ -29,6 +29,7 @@ import {
 import { decorateSpaces, groupSpacesByProject, SpaceRow, UNGROUPED_PROJECT_LABEL } from "../lib/spaces";
 import { CreateWarRoomModal } from "./CreateWarRoomModal";
 import { CreateProjectModal } from "./CreateProjectModal";
+import { Button, CardGridSkeleton, EmptyState } from "./ui";
 
 interface DashboardProps {
   spaces: SpaceRow[];
@@ -479,34 +480,42 @@ export const Dashboard: React.FC<DashboardProps> = ({
       )}
 
       {loading ? (
-        <div className="fq-empty-state">
-          <div className="fq-spinner mx-auto mb-2" />
-          <p className="text-neutral-500 text-sm">Carregando salas...</p>
-        </div>
+        <CardGridSkeleton />
       ) : !hasSpaces ? (
-        <div className="fq-empty-state">
-          <h4 className="text-neutral-200 font-medium text-[15px]">Você não tem boards</h4>
-          <p className="text-neutral-500 text-sm mt-1 max-w-sm mx-auto">
-            {profile?.isGuest
+        <EmptyState
+          icon={<LayoutGrid className="h-4 w-4" />}
+          title="Você não tem boards"
+          description={
+            profile?.isGuest
               ? "Cole o link da sala para entrar como convidado."
               : canManageSpaces
                 ? "Crie uma war room ou um projeto, ou entre com o ID de uma sala."
-                : "Cole o ID da war room ou do board, ou peça a um admin para marcar o acesso."}
-          </p>
-          <button
-            type="button"
-            className="fq-btn-primary text-sm mt-4"
-            onClick={() => setEnterIdOpen(true)}
-          >
-            {profile?.isGuest ? "Entrar com o link" : "Entrar com o ID da sala"}
-          </button>
-        </div>
+                : "Cole o ID da war room ou do board, ou peça a um admin para marcar o acesso."
+          }
+          action={
+            <Button variant="primary" onClick={() => setEnterIdOpen(true)}>
+              {profile?.isGuest ? "Entrar com o link" : "Entrar com o ID da sala"}
+            </Button>
+          }
+        />
       ) : displayedSpaces.length === 0 ? (
-        <p className="text-sm text-neutral-500">
-          {spaceQuery || pulseFilter !== "all"
-            ? "Nenhuma sala corresponde a esse filtro."
-            : "Nenhuma sala neste momento."}
-        </p>
+        <EmptyState
+          icon={<Search className="h-4 w-4" />}
+          title={spaceQuery || pulseFilter !== "all" ? "Nenhuma sala corresponde a esse filtro" : "Nenhuma sala neste momento"}
+          description={spaceQuery || pulseFilter !== "all" ? "Tente outro termo ou limpe o filtro." : undefined}
+          action={
+            spaceQuery || pulseFilter !== "all" ? (
+              <Button
+                onClick={() => {
+                  setSpaceQuery("");
+                  setPulseFilter("all");
+                }}
+              >
+                Limpar filtros
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
         <div className="space-y-8">
           {spaceGroups.map((group) => (

@@ -3,6 +3,7 @@ import { getSupabaseAdmin, httpErrorStatus, readJsonBody, requireAiUser } from "
 import { assertActorCanAccessRoom } from "../shared/rooms";
 import { aggregateBoardMetrics } from "../../src/lib/aiReport/aggregateMetrics";
 import type { Bug, WarRoom } from "../../src/types";
+import { logger } from "../shared/logger";
 
 // ---------------------------------------------------------------------------
 // AI Report
@@ -281,7 +282,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (error: unknown) {
     const message =
       error instanceof Error ? error.message : "Falha ao gerar relatório executivo.";
-    console.error("AI generate report error:", error);
+    logger.error("AI generate report error:", error);
     return res.status(httpErrorStatus(error)).json({ error: message });
   }
 }

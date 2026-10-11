@@ -1,0 +1,10 @@
+# Configuração mínima do Supabase CLI (https://supabase.com/docs/guides/cli).
+# `supabase start` sobe um Postgres/Auth/Storage local para testar as migrations.
+project_id = "forceqa"
+
+[db]
+major_version = 15
+
+[auth]
+# O cadastro público está desligado: contas nascem pelo app (API admin) ou por convite.
+enable_signup = false

@@ -3,6 +3,7 @@ import { canGrantAdminRole } from "../../src/lib/permissions";
 import { adminCreateUser } from "../shared/adminUsers";
 import { clientErrorMessage, httpErrorStatus, readJsonBody, requireAdmin } from "../shared/auth";
 import { resolveActorOrganizationId } from "../shared/organizations";
+import { logger } from "../shared/logger";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
@@ -32,7 +33,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ success: true, userId });
   } catch (error: unknown) {
     const message = clientErrorMessage(error, "Falha ao criar usuário.");
-    console.error("admin/create-user:", error);
+    logger.error("admin/create-user:", error);
     return res.status(httpErrorStatus(error)).json({ error: message });
   }
 }

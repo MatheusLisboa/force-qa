@@ -4,6 +4,7 @@ import { UserRole } from "../types";
 import { Shield, Sparkles, Terminal, Users, UserCheck } from "lucide-react";
 import { motion } from "motion/react";
 import { SquadSelect } from "./SquadSelect";
+import { logger } from "../lib/logger";
 
 export const Onboarding: React.FC = () => {
   const { user, profile, createProfile, updateProfile } = useAuth();
@@ -36,7 +37,7 @@ export const Onboarding: React.FC = () => {
       }
     } catch (err: any) {
       setError("Erro ao criar perfil. Tente novamente.");
-      console.error(err);
+      logger.error(err);
     } finally {
       setSubmitting(false);
     }

@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { httpErrorStatus, readJsonBody, requireUser } from "../shared/auth";
 import { appRedirectTo } from "../shared/appUrl";
 import { inviteToRoom } from "../shared/rooms";
+import { logger } from "../shared/logger";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
@@ -26,7 +27,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json(result);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Falha ao enviar convite.";
-    console.error("rooms/invite:", error);
+    logger.error("rooms/invite:", error);
     return res.status(httpErrorStatus(error)).json({ error: message });
   }
 }

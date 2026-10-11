@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { clientErrorMessage, getSupabaseAdmin, httpErrorStatus, readJsonBody, requireCapability } from "../shared/auth";
 import { assertActorCanAccessRoom } from "../shared/rooms";
 import { dispatchRoomWebhook, type WebhookKind } from "../shared/webhooks";
+import { logger } from "../shared/logger";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
@@ -50,7 +51,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ ok: true });
   } catch (error: unknown) {
     const message = clientErrorMessage(error, "Falha ao disparar webhook.");
-    console.error("webhooks/dispatch:", error);
+    logger.error("webhooks/dispatch:", error);
     return res.status(httpErrorStatus(error)).json({ error: message });
   }
 }

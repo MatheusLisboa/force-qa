@@ -18,6 +18,7 @@ import {
   inviteRoleHint,
   inviteRolesForActor,
 } from "../lib/inviteRole";
+import { logger } from "../lib/logger";
 
 interface RoomMembersPanelProps {
   roomId: string;
@@ -45,7 +46,7 @@ export const RoomMembersPanel: React.FC<RoomMembersPanelProps> = ({ roomId }) =>
     try {
       setMemberIds(await fetchRoomMemberIds(roomId));
     } catch (err) {
-      console.error("fetchRoomMemberIds:", err);
+      logger.error("fetchRoomMemberIds:", err);
     }
   };
 
@@ -53,7 +54,7 @@ export const RoomMembersPanel: React.FC<RoomMembersPanelProps> = ({ roomId }) =>
     const unsub = subscribeUsers(setUsers);
     void fetchRoomMemberIds(roomId)
       .then(setMemberIds)
-      .catch((err) => console.error("fetchRoomMemberIds:", err));
+      .catch((err) => logger.error("fetchRoomMemberIds:", err));
     return unsub;
   }, [roomId]);
 

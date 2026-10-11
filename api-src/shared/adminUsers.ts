@@ -1,5 +1,6 @@
 import { getSupabaseAdmin, wrapThrownError } from "./auth";
 import { DEFAULT_ORGANIZATION_ID, resolveOrganizationId } from "../../src/lib/organizations";
+import { logger } from "./logger";
 
 function errorCode(error: unknown): string {
   if (!error || typeof error !== "object") return "";
@@ -35,7 +36,7 @@ function isAuthDatabaseError(error: unknown): boolean {
 
 function formatCreateUserError(error: unknown): string {
   if (isAuthDatabaseError(error)) {
-    return "O Auth ainda recusa criar o usuário. Cole de novo supabase/migration_public_signup.sql no SQL Editor (o arquivo agora dá COMMIT e REMOVE o trigger). Se o e-mail já aparecer em Authentication → Users, apague-o e tente de novo.";
+    return "O Auth ainda recusa criar o usuário. Cole de novo supabase/migrations/20260101000019_public_signup.sql no SQL Editor (o arquivo agora dá COMMIT e REMOVE o trigger). Se o e-mail já aparecer em Authentication → Users, apague-o e tente de novo.";
   }
   return errorMessage(error).trim() || "Não foi possível criar a conta.";
 }
@@ -151,7 +152,7 @@ export async function adminCreateUser(params: {
     }
   }
   if (error) {
-    console.error("adminCreateUser auth:", { code: errorCode(error), message: errorMessage(error), error });
+    logger.error("adminCreateUser auth:", { code: errorCode(error), message: errorMessage(error), error });
     if (isEmailTakenError(error)) {
       throw Object.assign(
         new Error("Este e-mail já existe no Auth. Apague-o em Authentication → Users e tente de novo."),
@@ -193,7 +194,7 @@ export async function adminCreateUser(params: {
 
   const { error: roleError } = await admin.from("users").update({ role }).eq("id", data.user.id);
   if (roleError) {
-    console.error("adminCreateUser role:", { code: errorCode(roleError), message: errorMessage(roleError) });
+    logger.error("adminCreateUser role:", { code: errorCode(roleError), message: errorMessage(roleError) });
   }
   return data.user.id;
 }
@@ -264,7 +265,7 @@ async function stampAdoptedUser(
 
   const { error: roleError } = await admin.from("users").update({ role: params.role }).eq("id", userId);
   if (roleError) {
-    console.error("adoptOrphan role:", { code: errorCode(roleError), message: errorMessage(roleError) });
+    logger.error("adoptOrphan role:", { code: errorCode(roleError), message: errorMessage(roleError) });
   }
 }
 

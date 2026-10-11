@@ -33,6 +33,7 @@ import {
   Upload
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { logger } from "../lib/logger";
 
 interface BugDetailModalProps {
   bug: Bug;
@@ -147,7 +148,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, roomBugs = 
       );
       setIsEditingTitle(false);
     } catch (err) {
-      console.error(err);
+      logger.error(err);
     } finally {
       setSavingField(null);
     }
@@ -176,7 +177,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, roomBugs = 
       );
       setIsEditingDescription(false);
     } catch (err) {
-      console.error(err);
+      logger.error(err);
     } finally {
       setSavingField(null);
     }
@@ -198,7 +199,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, roomBugs = 
       }, profile.name);
       setNewComment("");
     } catch (err) {
-      console.error(err);
+      logger.error(err);
     } finally {
       setSubmittingComment(false);
     }
@@ -232,7 +233,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, roomBugs = 
     try {
       await updateBugField(activeBug.id, activeBug.warRoomId, cleanFields, profile.id, profile.name, logMessage);
     } catch (err) {
-      console.error(err);
+      logger.error(err);
     }
   };
 
@@ -253,7 +254,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, roomBugs = 
         `Assumiu ("claimed") a responsabilidade de correção da tarefa`
       );
     } catch (err) {
-      console.error(err);
+      logger.error(err);
     }
   };
 
@@ -275,7 +276,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, roomBugs = 
         `Atribuiu a responsabilidade da tarefa para ${chosenUser.name}`
       );
     } catch (err) {
-      console.error(err);
+      logger.error(err);
     }
   };
 
@@ -292,7 +293,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, roomBugs = 
       await archiveBug(activeBug.id, activeBug.warRoomId, profile.id, profile.name);
       onClose();
     } catch (err) {
-      console.error(err);
+      logger.error(err);
       toast(err instanceof Error ? err.message : "Não foi possível arquivar.", { kind: "error" });
     }
   };

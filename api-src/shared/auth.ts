@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient, User } from "@supabase/supabase-js";
 import { resolveOrganizationId } from "../../src/lib/organizations";
+import { enforceRateLimit, type RateLimitRule } from "./rateLimit";
 import {
   actorHasCapability,
   DEFAULT_ROLE_MATRIX,
@@ -101,20 +102,14 @@ export async function requireSuperadmin(authHeader: string | undefined): Promise
   return authed;
 }
 
-const AI_WINDOW_MS = 10 * 60 * 1000;
-const AI_MAX_HITS = 20;
-const aiHits = new Map<string, number[]>();
+export const AI_RATE_RULE: RateLimitRule = {
+  windowMs: 10 * 60 * 1000,
+  max: 20,
+  message: "Muitas solicitações de IA. Tente de novo em alguns minutos.",
+};
 
-export function assertAiRateLimit(userId: string): void {
-  const now = Date.now();
-  const recent = (aiHits.get(userId) || []).filter((t) => now - t < AI_WINDOW_MS);
-  if (recent.length >= AI_MAX_HITS) {
-    throw Object.assign(new Error("Muitas solicitações de IA. Tente de novo em alguns minutos."), {
-      status: 429,
-    });
-  }
-  recent.push(now);
-  aiHits.set(userId, recent);
+export async function assertAiRateLimit(userId: string): Promise<void> {
+  await enforceRateLimit(getSupabaseAdmin(), "ai", userId, AI_RATE_RULE);
 }
 
 /** Viewer/guest cannot spend AI quota unless the matrix allows it. */
@@ -124,7 +119,7 @@ export async function requireAiUser(authHeader: string | undefined): Promise<Aut
   if (!actorHasCapability(actorFromAuthed(authed), "use_ai", matrix)) {
     throw Object.assign(new Error("Apenas quem escreve cards pode usar a IA."), { status: 403 });
   }
-  assertAiRateLimit(authed.user.id);
+  await assertAiRateLimit(authed.user.id);
   return authed;
 }
 

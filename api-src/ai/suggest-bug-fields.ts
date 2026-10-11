@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { httpErrorStatus, readJsonBody, requireAiUser } from "../shared/auth";
 import { suggestBugFields } from "../shared/geminiBugs";
+import { logger } from "../shared/logger";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
@@ -18,7 +19,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json(result);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to analyze bug fields";
-    console.error("AI suggest fields error:", error);
+    logger.error("AI suggest fields error:", error);
     return res.status(httpErrorStatus(error)).json({ error: message });
   }
 }

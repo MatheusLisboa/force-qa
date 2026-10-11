@@ -10,6 +10,7 @@ import { fetchRolePermissionMatrix } from "../lib/services";
 import { authFetch, readApiError } from "../lib/apiClient";
 import { normalizeArea } from "../lib/squads";
 import { resolveOrganizationId, DEFAULT_ORGANIZATION_ID } from "../lib/organizations";
+import { logger } from "../lib/logger";
 
 interface AuthContextType {
   user: User | null;
@@ -38,7 +39,7 @@ async function fetchProfile(userId: string): Promise<UserProfile | null> {
     .maybeSingle();
 
   if (error) {
-    console.error("[Auth] fetchProfile error:", error.message);
+    logger.error("[Auth] fetchProfile error:", error.message);
     return null;
   }
   return data ? toUserProfile(data) : null;
@@ -58,7 +59,7 @@ async function saveProfile(profile: UserProfile): Promise<void> {
   });
 
   if (error) {
-    console.error("[Auth] saveProfile error:", error.message, error);
+    logger.error("[Auth] saveProfile error:", error.message, error);
     throw new Error(
       error.message.includes("row-level security") || error.code === "42501"
         ? "Não foi possível salvar o perfil (permissão negada). Verifique as policies da tabela users no Supabase."

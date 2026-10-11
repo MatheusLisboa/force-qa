@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { httpErrorStatus, readJsonBody, requireUser } from "../shared/auth";
 import { joinRoom } from "../shared/rooms";
+import { logger } from "../shared/logger";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
@@ -20,7 +21,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ roomId });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Falha ao entrar na sala.";
-    console.error("rooms/join:", error);
+    logger.error("rooms/join:", error);
     return res.status(httpErrorStatus(error)).json({ error: message });
   }
 }

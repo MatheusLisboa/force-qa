@@ -1,10 +1,12 @@
 import { randomBytes } from "crypto";
 import { getSupabaseAdmin, loadRolePermissionMatrix } from "./auth";
+import { enforceRateLimit, type RateLimitRule } from "./rateLimit";
 import { actorHasCapability } from "../../src/lib/permissions";
 import { resolveInviteRole } from "../../src/lib/inviteRole";
 import { looksLikeGuestToken } from "../../src/lib/guestInvite";
 import { parseGuestInvite } from "../../src/lib/routes";
 import type { UserRole } from "../../src/types";
+import { logger } from "./logger";
 
 function newGuestInviteToken(): string {
   return `gst_${randomBytes(18).toString("base64url")}`;
@@ -45,20 +47,14 @@ export async function validateGuestRoom(input: string): Promise<{ id: string; na
   return { id: room.id, name: room.name };
 }
 
-const GUEST_JOIN_WINDOW_MS = 10 * 60 * 1000;
-const GUEST_JOIN_MAX = 8;
-const guestJoinHits = new Map<string, number[]>();
+const GUEST_JOIN_RULE: RateLimitRule = {
+  windowMs: 10 * 60 * 1000,
+  max: 8,
+  message: "Muitos acessos neste convite. Tente de novo em alguns minutos.",
+};
 
-function assertGuestJoinRateLimit(token: string): void {
-  const now = Date.now();
-  const recent = (guestJoinHits.get(token) || []).filter((t) => now - t < GUEST_JOIN_WINDOW_MS);
-  if (recent.length >= GUEST_JOIN_MAX) {
-    throw Object.assign(new Error("Muitos acessos neste convite. Tente de novo em alguns minutos."), {
-      status: 429,
-    });
-  }
-  recent.push(now);
-  guestJoinHits.set(token, recent);
+async function assertGuestJoinRateLimit(token: string): Promise<void> {
+  await enforceRateLimit(getSupabaseAdmin(), "guest-join", token, GUEST_JOIN_RULE);
 }
 
 export async function joinAsGuest(params: {
@@ -75,7 +71,7 @@ export async function joinAsGuest(params: {
   if (!parsed.token) {
     throw Object.assign(new Error("Cole o link de convite completo, não só o ID da sala."), { status: 400 });
   }
-  assertGuestJoinRateLimit(parsed.token);
+  await assertGuestJoinRateLimit(parsed.token);
   const room = await validateGuestRoom(params.input);
 
   const admin = getSupabaseAdmin();
@@ -315,7 +311,7 @@ export async function inviteToRoom(params: {
     war_room_id: params.roomId,
   });
   if (notifError) {
-    console.error("invite notification:", notifError);
+    logger.error("invite notification:", notifError);
   }
 
   return { userId, invited, alreadyMember: false, roleApplied: invited ? inviteRole : null };

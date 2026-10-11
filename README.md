@@ -19,8 +19,8 @@ npm install
 ### 2. Configurar Supabase
 
 1. Crie um projeto no [Supabase](https://supabase.com/dashboard)
-2. Em **SQL Editor**, siga a ordem em [`supabase/00_run_order.sql`](supabase/00_run_order.sql). Em um banco já existente, rode [`supabase/migration_access_and_security.sql`](supabase/migration_access_and_security.sql) e [`supabase/migration_room_access_ui.sql`](supabase/migration_room_access_ui.sql)
-3. Em **Authentication → Providers**, habilite **Email** e desative **Confirm email** (para login imediato em dev)
+2. Aplique as migrations de [`supabase/migrations/`](supabase/migrations) com o Supabase CLI (`supabase link` + `supabase db push`). Passo a passo, inclusive para um banco que já existia, em [`supabase/README.md`](supabase/README.md)
+3. Em **Authentication → Providers**, habilite **Email**, desative **Confirm email** (para login imediato em dev) e desmarque **Allow new users to sign up** (as contas nascem pelo app ou por convite)
 4. Em **Project Settings → API**, copie:
    - `anon` `public` key → `VITE_SUPABASE_ANON_KEY`
    - `service_role` key → `SUPABASE_SERVICE_ROLE_KEY`
@@ -55,20 +55,22 @@ O projeto tem testes automatizados em três camadas, todas rodando no CI a cada 
 
 | Camada | Ferramenta | Escopo |
 |--------|-----------|--------|
-| Estática | ESLint + TypeScript (`npm run lint`) | Tipos e padrões de código |
-| Unitária | Vitest (`npm test`) | 74 testes de regras de negócio e da API de exportação |
-| E2E | Playwright (`npm run test:e2e`) | 9 testes do fluxo de login/cadastro em Chromium |
+| Estática | TypeScript (`npm run lint`) | Tipos, incluindo o React |
+| Unitária | Vitest (`npm test`) | 115 testes: regras de negócio em `src/lib` e auth, rate limit e logger em `api-src` |
+| E2E | Playwright (`npm run test:e2e`) | Login, painel, paleta de comandos, tema, Kanban por teclado, conexão e acessibilidade, em Chromium |
 
-- Os testes E2E rodam contra um build com **Supabase falso**, então nunca tocam o backend real e são determinísticos.
-- No CI, falhas geram `trace` na primeira repetição (2 retries) e o `playwright-report` é publicado como artefato por 7 dias.
+- Os testes E2E rodam contra um build com **Supabase simulado** (Auth, REST e Realtime em `e2e/support/supabaseMock.ts`), então nunca tocam o backend real e são determinísticos.
+- No CI, falhas geram `trace` na primeira repetição e o `playwright-report` é publicado como artefato por 7 dias.
 - Workflow: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (jobs `check` e `e2e`).
 - Relatório de auditoria de segurança: [`docs/security-audit`](docs/security-audit).
 
 ## Primeiro acesso
 
-1. Cadastre-se na tela de login
-2. Para virar **admin**, atualize o campo `role` para `admin` na tabela `users` no Supabase (Table Editor)
-3. Admins podem criar usuários pelo painel do Dashboard
+A tela de login **não tem cadastro público**. Para o primeiro admin:
+
+1. Crie o usuário em **Authentication → Users** no Supabase (ou peça um convite a quem já é admin)
+2. Em **Table Editor → `users`**, defina `role = admin` (e `is_superadmin = true` para gerenciar organizações)
+3. Depois disso, admins criam as demais contas em **Usuários**, no próprio app
 
 ## Deploy na Vercel
 
@@ -109,13 +111,35 @@ As rotas `/api/*` na Vercel são funções serverless. Defina `SUPABASE_SERVICE_
 | `npm run build` | Build completo (web + server local) |
 | `npm run build:vercel` | Build só do frontend (usado pelo `vercel.json`) |
 | `npm run lint` | Verificação TypeScript |
-| `npm test` | Testes unitários (Vitest) |
+| `npm test` | Testes unitários (Vitest): lógica de `src/lib` e endpoints/auth de `api-src` |
+| `npm run test:e2e` | Testes de interface (Playwright, com o Supabase simulado) |
+| `npm run screenshots` | Gera screenshots das telas principais em `docs/screenshots/` |
+
+> **Atenção:** `npm run build:vercel` sobrescreve os stubs de `api/**/*.js` pelos bundles gerados. Não commite esses bundles: depois de um build local, rode `git checkout -- api`.
+
+## Recursos de interface
+
+- **Paleta de comandos** (`⌘K` / `Ctrl+K`): salas, páginas e ações. `?` lista os atalhos.
+- **Tema claro e escuro** (segue o sistema; o botão do cabeçalho fixa a escolha).
+- **Kanban por teclado**: `↑↓` percorrem a coluna, `←→` trocam de coluna, `Shift+←/→` movem o card.
+- **Instalável (PWA)** e aviso de conexão quando o tempo real cai.
+- Respeita `prefers-reduced-motion`.
+
+## Design system
+
+Tokens (cores, sombras, movimento) em `src/index.css` (`@theme` e `:root`); o tema claro redefine as mesmas variáveis em `:root[data-theme="light"]`. Componentes base em `src/components/ui/` (`Button`, `IconButton`, `Skeleton`, `EmptyState`, `Avatar`, `MenuItem`, `Kbd`). A página `/design` (apenas em desenvolvimento) mostra todos eles.
+
+## Observabilidade
+
+- API: `api-src/shared/logger.ts` emite JSON por linha em produção, com tokens e senhas mascarados.
+- Navegador: defina `VITE_SENTRY_DSN` para enviar erros ao Sentry (carregado só quando há DSN).
+- Rate limit compartilhado entre instâncias: depende da migration `20260101000020_rate_limits`; sem ela, cai para contagem em memória.
 
 ## API de extração (GitLab e similares)
 
 Leitura dos boards com um token da organização. Não usa o login do app. Admin, QA ou Scrum gera a chave em **Integrações** (botão no painel, ou Mais, ou Administração da sala).
 
-Rode [`supabase/migration_export_api.sql`](supabase/migration_export_api.sql) no SQL Editor antes do primeiro uso.
+Requer a migration [`20260101000016_export_api`](supabase/migrations/20260101000016_export_api.sql) aplicada.
 
 ```bash
 # Lista salas da org

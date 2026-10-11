@@ -1,6 +1,7 @@
 import { isOrganizationId, isValidOrganizationSlug, slugifyOrganizationName } from "../../src/lib/organizations";
 import { adminCreateUser } from "./adminUsers";
 import { getSupabaseAdmin, wrapThrownError } from "./auth";
+import { logger } from "./logger";
 
 function errorCode(error: unknown): string {
   if (!error || typeof error !== "object") return "";
@@ -99,7 +100,7 @@ export async function createOrganizationWithAdmin(params: {
     });
     return { organizationId, adminUserId, slug };
   } catch (error) {
-    console.error("createOrganizationWithAdmin:", {
+    logger.error("createOrganizationWithAdmin:", {
       code: errorCode(error),
       message: errorMessage(error),
     });

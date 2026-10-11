@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowLeftRight, Building2, Check, Edit2, Trash2, UserPlus, X } from "lucide-react";
+import { ArrowLeft, ArrowLeftRight, Building2, Check, Edit2, Search, Trash2, UserPlus, X } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { supabase, subscribeUsers, toWarRoom } from "../lib/supabase";
 import {
@@ -17,6 +17,8 @@ import { useConfirm } from "../context/ConfirmContext";
 import { canGrantAdminRole } from "../lib/permissions";
 import { filterManagedUsers, roomsForOrganization } from "../lib/adminUsersView";
 import { formatRelativeTime } from "../lib/format";
+import { EmptyState, ListSkeleton } from "./ui";
+import { logger } from "../lib/logger";
 
 interface AdminUsersPageProps {
   onBack: () => void;
@@ -174,12 +176,12 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
       ]);
       if (cancelled) return;
       if (roomError) {
-        console.error("admin users rooms:", roomError);
+        logger.error("admin users rooms:", roomError);
       } else {
         setRooms((roomData || []).map(toWarRoom));
       }
       if (orgError) {
-        console.error("admin users orgs:", orgError);
+        logger.error("admin users orgs:", orgError);
       } else {
         setOrganizations(
           (orgData || []).map((row) => ({
@@ -208,7 +210,7 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
         }
         setRoomIdsByUser(next);
       })
-      .catch((err) => console.error("fetchMembershipPairs:", err));
+      .catch((err) => logger.error("fetchMembershipPairs:", err));
     return () => {
       cancelled = true;
     };
@@ -594,11 +596,15 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
 
           <div className="space-y-2">
             {visibleUsers.length === 0 ? (
-              <div className="fq-empty-state py-10">
-                <span className="text-sm text-neutral-500">
-                  {usersList.length === 0 ? "Carregando usuários..." : "Ninguém corresponde à busca."}
-                </span>
-              </div>
+              usersList.length === 0 ? (
+                <ListSkeleton rows={5} />
+              ) : (
+                <EmptyState
+                  icon={<Search className="h-4 w-4" />}
+                  title="Ninguém corresponde à busca"
+                  description="Tente outro nome, e-mail ou área."
+                />
+              )
             ) : (
               visibleUsers.map((usr) => {
                 const isEditing = editingUserId === usr.id;

@@ -11,6 +11,7 @@ import { canWriteBugs } from "../lib/permissions";
 import { BUG_TYPE_OPTIONS, ENVIRONMENT_LABELS } from "../lib/bugLabels";
 import { Bug, BugAttachment, BugPriority, BugType, SeverityLevel } from "../types";
 import { SeverityPicker } from "./SeverityPicker";
+import { logger } from "../lib/logger";
 
 interface CreateBugModalProps {
   open: boolean;
@@ -187,7 +188,7 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
         return;
       }
     } catch (dupErr) {
-      console.warn("Checagem de duplicata indisponível:", dupErr);
+      logger.warn("Checagem de duplicata indisponível:", dupErr);
     }
     await submitCard(null);
   };

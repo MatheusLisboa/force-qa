@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { adminMoveUser } from "../shared/adminUsers";
 import { clientErrorMessage, httpErrorStatus, readJsonBody, requireSuperadmin } from "../shared/auth";
+import { logger } from "../shared/logger";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
@@ -19,7 +20,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ success: true });
   } catch (error: unknown) {
     const message = clientErrorMessage(error, "Falha ao mover o usuário.");
-    console.error("admin/move-user:", error);
+    logger.error("admin/move-user:", error);
     return res.status(httpErrorStatus(error)).json({ error: message });
   }
 }

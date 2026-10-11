@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { httpErrorStatus, readJsonBody, requireAiUser } from "../shared/auth";
 import { detectDuplicate } from "../shared/geminiBugs";
+import { logger } from "../shared/logger";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
@@ -21,7 +22,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json(result);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to detect duplicates";
-    console.error("AI detect duplicate error:", error);
+    logger.error("AI detect duplicate error:", error);
     return res.status(httpErrorStatus(error)).json({ error: message });
   }
 }

@@ -8,6 +8,7 @@ import {
   SpaceRow,
   UNGROUPED_PROJECT_LABEL,
 } from "../lib/spaces";
+import { Skeleton, SkeletonRegion } from "./ui";
 
 interface RoomRailProps {
   spaces: SpaceRow[];
@@ -101,7 +102,11 @@ export const RoomRail: React.FC<RoomRailProps> = ({
         </div>
 
         {loading ? (
-          <p className="px-3 py-4 text-[12px] text-neutral-500">Carregando salas...</p>
+          <SkeletonRegion label="Carregando salas" className="space-y-2 px-3 py-3">
+            {[0, 1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-6 w-full" />
+            ))}
+          </SkeletonRegion>
         ) : groups.length === 0 ? (
           <p className="px-3 py-4 text-[12px] leading-relaxed text-neutral-500">
             Nenhuma sala ativa. Abra uma no painel.

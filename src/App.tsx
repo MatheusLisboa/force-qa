@@ -1,15 +1,8 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { Suspense, useState, useEffect, useRef, useCallback } from "react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { LoginScreen } from "./components/LoginScreen";
 import { Onboarding } from "./components/Onboarding";
-import { Dashboard } from "./components/Dashboard";
-import { WarRoomDetail } from "./components/WarRoomDetail";
-import { AdminBoardViews } from "./components/AdminBoardViews";
-import { AdminUsersPage } from "./components/AdminUsersPage";
-import { AdminIntegrationsPage } from "./components/AdminIntegrationsPage";
-import { AdminOrganizationsPage } from "./components/AdminOrganizationsPage";
-import { AdminPermissionsPage } from "./components/AdminPermissionsPage";
-import { LogOut, Lock, User, Bell, PanelLeft, PanelLeftClose } from "lucide-react";
+import { LogOut, Lock, User, Bell, PanelLeft, PanelLeftClose, Search, Sun, Moon, Keyboard } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useModalA11y } from "./hooks/useModalA11y";
 import { joinWarRoom, markAllNotificationsRead, markNotificationRead } from "./lib/services";
@@ -23,8 +16,27 @@ import { formatRoleLabel } from "./lib/format";
 import { SquadSelect } from "./components/SquadSelect";
 import { canManageIntegrations, canManageOrganizations, canManageUsers, canManageViews } from "./lib/permissions";
 import { RoomRail } from "./components/RoomRail";
-import { InboxPage } from "./components/InboxPage";
 import { useOrgSpaces } from "./hooks/useOrgSpaces";
+import { lazyNamed } from "./lib/lazyNamed";
+const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+const DesignSystemPage = lazyNamed(() => import("./components/DesignSystemPage"), "DesignSystemPage");
+import { PageSkeleton } from "./components/ui/Skeleton";
+import { Avatar } from "./components/ui";
+import { ThemeProvider, useTheme } from "./context/ThemeContext";
+import { buildPaletteCommands, CommandPalette } from "./components/CommandPalette";
+import { ShortcutsHelp } from "./components/ShortcutsHelp";
+import { ConnectionBanner } from "./components/ConnectionBanner";
+import { isShortcutTypingTarget } from "./hooks/useRoomShortcuts";
+import { logger } from "./lib/logger";
+
+const Dashboard = lazyNamed(() => import("./components/Dashboard"), "Dashboard");
+const WarRoomDetail = lazyNamed(() => import("./components/WarRoomDetail"), "WarRoomDetail");
+const AdminBoardViews = lazyNamed(() => import("./components/AdminBoardViews"), "AdminBoardViews");
+const AdminUsersPage = lazyNamed(() => import("./components/AdminUsersPage"), "AdminUsersPage");
+const AdminIntegrationsPage = lazyNamed(() => import("./components/AdminIntegrationsPage"), "AdminIntegrationsPage");
+const AdminOrganizationsPage = lazyNamed(() => import("./components/AdminOrganizationsPage"), "AdminOrganizationsPage");
+const AdminPermissionsPage = lazyNamed(() => import("./components/AdminPermissionsPage"), "AdminPermissionsPage");
+const InboxPage = lazyNamed(() => import("./components/InboxPage"), "InboxPage");
 
 function AppContent() {
   const { user, profile, loading, passwordRecovery, updateProfile, changePassword, completePasswordRecovery, logout } = useAuth();
@@ -46,6 +58,9 @@ function AppContent() {
       return false;
     }
   });
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const { resolved: resolvedTheme, toggle: toggleTheme } = useTheme();
   const [recoveryPassword, setRecoveryPassword] = useState("");
   const [recoveryConfirm, setRecoveryConfirm] = useState("");
   const [recoveryError, setRecoveryError] = useState("");
@@ -153,7 +168,7 @@ function AppContent() {
         setProfileSuccess("Senha alterada com sucesso!");
       }
     } catch (err: any) {
-      console.error(err);
+      logger.error(err);
       setProfileError(err.message || "Erro desconhecido ao salvar as alterações.");
     } finally {
       setProfileSaving(false);
@@ -174,6 +189,30 @@ function AppContent() {
     }
     return subscribeNotifications(user.id, setNotifications);
   }, [user?.id]);
+
+  // Atalhos globais: ⌘/Ctrl+K abre a paleta; "?" abre a ajuda.
+  useEffect(() => {
+    if (!user || !profile) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPaletteOpen((open) => !open);
+        return;
+      }
+      if (event.key === "?" && !event.metaKey && !event.ctrlKey && !isShortcutTypingTarget(event.target)) {
+        event.preventDefault();
+        setShortcutsOpen(true);
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [user, profile]);
+
+  // Contador de não lidas na aba do navegador.
+  const unreadCount = notifications.filter((n) => !n.readAt).length;
+  useEffect(() => {
+    document.title = unreadCount > 0 ? `(${unreadCount}) ForceQA • Agile War Room` : "ForceQA • Agile War Room";
+  }, [unreadCount]);
 
   const openRoom = useCallback(async (roomId: string, pulse: PulseKind = "all", bugId?: string | null) => {
     setJoinError("");
@@ -295,8 +334,8 @@ function AppContent() {
   // 1. Loading core state
   if (loading) {
     return (
-      <div className="fq-loading">
-        <div className="fq-spinner mb-4" />
+      <div className="fq-loading" role="status" aria-live="polite">
+        <div className="fq-spinner mb-4" aria-hidden />
         <p className="text-sm tracking-wide text-neutral-500">
           Carregando...
         </p>
@@ -371,6 +410,7 @@ function AppContent() {
   // 4. Main operation dashboards
   return (
     <div className="fq-shell flex h-dvh flex-col overflow-hidden">
+      <a href="#fq-main" className="fq-skip-link">Pular para o conteúdo</a>
       <header className="fq-header">
         <div className="flex items-center gap-2">
           {!adminPage && (
@@ -390,10 +430,10 @@ function AppContent() {
               )}
             </button>
           )}
-          <div onClick={handleBackToDashboard} className="fq-header-brand">
+          <button type="button" onClick={handleBackToDashboard} className="fq-header-brand" aria-label="ForceQA: ir para o painel">
             <div className="fq-brand-mark">FQ</div>
             <span className="fq-header-brand-name">ForceQA</span>
-          </div>
+          </button>
         </div>
 
         <div className="flex items-center gap-2 text-[13px]">
@@ -402,16 +442,48 @@ function AppContent() {
               {joinError}
             </span>
           )}
+          <button
+            type="button"
+            className="fq-btn-ghost !min-h-0 !px-2.5 !py-1.5 gap-2"
+            onClick={() => setPaletteOpen(true)}
+            aria-label="Abrir paleta de comandos"
+            title={`Buscar (${IS_MAC ? "⌘" : "Ctrl"} K)`}
+          >
+            <Search className="h-3.5 w-3.5" />
+            <span className="hidden lg:inline text-neutral-500">Buscar…</span>
+            <span className="hidden lg:inline fq-kbd">{IS_MAC ? "⌘K" : "Ctrl K"}</span>
+          </button>
+          <button
+            type="button"
+            className="fq-btn-ghost !min-h-0 !px-2 !py-2 hidden sm:inline-flex"
+            onClick={() => setShortcutsOpen(true)}
+            aria-label="Atalhos de teclado"
+            title="Atalhos de teclado (?)"
+          >
+            <Keyboard className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            className="fq-btn-ghost !min-h-0 !px-2 !py-2"
+            onClick={toggleTheme}
+            aria-label={resolvedTheme === "dark" ? "Mudar para tema claro" : "Mudar para tema escuro"}
+            title={resolvedTheme === "dark" ? "Tema claro" : "Tema escuro"}
+          >
+            {resolvedTheme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </button>
           <div className="relative">
             <button
               type="button"
               onClick={() => setNotifOpen((open) => !open)}
               className="fq-btn-ghost !min-h-0 !px-2 !py-2 relative"
               title="Notificações"
+              aria-label={unreadCount > 0 ? `Notificações, ${unreadCount} não lidas` : "Notificações"}
+              aria-haspopup="true"
+              aria-expanded={notifOpen}
             >
               <Bell className="w-4 h-4" />
-              {notifications.some((n) => !n.readAt) && (
-                <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-red-500" />
+              {unreadCount > 0 && (
+                <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-red-500" aria-hidden />
               )}
             </button>
             {notifOpen && (
@@ -450,21 +522,21 @@ function AppContent() {
               </div>
             )}
           </div>
-          <div
+          <button
+            type="button"
             onClick={() => setIsProfileModalOpen(true)}
             className="fq-header-user"
-            title="Clique para editar seu perfil ou alterar senha"
+            title="Editar perfil ou alterar senha"
+            aria-label={`Perfil de ${profile.name}: editar ou alterar senha`}
           >
-            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-white/[0.08] text-[10px] font-semibold text-neutral-200">
-              {profile.name.substring(0, 2).toUpperCase()}
-            </div>
+            <Avatar name={profile.name} size="sm" />
             <div className="hidden sm:flex flex-col text-left">
               <span className="text-[13px] font-medium leading-none text-neutral-100">{profile.name}</span>
               <span className="text-[11px] leading-none mt-0.5 text-neutral-500">
                 {formatRoleLabel(profile.role)} · {profile.squad}
               </span>
             </div>
-          </div>
+          </button>
 
           <button
             onClick={() => logout()}
@@ -477,8 +549,10 @@ function AppContent() {
         </div>
       </header>
 
+      <ConnectionBanner />
+
       {/* Primary viewport switch container */}
-      <main className="flex min-h-0 flex-1">
+      <main id="fq-main" tabIndex={-1} className="flex min-h-0 flex-1 outline-none">
           {!adminPage && (
             <RoomRail
               spaces={spaces}
@@ -496,6 +570,7 @@ function AppContent() {
             />
           )}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">
+        <Suspense fallback={<PageSkeleton />}>
         {adminPage === "permissions" && canManageOrganizations(profile?.isSuperadmin) ? (
           <AdminPermissionsPage onBack={handleBackToDashboard} />
         ) : adminPage === "organizations" && canManageOrganizations(profile?.isSuperadmin) ? (
@@ -542,8 +617,32 @@ function AppContent() {
             onOpenInbox={handleOpenInbox}
           />
         )}
+        </Suspense>
         </div>
       </main>
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        commands={buildPaletteCommands({
+          spaces,
+          isDark: resolvedTheme === "dark",
+          canUsers: canManageUsers(profile?.role, profile?.isSuperadmin, profile?.isGuest),
+          canViews: canManageViews(profile?.role, profile?.isSuperadmin, profile?.isGuest),
+          canOrgs: canManageOrganizations(profile?.isSuperadmin),
+          canIntegrations: canManageIntegrations(profile?.role, profile?.isSuperadmin, profile?.isGuest),
+          go: {
+            dashboard: handleBackToDashboard,
+            inbox: handleOpenInbox,
+            admin: handleOpenAdminPage,
+            room: handleSelectRoom,
+          },
+          toggleTheme,
+          openShortcuts: () => setShortcutsOpen(true),
+          logout: () => void logout(),
+        })}
+      />
+      <ShortcutsHelp open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
 
       <AnimatePresence>
         {isProfileModalOpen && (
@@ -678,14 +777,29 @@ function AppContent() {
   );
 }
 
+/** `/design` só existe em desenvolvimento (ou com VITE_DESIGN_PAGE=1, usado nos e2e): vitrine do design system, sem login. */
+const SHOW_DESIGN_PAGE =
+  (import.meta.env.DEV || import.meta.env.VITE_DESIGN_PAGE === "1") && window.location.pathname === "/design";
+
 export default function App() {
+  if (SHOW_DESIGN_PAGE) {
+    return (
+      <ThemeProvider>
+        <Suspense fallback={null}>
+          <DesignSystemPage />
+        </Suspense>
+      </ThemeProvider>
+    );
+  }
   return (
-    <AuthProvider>
-      <ToastProvider>
-        <ConfirmProvider>
-          <AppContent />
-        </ConfirmProvider>
-      </ToastProvider>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <ToastProvider>
+          <ConfirmProvider>
+            <AppContent />
+          </ConfirmProvider>
+        </ToastProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

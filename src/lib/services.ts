@@ -35,6 +35,7 @@ import {
   matrixToRows,
   type RolePermissionMatrix,
 } from "./permissions";
+import { logger } from "./logger";
 
 function cleanUndefined<T extends object>(obj: T): T {
   const result = { ...obj } as Record<string, unknown>;
@@ -60,10 +61,10 @@ async function notifyWebhook(input: {
       body: JSON.stringify(input),
     });
     if (!response.ok) {
-      console.warn("webhook dispatch:", await response.text().catch(() => response.status));
+      logger.warn("webhook dispatch:", await response.text().catch(() => response.status));
     }
   } catch (error) {
-    console.warn("webhook dispatch:", error);
+    logger.warn("webhook dispatch:", error);
   }
 }
 
@@ -415,7 +416,7 @@ export async function fetchAccessibleRooms(): Promise<
     .select("id, name, room_type, project")
     .order("name");
   if (error) {
-    console.error("fetchAccessibleRooms:", error);
+    logger.error("fetchAccessibleRooms:", error);
     return [];
   }
   return (data || []).map((row) => ({
@@ -657,7 +658,7 @@ export async function rotateGuestInviteUrl(
 export async function fetchMembershipPairs(): Promise<Array<{ userId: string; roomId: string }>> {
   const { data, error } = await supabase.from("room_members").select("user_id, war_room_id");
   if (error) {
-    console.error("fetchMembershipPairs:", error);
+    logger.error("fetchMembershipPairs:", error);
     return [];
   }
   return (data || []).map((row) => ({
@@ -748,7 +749,7 @@ export async function createNotification(
     bug_id: data.bugId || null,
   });
   if (error) {
-    console.error("createNotification:", error);
+    logger.error("createNotification:", error);
   }
 }
 
@@ -861,7 +862,7 @@ export async function createActivityLog(
 export async function fetchUsersList(): Promise<UserProfile[]> {
   const { data, error } = await supabase.from("users").select("*");
   if (error) {
-    console.error("Error fetching users:", error);
+    logger.error("Error fetching users:", error);
     return [];
   }
   return (data || []).map(toUserProfile);

@@ -1,3 +1,4 @@
+import { createConnectionTracker } from "./connection";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import {
   WarRoom,
@@ -16,6 +17,7 @@ import { resolveOrganizationId } from "./organizations";
 import { withSignedMedia } from "./evidence";
 import { parseAttachments } from "./attachments";
 import { parseReproChecklist } from "./reproChecklist";
+import { logger } from "./logger";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -32,7 +34,7 @@ export function isSupabaseConfigured(): boolean {
 }
 
 if (!isSupabaseConfigured()) {
-  console.error(
+  logger.error(
     "[ForceQA] Supabase não configurado. Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY " +
       "(Vercel: Settings → Environment Variables → redeploy obrigatório)."
   );
@@ -208,7 +210,7 @@ export function handleDbError(
     error && typeof error === "object" && "message" in error
       ? String((error as { message: string }).message)
       : String(error);
-  console.error("Supabase error:", { message, operationType, path });
+  logger.error("Supabase error:", { message, operationType, path });
   throw new Error(message);
 }
 
@@ -228,6 +230,15 @@ export function toPulseBug(row: Record<string, unknown>): PulseBug {
     archived: Boolean(row.archived),
   };
 }
+
+const connection = createConnectionTracker(typeof navigator === "undefined" ? true : navigator.onLine);
+if (typeof window !== "undefined") {
+  window.addEventListener("online", () => connection.setBrowserOnline(true));
+  window.addEventListener("offline", () => connection.setBrowserOnline(false));
+}
+
+/** Estado da conexão realtime (para o aviso de "sem conexão" na UI). */
+export const subscribeConnection = connection.subscribe;
 
 function subscribeMappedList<T>(options: {
   table: string;
@@ -254,7 +265,7 @@ function subscribeMappedList<T>(options: {
     try {
       publish(await options.fetchRows());
     } catch (error) {
-      console.error(`${options.channelName}:`, error);
+      logger.error(`${options.channelName}:`, error);
     }
   };
 
@@ -267,6 +278,15 @@ function subscribeMappedList<T>(options: {
   };
 
   void load();
+
+  // Eventos perdidos durante uma queda não voltam sozinhos: ressincroniza ao reconectar
+  // e ao voltar para a aba.
+  let wasDown = false;
+  const resync = () => {
+    if (document.visibilityState === "visible") void load();
+  };
+  window.addEventListener("online", resync);
+  document.addEventListener("visibilitychange", resync);
 
   const channel = supabase
     .channel(options.channelName)
@@ -298,10 +318,22 @@ function subscribeMappedList<T>(options: {
         publish(applyRealtimeChange(items, event, mapped, options.getId));
       }
     )
-    .subscribe();
+    .subscribe((status) => {
+      if (status === "SUBSCRIBED") {
+        connection.setChannelHealthy(options.channelName, true);
+        if (wasDown) void load();
+        wasDown = false;
+      } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+        wasDown = true;
+        connection.setChannelHealthy(options.channelName, false);
+      }
+    });
 
   return () => {
     if (refetchTimer) clearTimeout(refetchTimer);
+    window.removeEventListener("online", resync);
+    document.removeEventListener("visibilitychange", resync);
+    connection.forget(options.channelName);
     supabase.removeChannel(channel);
   };
 }
@@ -433,7 +465,7 @@ export function subscribeWarRoom(
       .eq("id", roomId)
       .maybeSingle();
     if (error) {
-      console.error("subscribeWarRoom:", error);
+      logger.error("subscribeWarRoom:", error);
       return;
     }
     callback(data ? toWarRoom(data) : null);
@@ -514,7 +546,7 @@ export function subscribeBug(
       .eq("id", bugId)
       .maybeSingle();
     if (error) {
-      console.error("subscribeBug:", error);
+      logger.error("subscribeBug:", error);
       return;
     }
     callback(data ? await withSignedMedia(toBug(data)) : null);
@@ -583,7 +615,7 @@ export function subscribeBoardViews(
       .eq("is_active", true)
       .order("order_index", { ascending: true });
     if (error) {
-      console.error("subscribeBoardViews:", error);
+      logger.error("subscribeBoardViews:", error);
       return;
     }
     callback((data || []).map(toBoardView));
@@ -602,7 +634,7 @@ export function subscribeAllBoardViews(
     }
     const { data, error } = await query;
     if (error) {
-      console.error("subscribeAllBoardViews:", error);
+      logger.error("subscribeAllBoardViews:", error);
       return;
     }
     callback((data || []).map(toBoardView));
@@ -618,7 +650,7 @@ export function subscribeProjects(callback: (projects: Project[]) => void): Unsu
       .select("*")
       .order("created_at", { ascending: false });
     if (error) {
-      console.error("subscribeProjects:", error);
+      logger.error("subscribeProjects:", error);
       return;
     }
     callback((data || []).map(toProject));
@@ -637,7 +669,7 @@ export function subscribeProjectByWarRoomId(
       .eq("war_room_id", warRoomId)
       .maybeSingle();
     if (error) {
-      console.error("subscribeProjectByWarRoomId:", error);
+      logger.error("subscribeProjectByWarRoomId:", error);
       callback(null);
       return;
     }
@@ -658,7 +690,7 @@ export function subscribeNotifications(
       .order("created_at", { ascending: false })
       .limit(30);
     if (error) {
-      console.error("subscribeNotifications:", error);
+      logger.error("subscribeNotifications:", error);
       return;
     }
     callback((data || []).map(toNotification));

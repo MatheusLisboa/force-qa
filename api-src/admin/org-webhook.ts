@@ -3,6 +3,7 @@ import { clientErrorMessage, httpErrorStatus, readJsonBody, requireIntegrationsM
 import { wantsExportToken } from "../../src/lib/vercelApiPath";
 import { getOrgWebhookUrl, setOrgWebhookUrl } from "../shared/webhooks";
 import { getExportTokenMeta, revokeExportToken, rotateExportToken } from "../shared/exportTokenStore";
+import { logger } from "../shared/logger";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const exportToken = wantsExportToken(req);
@@ -42,7 +43,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       error,
       exportToken ? "Falha ao gerenciar o token de extração." : "Falha ao configurar o webhook."
     );
-    console.error(exportToken ? "admin/org-export-token:" : "admin/org-webhook:", error);
+    logger.error(exportToken ? "admin/org-export-token:" : "admin/org-webhook:", error);
     return res.status(httpErrorStatus(error)).json({ error: message });
   }
 }

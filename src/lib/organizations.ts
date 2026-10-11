@@ -1,4 +1,4 @@
-/** Org seedada em supabase/migration_organizations.sql. */
+/** Org seedada em supabase/migrations/20260101000010_organizations.sql. */
 export const DEFAULT_ORGANIZATION_ID = "11111111-1111-4111-8111-111111111111";
 export const DEFAULT_ORGANIZATION_SLUG = "default";
 

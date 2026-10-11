@@ -11,7 +11,7 @@ function missingExportTokenSql(error: unknown): boolean {
 export function throwIfExportTokenSqlMissing(error: unknown): never {
   if (missingExportTokenSql(error)) {
     throw Object.assign(
-      new Error("Rode supabase/migration_export_api.sql no SQL Editor do Supabase."),
+      new Error("Rode supabase/migrations/20260101000016_export_api.sql no SQL Editor do Supabase."),
       { status: 500 }
     );
   }

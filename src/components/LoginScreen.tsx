@@ -6,6 +6,7 @@ import { parseGuestInvite } from "../lib/routes";
 import { LogIn, AlertTriangle, Mail } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { SquadSelect } from "./SquadSelect";
+import { logger } from "../lib/logger";
 
 export const LoginScreen: React.FC = () => {
   const { loginWithEmail, loginAsGuest, requestPasswordReset } = useAuth();
@@ -47,7 +48,7 @@ export const LoginScreen: React.FC = () => {
     try {
       await loginWithEmail(email.trim(), password, false);
     } catch (err: unknown) {
-      console.error(err);
+      logger.error(err);
       const code = getAuthErrorCode(err);
       const msg = getAuthErrorMessage(err);
 
@@ -102,7 +103,7 @@ export const LoginScreen: React.FC = () => {
       // Perfect redirection to specific warroom
       window.location.href = `/?room=${roomId}`;
     } catch (err: any) {
-      console.error(err);
+      logger.error(err);
       setGuestError(err.message || "Erro ao conectar como convidado.");
     } finally {
       setGuestLoading(false);

@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "./auth";
+import { enforceRateLimit } from "./rateLimit";
 import { appRedirectTo } from "./appUrl";
 import { extractExportToken, hashExportToken, hashesMatch } from "../../src/lib/exportToken";
 import { throwIfExportTokenSqlMissing } from "./exportTokenStore";
@@ -12,13 +13,13 @@ import {
 } from "../../src/lib/exportCards";
 import { storagePathFromUrl } from "../../src/lib/mediaUrl";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { logger } from "./logger";
 
 /** GitLab precisa baixar o print no mesmo job; 24h cobre um sync noturno. */
 export const EXPORT_SIGNED_TTL_SEC = 24 * 60 * 60;
 
 const EXPORT_WINDOW_MS = 60 * 1000;
 const EXPORT_MAX_HITS = 60;
-const exportHits = new Map<string, number[]>();
 
 export function applyExportCors(res: { setHeader: (name: string, value: string) => void }): void {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -32,14 +33,12 @@ function headerValue(value: string | string[] | undefined): string {
   return value || "";
 }
 
-function assertExportRateLimit(key: string): void {
-  const now = Date.now();
-  const recent = (exportHits.get(key) || []).filter((t) => now - t < EXPORT_WINDOW_MS);
-  if (recent.length >= EXPORT_MAX_HITS) {
-    throw Object.assign(new Error("Muitas extrações. Tente de novo em um minuto."), { status: 429 });
-  }
-  recent.push(now);
-  exportHits.set(key, recent);
+async function assertExportRateLimit(key: string): Promise<void> {
+  await enforceRateLimit(getSupabaseAdmin(), "export", key, {
+    windowMs: EXPORT_WINDOW_MS,
+    max: EXPORT_MAX_HITS,
+    message: "Muitas extrações. Tente de novo em um minuto.",
+  });
 }
 
 export async function requireExportOrganization(headers: {
@@ -48,7 +47,7 @@ export async function requireExportOrganization(headers: {
 }): Promise<{ organizationId: string }> {
   const token = extractExportToken(headerValue(headers.authorization), headerValue(headers["x-api-key"]));
   const presentedHash = hashExportToken(token);
-  assertExportRateLimit(presentedHash);
+  await assertExportRateLimit(presentedHash);
 
   const admin = getSupabaseAdmin();
   const { data, error } = await admin
@@ -87,7 +86,7 @@ async function signExportAttachments(
       .from("evidence")
       .createSignedUrls(uniquePaths, EXPORT_SIGNED_TTL_SEC);
     if (error) {
-      console.error("export createSignedUrls:", error);
+      logger.error("export createSignedUrls:", error);
     }
     const expiresAt = new Date(Date.now() + EXPORT_SIGNED_TTL_SEC * 1000).toISOString();
     for (const item of data || []) {

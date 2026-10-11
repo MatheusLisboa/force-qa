@@ -1,17 +1,15 @@
-import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import React, { Suspense, useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { subscribeWarRoom, subscribeBugsByRoom, subscribeBoardViews, subscribeProjectByWarRoomId } from "../lib/supabase";
 import { fetchGuestInviteUrl, rotateGuestInviteUrl, updateBugField, updateWarRoom, deleteWarRoom } from "../lib/services";
 import { useToast } from "../context/ToastContext";
 import { useConfirm } from "../context/ConfirmContext";
 import { useAuth } from "../context/AuthContext";
 import { WarRoom, Bug, BugType, BoardView, Project, KanbanColumn } from "../types";
-import { BugDetailModal } from "./BugDetailModal";
-import { AIReportModal } from "./AIReportModal";
 import { BoardViewSwitcher } from "./BoardViewSwitcher";
 import { KanbanBoard } from "./KanbanBoard";
-import { CreateBugModal } from "./CreateBugModal";
 import { RoomMembersPanel } from "./RoomMembersPanel";
 import { EndWarRoomModal } from "./EndWarRoomModal";
+import { lazyNamed } from "../lib/lazyNamed";
 import { useRoomPresence } from "../hooks/useRoomPresence";
 import { filterItemsByView, readStoredBoardViewId, writeStoredBoardViewId } from "../lib/boardViews";
 import { BUG_TYPE_OPTIONS, ENVIRONMENT_LABELS } from "../lib/bugLabels";
@@ -44,6 +42,12 @@ import {
   Webhook,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { KanbanSkeleton, Skeleton } from "./ui";
+import { logger } from "../lib/logger";
+
+const AIReportModal = lazyNamed(() => import("./AIReportModal"), "AIReportModal");
+const CreateBugModal = lazyNamed(() => import("./CreateBugModal"), "CreateBugModal");
+const BugDetailModal = lazyNamed(() => import("./BugDetailModal"), "BugDetailModal");
 
 interface WarRoomDetailProps {
   roomId: string;
@@ -100,6 +104,10 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
   const [activeBoardViewId, setActiveBoardViewId] = useState<string | null>(null);
   const [isCoarsePointer, setIsCoarsePointer] = useState(false);
   const [isAiReportModalOpen, setIsAiReportModalOpen] = useState(false);
+  const [aiReportMounted, setAiReportMounted] = useState(false);
+  useEffect(() => {
+    if (isAiReportModalOpen) setAiReportMounted(true);
+  }, [isAiReportModalOpen]);
   const [aiReportAutoGenerate, setAiReportAutoGenerate] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
   const [roomMoreOpen, setRoomMoreOpen] = useState(false);
@@ -247,6 +255,11 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
     e.preventDefault();
   };
 
+  /** Atualização otimista: o card muda de coluna na hora; o realtime confirma depois. */
+  const moveBugLocally = (bugId: string, status: Bug["status"], kanbanColumnId: string) => {
+    setBugs((current) => current.map((b) => (b.id === bugId ? { ...b, status, kanbanColumnId } : b)));
+  };
+
   const handleDrop = async (e: React.DragEvent, columnId: string) => {
     e.preventDefault();
     const bugId = e.dataTransfer.getData("text/plain");
@@ -267,6 +280,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
     const previousStatus = targetBug.status;
     const previousColumnId = resolveBugColumnId(targetBug, columns);
 
+    moveBugLocally(bugId, column.status, column.id);
     try {
       await updateBugField(
         bugId,
@@ -294,7 +308,8 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
         },
       });
     } catch (err: unknown) {
-      console.error("Failed transition fields update:", err);
+      moveBugLocally(bugId, previousStatus, previousColumnId);
+      logger.error("Failed transition fields update:", err);
       toast(err instanceof Error ? err.message : "Não foi possível mover o card.", { kind: "error" });
     }
   };
@@ -305,6 +320,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
     const previousColumnId = resolveBugColumnId(bug, columns);
     if (previousColumnId === column.id) return;
     const previousStatus = bug.status;
+    moveBugLocally(bug.id, column.status, column.id);
     try {
       await updateBugField(bug.id, roomId, { status: column.status, kanbanColumnId: column.id }, profile.id, profile.name, `Moveu card para a coluna "${displayColumnLabel(column)}"`);
       toast(`Movido para ${displayColumnLabel(column)}`, {
@@ -317,6 +333,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
         },
       });
     } catch (err: unknown) {
+      moveBugLocally(bug.id, previousStatus, previousColumnId);
       toast(err instanceof Error ? err.message : "Não foi possível mover o card.", { kind: "error" });
     }
   };
@@ -385,9 +402,12 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
 
   if (!warRoom) {
     return (
-      <div className="fq-loading min-h-[60vh]">
-        <div className="fq-spinner mb-3" />
-        <p className="text-neutral-500 font-mono text-sm leading-relaxed">Carregando a sala...</p>
+      <div className="space-y-5 p-4 sm:p-6">
+        <div className="space-y-2">
+          <Skeleton className="h-3 w-20" />
+          <Skeleton className="h-6 w-72" />
+        </div>
+        <KanbanSkeleton />
       </div>
     );
   }
@@ -420,7 +440,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
       await updateWarRoom(roomId, { kanbanColumns: next });
       setNewColumnLabel("");
     } catch (err) {
-      console.error("Erro ao adicionar coluna:", err);
+      logger.error("Erro ao adicionar coluna:", err);
       toast("Não foi possível adicionar a coluna. Rode a migration de colunas no Supabase.", { kind: "error" });
     } finally {
       setIsSavingColumns(false);
@@ -443,7 +463,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
     try {
       await updateWarRoom(roomId, { kanbanColumns: next });
     } catch (err) {
-      console.error("Erro ao remover coluna:", err);
+      logger.error("Erro ao remover coluna:", err);
       toast("Não foi possível remover a coluna.", { kind: "error" });
     } finally {
       setIsSavingColumns(false);
@@ -689,7 +709,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
                     try {
                       await updateWarRoom(roomId, { status: next });
                     } catch (err) {
-                      console.error("Erro ao atualizar status da sala:", err);
+                      logger.error("Erro ao atualizar status da sala:", err);
                     }
                   }}
                   className="bg-transparent text-neutral-100 focus:outline-none border-none text-xs font-semibold cursor-pointer"
@@ -709,7 +729,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
                   try {
                     await updateWarRoom(roomId, { guestAccessDisabled: e.target.checked });
                   } catch (err) {
-                    console.error("Erro ao alterar acesso convidado:", err);
+                    logger.error("Erro ao alterar acesso convidado:", err);
                   }
                 }}
                 className="rounded border-neutral-700 text-neutral-300 bg-transparent focus:ring-0 cursor-pointer"
@@ -730,7 +750,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
                   await deleteWarRoom(roomId);
                   onBack();
                 } catch (err) {
-                  console.error("Erro ao excluir sala:", err);
+                  logger.error("Erro ao excluir sala:", err);
                   toast("Não foi possível excluir a sala. Verifique sua permissão.", { kind: "error" });
                 }
               }}
@@ -992,37 +1012,39 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
         </div>
       )}
 
-      {warRoom && (
-        <AIReportModal
-          isOpen={isAiReportModalOpen}
-          onClose={() => setIsAiReportModalOpen(false)}
-          warRoom={warRoom}
-          bugs={bugs}
-          autoGenerate={aiReportAutoGenerate}
-        />
-      )}
-
-      <AnimatePresence>
-        {isBugModalOpen && (
-          <CreateBugModal
-            open={isBugModalOpen}
-            roomId={roomId}
-            existingBugs={bugs}
-            presetType={createPresetType}
-            onClose={() => setIsBugModalOpen(false)}
+      <Suspense fallback={null}>
+        {warRoom && aiReportMounted && (
+          <AIReportModal
+            isOpen={isAiReportModalOpen}
+            onClose={() => setIsAiReportModalOpen(false)}
+            warRoom={warRoom}
+            bugs={bugs}
+            autoGenerate={aiReportAutoGenerate}
           />
         )}
-      </AnimatePresence>
 
-      <AnimatePresence>
-        {selectedBug && (
-          <BugDetailModal
-            bug={selectedBug}
-            roomBugs={bugs}
-            onClose={closeSelectedBug}
-          />
-        )}
-      </AnimatePresence>
+        <AnimatePresence>
+          {isBugModalOpen && (
+            <CreateBugModal
+              open={isBugModalOpen}
+              roomId={roomId}
+              existingBugs={bugs}
+              presetType={createPresetType}
+              onClose={() => setIsBugModalOpen(false)}
+            />
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {selectedBug && (
+            <BugDetailModal
+              bug={selectedBug}
+              roomBugs={bugs}
+              onClose={closeSelectedBug}
+            />
+          )}
+        </AnimatePresence>
+      </Suspense>
 
       {warRoom && (
         <EndWarRoomModal

@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { subscribeInboxBugs, InboxBug } from "../lib/supabase";
 import { getStatusLabel } from "../lib/bugLabels";
 import { SeverityBadge, StatusBadge } from "./BugBadges";
+import { EmptyState, ListSkeleton } from "./ui";
 
 interface InboxPageProps {
   onOpenCard: (roomId: string, bugId: string) => void;
@@ -39,18 +40,13 @@ export const InboxPage: React.FC<InboxPageProps> = ({ onOpenCard }) => {
       </div>
 
       {loading ? (
-        <div className="fq-empty-state">
-          <div className="fq-spinner mx-auto mb-2" />
-          <p className="text-neutral-500 text-sm">Carregando inbox...</p>
-        </div>
+        <ListSkeleton />
       ) : bugs.length === 0 ? (
-        <div className="fq-empty-state">
-          <Inbox className="w-10 h-10 text-neutral-600 mx-auto mb-3" />
-          <h4 className="text-neutral-200 font-medium text-[15px]">Nada na sua fila</h4>
-          <p className="text-neutral-500 text-sm mt-1 max-w-sm mx-auto">
-            Quando alguém te atribuir um card, ele aparece aqui até ser validado.
-          </p>
-        </div>
+        <EmptyState
+          icon={<Inbox className="h-4 w-4" />}
+          title="Nada na sua fila"
+          description="Quando alguém te atribuir um card, ele aparece aqui até ser validado."
+        />
       ) : (
         <ul className="space-y-2 max-w-3xl">
           {bugs.map((bug) => (

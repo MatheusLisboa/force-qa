@@ -71,7 +71,7 @@ export async function uploadEvidenceFile(roomId: string, file: File): Promise<st
   if (error) {
     throw new Error(
       error.message.includes("Bucket not found")
-        ? "Bucket de evidências não configurado. Execute supabase/migration_access_and_security.sql."
+        ? "Bucket de evidências não configurado. Execute supabase/migrations/20260101000008_access_and_security.sql."
         : `Falha no upload da evidência: ${error.message}`
     );
   }

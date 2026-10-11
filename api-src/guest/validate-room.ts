@@ -1,5 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { clientErrorMessage, httpErrorStatus, readJsonBody } from "../shared/auth";
+import { clientErrorMessage, getSupabaseAdmin, httpErrorStatus, readJsonBody } from "../shared/auth";
+import { clientIp, enforceRateLimit } from "../shared/rateLimit";
+import { logger } from "../shared/logger";
 import { joinAsGuest, validateGuestRoom } from "../shared/rooms";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -9,6 +11,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    // Endpoint público: limita por IP para dificultar varredura de IDs/convites.
+    await enforceRateLimit(getSupabaseAdmin(), "validate-room", clientIp(req.headers), {
+      windowMs: 60 * 1000,
+      max: 30,
+      message: "Muitas tentativas. Aguarde um minuto e tente de novo.",
+    });
     const body = readJsonBody(req.body);
     const input = String(body.input || body.warRoomName || "");
     if (body.join === true || body.join === "true") {
@@ -24,7 +32,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (error: unknown) {
     const message = clientErrorMessage(error, "Falha ao validar a sala.");
     const readable = !message || message === "{}" ? "Não foi possível concluir. Tente de novo." : message;
-    console.error("validate-room:", error);
+    logger.error("validate-room:", error);
     return res.status(httpErrorStatus(error)).json({ error: readable });
   }
 }
