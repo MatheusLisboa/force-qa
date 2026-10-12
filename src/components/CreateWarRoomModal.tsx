@@ -6,6 +6,12 @@ import { createWarRoom } from "../lib/services";
 import { SeverityLevel } from "../types";
 import { SquadSelect } from "./SquadSelect";
 import { SeverityPicker } from "./SeverityPicker";
+import {
+  GUEST_PERMISSION_LABEL,
+  ROOM_VISIBILITY_LABEL,
+  type GuestPermission,
+  type RoomVisibility,
+} from "../lib/roomAccess";
 
 interface CreateWarRoomModalProps {
   open: boolean;
@@ -34,6 +40,8 @@ export const CreateWarRoomModal: React.FC<CreateWarRoomModalProps> = ({
   const [periodEnd, setPeriodEnd] = useState("");
   const [description, setDescription] = useState("");
   const [severity, setSeverity] = useState<SeverityLevel>("medium");
+  const [visibility, setVisibility] = useState<RoomVisibility>("organization");
+  const [guestPermission, setGuestPermission] = useState<GuestPermission>("read");
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
 
@@ -62,6 +70,8 @@ export const CreateWarRoomModal: React.FC<CreateWarRoomModalProps> = ({
         createdBy,
         createdByName,
         organizationId,
+        visibility,
+        guestPermission,
       });
       setName("");
       setProject("");
@@ -69,6 +79,8 @@ export const CreateWarRoomModal: React.FC<CreateWarRoomModalProps> = ({
       setDescription("");
       setPeriodEnd("");
       setSeverity("medium");
+      setVisibility("organization");
+      setGuestPermission("read");
       onCreated(roomId);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Erro desconhecido.";
@@ -168,6 +180,37 @@ export const CreateWarRoomModal: React.FC<CreateWarRoomModalProps> = ({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="fq-label" htmlFor="new-room-visibility">Quem pode entrar</label>
+              <select
+                id="new-room-visibility"
+                className="fq-select"
+                value={visibility}
+                onChange={(e) => setVisibility(e.target.value as RoomVisibility)}
+              >
+                {(Object.keys(ROOM_VISIBILITY_LABEL) as RoomVisibility[]).map((key) => (
+                  <option key={key} value={key}>{ROOM_VISIBILITY_LABEL[key].label}</option>
+                ))}
+              </select>
+              <p className="mt-1 text-[11px] leading-relaxed text-neutral-500">{ROOM_VISIBILITY_LABEL[visibility].hint}</p>
+            </div>
+            <div>
+              <label className="fq-label" htmlFor="new-room-guest">Convidados</label>
+              <select
+                id="new-room-guest"
+                className="fq-select"
+                value={guestPermission}
+                onChange={(e) => setGuestPermission(e.target.value as GuestPermission)}
+              >
+                {(Object.keys(GUEST_PERMISSION_LABEL) as GuestPermission[]).map((key) => (
+                  <option key={key} value={key}>{GUEST_PERMISSION_LABEL[key].label}</option>
+                ))}
+              </select>
+              <p className="mt-1 text-[11px] leading-relaxed text-neutral-500">{GUEST_PERMISSION_LABEL[guestPermission].hint}</p>
+            </div>
           </div>
 
           <div>

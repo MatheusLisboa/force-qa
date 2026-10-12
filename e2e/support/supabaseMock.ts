@@ -1,5 +1,5 @@
 import type { Page, Route } from "@playwright/test";
-import { bugs, comments, notifications, orgUsers, projects, rooms, userRow, USER_ID } from "./fixtures";
+import { audit_events, bugs, comments, guestInvites, notifications, orgUsers, projects, roomMembers, rooms, userRow, USER_ID } from "./fixtures";
 
 const ORIGIN = "https://e2e.supabase.test";
 export const STORAGE_KEY = "sb-e2e-auth-token";
@@ -41,22 +41,36 @@ export interface MockOptions {
   profile?: Record<string, unknown>;
   /** Fazer as mutações (PATCH/POST) falharem com 400. */
   failWrites?: boolean;
+  /** A pessoa logada está como "somente leitura" na sala. */
+  memberReadOnly?: boolean;
+  /** Campos extras nas salas (visibility, guest_permission...). */
+  roomOverrides?: Record<string, unknown>;
+  /** Estado inicial do token de extração. */
+  exportToken?: { prefix: string; roomIds: string[] | null } | null;
 }
 
 export interface MockHandle {
   /** Requisições de escrita feitas ao REST, na ordem. */
   writes: Array<{ method: string; table: string; body: unknown }>;
+  /** Chamadas à API própria (/api/*), na ordem. */
+  api: Array<{ method: string; path: string; body: unknown }>;
 }
 
 const json = (route: Route, body: unknown, status = 200) =>
   route.fulfill({ status, contentType: "application/json", headers: { "access-control-allow-origin": "*" }, body: JSON.stringify(body) });
 
-function tableRows(table: string, profile: Record<string, unknown>): unknown[] {
+function tableRows(table: string, profile: Record<string, unknown>, options: MockOptions): unknown[] {
   switch (table) {
     case "users":
       return [profile, ...orgUsers.slice(1)];
     case "war_rooms":
-      return rooms;
+      return rooms.map((room) => ({ ...room, ...(options.roomOverrides ?? {}) }));
+    case "room_members":
+      return roomMembers.map((row) => (row.user_id === USER_ID ? { ...row, read_only: Boolean(options.memberReadOnly) } : row));
+    case "audit_events":
+      return audit_events;
+    case "room_guest_invites":
+      return guestInvites;
     case "bugs":
       return bugs;
     case "notifications":
@@ -70,11 +84,22 @@ function tableRows(table: string, profile: Record<string, unknown>): unknown[] {
   }
 }
 
+/** Aplica filtros `coluna=eq.valor` da query string (o suficiente para os fluxos testados). */
+function applyEqFilters(rows: unknown[], url: URL): unknown[] {
+  let out = rows;
+  url.searchParams.forEach((value, key) => {
+    if (!value.startsWith("eq.")) return;
+    const expected = value.slice(3);
+    out = out.filter((row) => String((row as Record<string, unknown>)[key]) === expected);
+  });
+  return out;
+}
+
 /** Simula Auth, REST e Realtime do Supabase para o app rodar sem backend. */
 export async function mockSupabase(page: Page, options: MockOptions = {}): Promise<MockHandle> {
   const { signedIn = true, failWrites = false } = options;
   const profile = userRow(options.profile);
-  const handle: MockHandle = { writes: [], };
+  const handle: MockHandle = { writes: [], api: [] };
 
   if (signedIn) {
     await page.addInitScript(
@@ -116,9 +141,7 @@ export async function mockSupabase(page: Page, options: MockOptions = {}): Promi
     }
 
     if (method === "GET" || method === "HEAD") {
-      let rows = tableRows(table, profile);
-      const eqId = url.searchParams.get("id");
-      if (eqId?.startsWith("eq.")) rows = rows.filter((row) => (row as { id?: string }).id === eqId.slice(3));
+      let rows = applyEqFilters(tableRows(table, profile, options), url);
       const wantsObject = (request.headers()["accept"] || "").includes("vnd.pgrst.object");
       if (wantsObject) {
         return rows.length
@@ -141,6 +164,11 @@ export async function mockSupabase(page: Page, options: MockOptions = {}): Promi
     }
     handle.writes.push({ method, table, body });
     if (failWrites) return json(route, { code: "42501", message: "permission denied", details: null, hint: null }, 403);
+    // supabase-js manda "Prefer: return=representation" quando o código encadeia .select() depois do update.
+    if (method === "PATCH" && (request.headers()["prefer"] || "").includes("return=representation")) {
+      const matched = applyEqFilters(tableRows(table, profile, options), url).map((row) => ({ ...(row as object), ...((body as object) ?? {}) }));
+      return json(route, matched);
+    }
     return route.fulfill({
       status: method === "POST" ? 201 : 204,
       contentType: "application/json",
@@ -173,7 +201,40 @@ export async function mockSupabase(page: Page, options: MockOptions = {}): Promi
     }
     return json(route, { error: "not found" }, 404);
   });
-  await page.route("**/api/**", (route) => json(route, { error: "mock" }, 404));
+  let exportToken = options.exportToken === undefined ? null : options.exportToken;
+  await page.route("**/api/**", async (route) => {
+    const request = route.request();
+    const { pathname, search } = new URL(request.url());
+    let body: unknown = null;
+    try {
+      body = request.postDataJSON();
+    } catch {
+      /* sem corpo */
+    }
+    handle.api.push({ method: request.method(), path: pathname + search, body });
+    if (pathname === "/api/admin/org-webhook" && search.includes("export-token")) {
+      const method = request.method();
+      if (method === "GET") {
+        return json(route, exportToken ? { configured: true, prefix: exportToken.prefix, createdAt: new Date().toISOString(), roomIds: exportToken.roomIds } : { configured: false, prefix: null, createdAt: null, roomIds: null });
+      }
+      if (method === "POST") {
+        const roomIds = (body as { roomIds?: string[] | null } | null)?.roomIds ?? null;
+        exportToken = { prefix: "fqex_abcd", roomIds };
+        return json(route, { token: "fqex_abcd_SEGREDO_COMPLETO", prefix: "fqex_abcd", roomIds });
+      }
+      if (method === "PUT") {
+        const roomIds = (body as { roomIds?: string[] | null } | null)?.roomIds ?? null;
+        if (exportToken) exportToken = { ...exportToken, roomIds };
+        return json(route, { ok: true, roomIds });
+      }
+      if (method === "DELETE") {
+        exportToken = null;
+        return json(route, { ok: true });
+      }
+    }
+    if (pathname === "/api/admin/org-webhook") return json(route, { url: "" });
+    return json(route, { error: "mock" }, 404);
+  });
 
   // Realtime (Phoenix channels v2): aceita joins e devolve "ok" com os bindings.
   await page.routeWebSocket(/e2e\.supabase\.test\/realtime\/v1\/websocket/, (ws) => {

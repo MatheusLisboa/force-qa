@@ -175,6 +175,42 @@ export const projects = [
   },
 ];
 
+export const audit_events = [
+  {
+    id: 3,
+    organization_id: ORG_ID,
+    actor_id: USER_ID,
+    actor_name: "Marina Souza",
+    action: "room.visibility_changed",
+    target_type: "room",
+    target_id: ROOM_WAR,
+    detail: { name: "Sprint 42: Checkout", from: "organization", to: "members" },
+    created_at: daysAgo(0, 1),
+  },
+  {
+    id: 2,
+    organization_id: ORG_ID,
+    actor_id: USER_ID,
+    actor_name: "Marina Souza",
+    action: "user.role_changed",
+    target_type: "user",
+    target_id: "44444444-4444-4444-4444-000000000002",
+    detail: { name: "Rafael Lima", from: "developer", to: "qa" },
+    created_at: daysAgo(1),
+  },
+  {
+    id: 1,
+    organization_id: ORG_ID,
+    actor_id: USER_ID,
+    actor_name: "Marina Souza",
+    action: "integration.export_token_rotated",
+    target_type: "organization",
+    target_id: ORG_ID,
+    detail: { rooms: 2 },
+    created_at: daysAgo(3),
+  },
+];
+
 export const orgUsers = [
   userRow(),
   userRow({ id: "44444444-4444-4444-4444-000000000002", name: "Rafael Lima", email: "rafael@acme.dev", role: "developer", squad: "Pagamentos", is_superadmin: false }),
@@ -205,4 +241,14 @@ export const comments = [
     text: "<img src=x onerror=window.__xss=1> [clique](javascript:window.__xss=1)",
     created_at: daysAgo(0, 2),
   },
+];
+
+export const guestInvites = [
+  { war_room_id: ROOM_WAR, token: "gst_FIXTURE_TOKEN_NAO_REAL_123456", expires_at: daysAgo(-6), created_at: daysAgo(1) },
+];
+
+export const roomMembers = [
+  { war_room_id: ROOM_WAR, user_id: orgUsers[0].id, read_only: false },
+  { war_room_id: ROOM_WAR, user_id: orgUsers[1].id, read_only: false },
+  { war_room_id: ROOM_WAR, user_id: orgUsers[2].id, read_only: false },
 ];

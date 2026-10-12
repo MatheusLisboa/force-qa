@@ -5,7 +5,7 @@
 -- Convidado realista: a API cria sem organização (migration 18). Fica fora do seed comum.
 INSERT INTO rls_test.ids VALUES ('guestN', 'a6000000-0000-4000-8000-000000000006');
 INSERT INTO auth.users (id, email) VALUES (rls_test.id('guestN'), 'guestN@teste.dev');
-INSERT INTO public.users (id, name, email, role, squad, is_guest) VALUES (rls_test.id('guestN'), 'Guest N', 'guestN@teste.dev', 'qa', 'Externo', true);
+INSERT INTO public.users (id, name, email, role, squad, is_guest) VALUES (rls_test.id('guestN'), 'Guest N', 'guestN@teste.dev', 'viewer', 'Externo', true);
 INSERT INTO public.room_members VALUES ('room-a1', rls_test.id('guestN')) ON CONFLICT DO NOTHING;
 
 -- ===== Isolamento de LEITURA entre organizações (qaA é da org A, membro da sala A1) =====
@@ -70,6 +70,9 @@ SELECT rls_test.expect_some('guestN', $q$update public.users set name = 'Guest N
 SELECT rls_test.expect_some('qaA', $q$update public.users set squad = 'Pagamentos 2', is_guest = false where id = rls_test.id('qaA')$q$, 'usuário comum regrava o perfil com is_guest igual');
 SELECT rls_test.expect_none('qaA', $q$update public.role_permissions set allowed = true where role = 'viewer'$q$, 'não altera a matriz de permissões');
 SELECT rls_test.expect_none('adminA', $q$update public.role_permissions set allowed = true where role = 'viewer'$q$, 'admin comum não altera a matriz (só superadmin)');
+SELECT rls_test.expect_msg('superadmin', $q$update public.role_permissions set allowed = false where role = 'admin' and capability = 'manage_users'$q$, 'O papel admin sempre', 'nem o superadmin tira permissão do papel admin');
+SELECT rls_test.expect_msg('superadmin', $q$delete from public.role_permissions where role = 'admin' and capability = 'write_cards'$q$, 'O papel admin sempre', 'nem apaga uma permissão do admin');
+SELECT rls_test.expect_msg('superadmin', $q$update public.role_permissions set allowed = true where role = 'admin' and capability = 'manage_users'$q$, 'ok', 'regravar o admin com tudo ligado continua permitido (a tela salva a matriz inteira)');
 
 -- ===== Falsificação de identidade =====
 SELECT rls_test.expect_none('qaA', $q$insert into public.bug_comments (id, bug_id, war_room_id, user_id, text) values ('cf', 'bug-a1', 'room-a1', rls_test.id('devA'), 'dito por outro')$q$, 'não comenta em nome de outra pessoa');
@@ -115,6 +118,88 @@ SELECT rls_test.expect_none('devA', $q$select 1 from public.organization_integra
 
 -- ===== Superadmin atravessa organizações (comportamento esperado e documentado) =====
 SELECT rls_test.expect_some('superadmin', $q$select 1 from public.war_rooms where id = 'room-b1'$q$, 'superadmin vê salas de qualquer org');
+
+-- ===== Último admin, papel por sala, convidado somente leitura, auditoria =====
+-- (Mutações em sequência: ficam depois das asserções de isolamento acima.)
+
+-- Último admin: orgB só tem adminB. Conferimos a MENSAGEM (last_admin), porque outro trigger
+-- (protect_user_role) também recusa com o mesmo SQLSTATE quando não há JWT de admin.
+SELECT rls_test.expect_msg('superadmin', $q$update public.users set role = 'viewer' where id = rls_test.id('adminB')$q$, 'last_admin', 'último admin: não pode ser rebaixado');
+SELECT rls_test.expect_msg('superadmin', $q$delete from public.users where id = rls_test.id('adminB')$q$, 'last_admin', 'último admin: não pode ser apagado');
+SELECT rls_test.expect_msg('service', $q$delete from public.users where id = rls_test.id('adminB')$q$, 'last_admin', 'último admin: nem a API (service_role) apaga');
+SELECT rls_test.expect_msg('superadmin', $q$update public.users set organization_id = rls_test.id('orgA') where id = rls_test.id('adminB')$q$, 'last_admin', 'último admin: não pode ser movido de organização');
+SELECT rls_test.expect_msg('superadmin', $q$update public.users set is_guest = true where id = rls_test.id('adminB')$q$, 'last_admin', 'último admin: não pode virar convidado');
+SELECT rls_test.expect_msg('adminB', $q$update public.users set role = 'viewer' where id = rls_test.id('adminB')$q$, 'last_admin', 'último admin: nem ele mesmo se rebaixa');
+SELECT rls_test.expect_msg('superadmin', $q$update public.users set name = 'Admin B (renomeado)' where id = rls_test.id('adminB')$q$, 'ok', 'último admin: editar o nome continua permitido');
+SELECT rls_test.expect_some('superadmin', $q$update public.users set role = 'admin' where id = rls_test.id('qaB')$q$, 'promover um segundo admin na orgB');
+SELECT rls_test.expect_msg('superadmin', $q$update public.users set role = 'qa' where id = rls_test.id('adminB')$q$, 'ok', 'com 2 admins, um pode ser rebaixado');
+SELECT rls_test.expect_msg('superadmin', $q$update public.users set role = 'qa' where id = rls_test.id('qaB')$q$, 'last_admin', 'e o que sobrou vira o último e fica protegido');
+
+-- Papel por sala: qaA vira somente leitura na sala A1 (só nela).
+UPDATE public.room_members SET read_only = true WHERE war_room_id = 'room-a1' AND user_id = rls_test.id('qaA');
+SELECT rls_test.expect_none('qaA', $q$insert into public.bugs (id, war_room_id, title, criticism, status, environment, type, created_by) values ('ro1', 'room-a1', 'x', 'low', 'new', 'dev', 'bug', rls_test.id('qaA'))$q$, 'somente leitura na sala: não cria card');
+SELECT rls_test.expect_none('qaA', $q$update public.bugs set title = 'mudou' where id = 'bug-a1'$q$, 'somente leitura na sala: não edita card');
+SELECT rls_test.expect_none('qaA', $q$insert into storage.objects (bucket_id, name) values ('evidence', 'room-a1/ro.png')$q$, 'somente leitura na sala: não envia arquivo');
+SELECT rls_test.expect_some('qaA', $q$insert into public.bug_comments (id, bug_id, war_room_id, user_id, text) values ('ro-c', 'bug-a1', 'room-a1', rls_test.id('qaA'), 'ainda comento')$q$, 'somente leitura na sala: ainda comenta');
+SELECT rls_test.expect_some('qaA', $q$select 1 from public.bugs where war_room_id = 'room-a1'$q$, 'somente leitura na sala: ainda lê');
+UPDATE public.room_members SET read_only = false WHERE war_room_id = 'room-a1' AND user_id = rls_test.id('qaA');
+SELECT rls_test.expect_some('qaA', $q$insert into public.bugs (id, war_room_id, title, criticism, status, environment, type, created_by) values ('ro2', 'room-a1', 'volta a escrever', 'low', 'new', 'dev', 'bug', rls_test.id('qaA'))$q$, 'sem a restrição volta a criar card');
+
+-- Quem pode alterar o "somente leitura" de alguém.
+SELECT rls_test.expect_some('qaA', $q$update public.room_members set read_only = true where war_room_id = 'room-a1' and user_id = rls_test.id('devA')$q$, 'quem convida (qa) restringe outro membro');
+SELECT rls_test.expect_none('devA', $q$update public.room_members set read_only = false where war_room_id = 'room-a1' and user_id = rls_test.id('devA')$q$, 'ninguém se libera sozinho');
+SELECT rls_test.expect_none('qaA', $q$update public.room_members set read_only = true where war_room_id = 'room-a1' and user_id = rls_test.id('qaA')$q$, 'nem altera a si mesmo');
+SELECT rls_test.expect_none('qaA', $q$update public.room_members set read_only = true where war_room_id = 'room-b1'$q$, 'não altera membros de sala de outra org');
+SELECT rls_test.expect_none('qaA', $q$update public.room_members set war_room_id = 'room-a2' where war_room_id = 'room-a1' and user_id = rls_test.id('devA')$q$, 'a linha não muda de sala');
+SELECT rls_test.expect_none('devA', $q$update public.room_members set read_only = true where war_room_id = 'room-a1' and user_id = rls_test.id('viewerA')$q$, 'dev (sem convidar) não restringe ninguém');
+SELECT rls_test.expect_some('adminA', $q$update public.room_members set read_only = false where war_room_id = 'room-a1' and user_id = rls_test.id('devA')$q$, 'admin da org libera');
+
+-- Convidado: sala nova nasce somente leitura/comentário.
+SELECT rls_test.expect_value((SELECT guest_permission FROM public.war_rooms WHERE id = 'room-a1'), 'read', 'sala nova: convidado nasce somente leitura');
+SELECT rls_test.expect_value((SELECT visibility FROM public.war_rooms WHERE id = 'room-a1'), 'organization', 'sala nova: visível à organização por padrão');
+SELECT rls_test.expect_none('guestA', $q$insert into public.bugs (id, war_room_id, title, criticism, status, environment, type, created_by) values ('g1', 'room-a1', 'convidado', 'low', 'new', 'dev', 'bug', rls_test.id('guestA'))$q$, 'convidado (sala read): não cria card');
+SELECT rls_test.expect_none('guestA', $q$update public.bugs set title = 'x' where id = 'bug-a1'$q$, 'convidado (sala read): não edita card');
+SELECT rls_test.expect_none('guestA', $q$insert into storage.objects (bucket_id, name) values ('evidence', 'room-a1/g.png')$q$, 'convidado (sala read): não envia arquivo');
+SELECT rls_test.expect_some('guestA', $q$insert into public.bug_comments (id, bug_id, war_room_id, user_id, text) values ('g-c', 'bug-a1', 'room-a1', rls_test.id('guestA'), 'convidado comenta')$q$, 'convidado (sala read): comenta');
+SELECT rls_test.expect_some('guestA', $q$select 1 from public.bugs where war_room_id = 'room-a1'$q$, 'convidado (sala read): lê');
+UPDATE public.war_rooms SET guest_permission = 'write' WHERE id = 'room-a1';
+SELECT rls_test.expect_some('guestA', $q$insert into public.bugs (id, war_room_id, title, criticism, status, environment, type, created_by) values ('g2', 'room-a1', 'convidado escreve', 'low', 'new', 'dev', 'bug', rls_test.id('guestA'))$q$, 'convidado (sala write): cria card');
+SELECT rls_test.expect_some('guestA', $q$update public.bugs set title = 'editado pelo convidado' where id = 'g2'$q$, 'convidado (sala write): edita o card que criou');
+SELECT rls_test.expect_none('guestA', $q$update public.bugs set title = 'sequestrado' where id = 'bug-a1'$q$, 'convidado (sala write): NÃO edita card de outra pessoa');
+SELECT rls_test.expect_none('guestA', $q$delete from public.bugs where id = 'bug-a1'$q$, 'convidado (sala write): NÃO apaga card de outra pessoa');
+SELECT rls_test.expect_none('guestA', $q$insert into public.bugs (id, war_room_id, title, criticism, status, environment, type, created_by) values ('g3', 'room-a2', 'sala sem acesso', 'low', 'new', 'dev', 'bug', rls_test.id('guestA'))$q$, 'convidado (sala write): não escreve em sala a que não foi convidado');
+SELECT rls_test.expect_some('guestA', $q$insert into storage.objects (bucket_id, name) values ('evidence', 'room-a1/g-ok.png')$q$, 'convidado (sala write): envia print para a sala');
+SELECT rls_test.expect_none('guestA', $q$update public.war_rooms set guest_permission = 'write' where id = 'room-a1'$q$, 'convidado não muda a própria permissão');
+SELECT rls_test.expect_none('qaA', $q$update public.war_rooms set guest_permission = 'write', visibility = 'members' where id = 'room-a1'$q$, 'membro comum não altera visibilidade/permissão da sala');
+SELECT rls_test.expect_some('adminA', $q$update public.war_rooms set visibility = 'members' where id = 'room-a1'$q$, 'admin muda a visibilidade da sala');
+SELECT rls_test.expect_none('adminA', $q$update public.war_rooms set visibility = 'publica' where id = 'room-a1'$q$, 'visibilidade inválida é recusada');
+SELECT rls_test.expect_none('adminA', $q$update public.war_rooms set guest_permission = 'admin' where id = 'room-a1'$q$, 'permissão de convidado inválida é recusada');
+
+-- Convite com validade.
+SELECT rls_test.expect_some('adminA', $q$update public.room_guest_invites set expires_at = now() + interval '7 days' where war_room_id = 'room-a1'$q$, 'admin define a validade do convite');
+SELECT rls_test.expect_none('devA', $q$update public.room_guest_invites set expires_at = null where war_room_id = 'room-a1'$q$, 'dev não altera a validade do convite');
+SELECT rls_test.expect_none('qaA', $q$update public.room_guest_invites set expires_at = null where war_room_id = 'room-b1'$q$, 'não altera convite de sala de outra org');
+
+-- Auditoria.
+SELECT rls_test.expect_some('adminA', $q$update public.users set role = 'dba' where id = rls_test.id('devA')$q$, 'admin muda o papel de devA');
+SELECT rls_test.expect_some('adminA', $q$select 1 from public.audit_events where action = 'user.role_changed' and target_id = rls_test.id('devA')::text$q$, 'auditoria: admin vê a mudança de papel na própria org');
+SELECT rls_test.expect_some('adminA', $q$select 1 from public.audit_events where action = 'room.visibility_changed' and target_id = 'room-a1'$q$, 'auditoria: mudança de visibilidade registrada');
+SELECT rls_test.expect_some('adminA', $q$select 1 from public.audit_events where action = 'room.member_read_only'$q$, 'auditoria: mudança de somente leitura registrada');
+SELECT rls_test.expect_some('adminA', $q$select 1 from public.audit_events where action = 'room.guest_invite_changed' and target_id = 'room-a1'$q$, 'auditoria: validade do convite registrada');
+SELECT rls_test.expect_none('adminA', $q$select 1 from public.audit_events where detail::text like '%token%'$q$, 'auditoria: nunca grava o token do convite');
+SELECT rls_test.expect_none('adminB', $q$select 1 from public.audit_events where organization_id = rls_test.id('orgA')$q$, 'auditoria: admin de outra org não vê');
+SELECT rls_test.expect_none('qaA', $q$select 1 from public.audit_events$q$, 'auditoria: qa (não admin) não vê');
+SELECT rls_test.expect_none('devA', $q$select 1 from public.audit_events$q$, 'auditoria: dev não vê');
+SELECT rls_test.expect_none('anon', $q$select 1 from public.audit_events$q$, 'auditoria: anon não vê');
+SELECT rls_test.expect_none('adminA', $q$insert into public.audit_events (organization_id, action) values (rls_test.id('orgA'), 'forjado')$q$, 'auditoria: nem admin grava evento falso');
+SELECT rls_test.expect_none('adminA', $q$delete from public.audit_events$q$, 'auditoria: nem admin apaga');
+SELECT rls_test.expect_none('adminA', $q$update public.audit_events set action = 'x'$q$, 'auditoria: nem admin edita');
+SELECT rls_test.expect_none('adminA', $q$select public.log_audit_event(rls_test.id('orgA'), null, 'x', 'forjado')$q$, 'auditoria: função de gravar não é chamável pelo cliente');
+SELECT rls_test.expect_some('superadmin', $q$select 1 from public.audit_events where organization_id = rls_test.id('orgA')$q$, 'auditoria: superadmin vê qualquer org');
+-- Ações da API (service_role, sem JWT) não são registradas pelo trigger: a API registra com o ator real.
+SELECT rls_test.record(
+  (SELECT count(*) FROM public.audit_events WHERE actor_id IS NULL) = 0,
+  'auditoria: nenhum evento sem ator (ações sem JWT são registradas pela API, com o ator real)');
 
 -- ===== Storage de evidências (bucket privado; a pasta = id da sala) =====
 INSERT INTO storage.buckets (id, name, public) VALUES ('evidence', 'evidence', false) ON CONFLICT DO NOTHING;

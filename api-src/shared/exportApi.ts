@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from "./auth";
 import { enforceRateLimit } from "./rateLimit";
+import { isRoomInExportScope, normalizeExportScope, type ExportScope } from "../../src/lib/exportScope";
 import { appRedirectTo } from "./appUrl";
 import { extractExportToken, hashExportToken, hashesMatch } from "../../src/lib/exportToken";
 import { throwIfExportTokenSqlMissing } from "./exportTokenStore";
@@ -44,7 +45,7 @@ async function assertExportRateLimit(key: string): Promise<void> {
 export async function requireExportOrganization(headers: {
   authorization?: string | string[];
   "x-api-key"?: string | string[];
-}): Promise<{ organizationId: string }> {
+}): Promise<{ organizationId: string; roomIds: ExportScope }> {
   const token = extractExportToken(headerValue(headers.authorization), headerValue(headers["x-api-key"]));
   const presentedHash = hashExportToken(token);
   await assertExportRateLimit(presentedHash);
@@ -52,7 +53,7 @@ export async function requireExportOrganization(headers: {
   const admin = getSupabaseAdmin();
   const { data, error } = await admin
     .from("organization_integrations")
-    .select("organization_id, export_token_hash")
+    .select("organization_id, export_token_hash, export_room_ids")
     .eq("export_token_hash", presentedHash)
     .maybeSingle();
   if (error) throwIfExportTokenSqlMissing(error);
@@ -60,7 +61,7 @@ export async function requireExportOrganization(headers: {
   if (!data?.organization_id || !hashesMatch(presentedHash, storedHash)) {
     throw Object.assign(new Error("Token inválido."), { status: 401 });
   }
-  return { organizationId: data.organization_id as string };
+  return { organizationId: data.organization_id as string, roomIds: normalizeExportScope(data.export_room_ids) };
 }
 
 const ROOM_SELECT = "id, name, room_type, status, project, organization_id";
@@ -106,16 +107,19 @@ async function signExportAttachments(
   });
 }
 
-export async function listExportRooms(organizationId: string): Promise<{
+export async function listExportRooms(organizationId: string, scope: ExportScope = null): Promise<{
   organizationId: string;
   rooms: ExportRoom[];
 }> {
+  if (scope && scope.length === 0) return { organizationId, rooms: [] };
   const admin = getSupabaseAdmin();
-  const { data, error } = await admin
+  let request = admin
     .from("war_rooms")
     .select(ROOM_SELECT)
     .eq("organization_id", organizationId)
     .order("name", { ascending: true });
+  if (scope) request = request.in("id", scope);
+  const { data, error } = await request;
   if (error) throw error;
   return {
     organizationId,
@@ -125,7 +129,8 @@ export async function listExportRooms(organizationId: string): Promise<{
 
 export async function listExportCards(
   organizationId: string,
-  query: unknown
+  query: unknown,
+  scope: ExportScope = null
 ): Promise<{
   room: ExportRoom;
   cards: ExportCard[];
@@ -133,6 +138,10 @@ export async function listExportCards(
   page: { limit: number; offset: number; count: number; hasMore: boolean };
 }> {
   const parsed = parseExportCardQuery(query);
+  // Fora do escopo do token responde igual a "não existe": não revela que a sala existe.
+  if (!isRoomInExportScope(parsed.roomId, scope)) {
+    throw Object.assign(new Error("Sala não encontrada."), { status: 404 });
+  }
   const admin = getSupabaseAdmin();
   const { data: room, error: roomError } = await admin
     .from("war_rooms")

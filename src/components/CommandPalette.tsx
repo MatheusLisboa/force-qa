@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Building2, Inbox, Keyboard, LayoutGrid, LogOut, Moon, Plug, Shield, Sun, Users, Kanban, Columns3 } from "lucide-react";
+import { Building2, History, Inbox, Keyboard, LayoutGrid, LogOut, Moon, Plug, Shield, Sun, Users, Kanban, Columns3 } from "lucide-react";
 import { useModalA11y } from "../hooks/useModalA11y";
 import { rankBy } from "../lib/search";
 import type { SpaceRow } from "../lib/spaces";
+import type { AdminPagePath } from "../lib/routes";
 
 export interface PaletteCommand {
   id: string;
@@ -153,7 +154,7 @@ export function buildPaletteCommands(args: {
   go: {
     dashboard: () => void;
     inbox: () => void;
-    admin: (path: "/admin/board-views" | "/admin/users" | "/admin/integrations" | "/admin/organizations" | "/admin/permissions") => void;
+    admin: (path: AdminPagePath) => void;
     room: (roomId: string) => void;
   };
   toggleTheme: () => void;
@@ -165,7 +166,10 @@ export function buildPaletteCommands(args: {
     { id: "go-dashboard", group: "Ir para", label: "Painel de salas", icon: <LayoutGrid className="h-4 w-4" />, run: go.dashboard },
     { id: "go-inbox", group: "Ir para", label: "Meus cards (Inbox)", icon: <Inbox className="h-4 w-4" />, run: go.inbox },
   ];
-  if (args.canUsers) nav.push({ id: "go-users", group: "Ir para", label: "Usuários", icon: <Users className="h-4 w-4" />, run: () => go.admin("/admin/users") });
+  if (args.canUsers) {
+    nav.push({ id: "go-users", group: "Ir para", label: "Usuários", icon: <Users className="h-4 w-4" />, run: () => go.admin("/admin/users") });
+    nav.push({ id: "go-audit", group: "Ir para", label: "Auditoria", keywords: "histórico log quem mudou", icon: <History className="h-4 w-4" />, run: () => go.admin("/admin/audit") });
+  }
   if (args.canViews) nav.push({ id: "go-views", group: "Ir para", label: "Visões dos boards", icon: <Columns3 className="h-4 w-4" />, run: () => go.admin("/admin/board-views") });
   if (args.canIntegrations) nav.push({ id: "go-integrations", group: "Ir para", label: "Integrações", icon: <Plug className="h-4 w-4" />, run: () => go.admin("/admin/integrations") });
   if (args.canOrgs) {

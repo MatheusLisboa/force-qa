@@ -20,6 +20,8 @@ interface CreateBugModalProps {
   open: boolean;
   roomId: string;
   existingBugs: Pick<Bug, "id" | "title" | "description">[];
+  /** Pode criar nesta sala (papel + somente leitura + regra do convidado). */
+  canWrite?: boolean;
   presetType?: BugType;
   onClose: () => void;
 }
@@ -28,6 +30,7 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
   open,
   roomId,
   existingBugs,
+  canWrite,
   presetType = "bug",
   onClose,
 }) => {
@@ -125,7 +128,7 @@ export const CreateBugModal: React.FC<CreateBugModalProps> = ({
     setFormSubmitting(true);
     setFormError("");
     try {
-      if (!canWriteBugs(profile?.role, profile?.isSuperadmin, profile?.isGuest)) {
+      if (!(canWrite ?? canWriteBugs(profile?.role, profile?.isSuperadmin, profile?.isGuest))) {
         throw new Error("Observadores não podem criar cards.");
       }
 

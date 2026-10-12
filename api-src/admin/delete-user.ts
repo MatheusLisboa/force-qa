@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { adminDeleteUser } from "../shared/adminUsers";
 import { httpErrorStatus, readJsonBody, requireAdmin } from "../shared/auth";
+import { logAudit } from "../shared/audit";
 import { logger } from "../shared/logger";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -12,10 +13,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const actor = await requireAdmin(req.headers.authorization);
     const body = readJsonBody(req.body);
-    await adminDeleteUser(String(body.userId || ""), {
+    const removed = await adminDeleteUser(String(body.userId || ""), {
       id: actor.user.id,
       organizationId: actor.organizationId,
       isSuperadmin: actor.isSuperadmin,
+    });
+    await logAudit({
+      organizationId: removed.organizationId,
+      actorId: actor.user.id,
+      actorName: actor.name,
+      action: "user.deleted",
+      targetType: "user",
+      targetId: String(body.userId || ""),
+      detail: { name: removed.name, role: removed.role },
     });
     return res.status(200).json({ success: true });
   } catch (error: unknown) {

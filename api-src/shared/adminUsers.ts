@@ -269,10 +269,30 @@ async function stampAdoptedUser(
   }
 }
 
+const LAST_ADMIN_MESSAGE =
+  "Este é o último admin da organização. Promova outro admin antes de remover, rebaixar ou mover esta conta.";
+
+/** True se tirar `target` do papel de admin deixaria a organização sem nenhum admin. */
+async function isLastAdmin(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  target: { id: string; role?: string | null; organization_id?: string | null; is_guest?: boolean | null }
+): Promise<boolean> {
+  if (target.role !== "admin" || target.is_guest || !target.organization_id) return false;
+  const { data, error } = await admin
+    .from("users")
+    .select("id, is_guest")
+    .eq("organization_id", target.organization_id)
+    .eq("role", "admin")
+    .neq("id", target.id);
+  if (error) throw error;
+  // Mesma regra do trigger protect_last_admin: convidado nunca conta como admin.
+  return (data || []).filter((user) => !user.is_guest).length === 0;
+}
+
 export async function adminDeleteUser(
   userId: string,
   actor: { id: string; organizationId: string; isSuperadmin: boolean }
-): Promise<void> {
+): Promise<{ name: string; role: string; organizationId: string | null }> {
   if (!userId) {
     throw Object.assign(new Error("ID do usuário é obrigatório."), { status: 400 });
   }
@@ -283,7 +303,7 @@ export async function adminDeleteUser(
   const admin = getSupabaseAdmin();
   const { data: target, error: lookupError } = await admin
     .from("users")
-    .select("id, organization_id, is_superadmin")
+    .select("id, name, role, is_guest, organization_id, is_superadmin")
     .eq("id", userId)
     .maybeSingle();
   if (lookupError) throw lookupError;
@@ -297,15 +317,24 @@ export async function adminDeleteUser(
     throw Object.assign(new Error("Este usuário pertence a outra organização."), { status: 403 });
   }
 
+  if (await isLastAdmin(admin, target)) {
+    throw Object.assign(new Error(LAST_ADMIN_MESSAGE), { status: 409 });
+  }
+
   const { error } = await admin.auth.admin.deleteUser(userId);
   if (error) throw error;
+  return {
+    name: String(target.name || ""),
+    role: String(target.role || ""),
+    organizationId: (target.organization_id as string | null) ?? null,
+  };
 }
 
 export async function adminMoveUser(params: {
   isSuperadmin: boolean;
   userId: string;
   organizationId: string;
-}): Promise<void> {
+}): Promise<{ changed: boolean; from: string; to: string }> {
   if (!params.isSuperadmin) {
     throw Object.assign(new Error("Apenas o superadmin pode mover usuários entre organizações."), {
       status: 403,
@@ -330,7 +359,7 @@ export async function adminMoveUser(params: {
 
   const { data: target, error: lookupError } = await admin
     .from("users")
-    .select("id, organization_id, is_superadmin")
+    .select("id, role, is_guest, organization_id, is_superadmin")
     .eq("id", userId)
     .maybeSingle();
   if (lookupError) throw wrapThrownError(lookupError, "Falha ao localizar o usuário.");
@@ -339,7 +368,10 @@ export async function adminMoveUser(params: {
   }
 
   const currentOrg = resolveOrganizationId(target.organization_id);
-  if (currentOrg === organizationId) return;
+  if (currentOrg === organizationId) return { changed: false, from: currentOrg, to: organizationId };
+  if (await isLastAdmin(admin, target)) {
+    throw Object.assign(new Error(LAST_ADMIN_MESSAGE), { status: 409 });
+  }
 
   const { error: moveError } = await admin
     .from("users")
@@ -354,7 +386,7 @@ export async function adminMoveUser(params: {
   if (memberError) throw wrapThrownError(memberError, "Falha ao ler as salas do usuário.");
 
   const roomIds = (memberships || []).map((row) => row.war_room_id as string).filter(Boolean);
-  if (roomIds.length === 0) return;
+  if (roomIds.length === 0) return { changed: true, from: currentOrg, to: organizationId };
 
   const { data: foreignRooms, error: roomsError } = await admin
     .from("war_rooms")
@@ -364,7 +396,7 @@ export async function adminMoveUser(params: {
   if (roomsError) throw wrapThrownError(roomsError, "Falha ao filtrar as salas da organização anterior.");
 
   const toRemove = (foreignRooms || []).map((row) => row.id as string);
-  if (toRemove.length === 0) return;
+  if (toRemove.length === 0) return { changed: true, from: currentOrg, to: organizationId };
 
   const { error: detachError } = await admin
     .from("room_members")
@@ -372,4 +404,5 @@ export async function adminMoveUser(params: {
     .eq("user_id", userId)
     .in("war_room_id", toRemove);
   if (detachError) throw wrapThrownError(detachError, "Falha ao remover o acesso das salas da organização anterior.");
+  return { changed: true, from: currentOrg, to: organizationId };
 }

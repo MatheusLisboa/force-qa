@@ -1,5 +1,5 @@
 import React, { Suspense, useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { subscribeWarRoom, subscribeBugsByRoom, subscribeBoardViews, subscribeProjectByWarRoomId } from "../lib/supabase";
+import { subscribeWarRoom, subscribeBugsByRoom, subscribeBoardViews, subscribeProjectByWarRoomId, subscribeMyRoomMembership } from "../lib/supabase";
 import { fetchGuestInviteUrl, fetchUsersList, rotateGuestInviteUrl, updateBugField, updateWarRoom, deleteWarRoom } from "../lib/services";
 import { useToast } from "../context/ToastContext";
 import { useConfirm } from "../context/ConfirmContext";
@@ -21,7 +21,9 @@ import {
   displayColumnLabel,
 } from "../lib/kanbanColumns";
 import { RoomTypeBadge } from "./BugBadges";
-import { canAssignBugs, canInviteToRoom, canUseAi, canWriteBugs } from "../lib/permissions";
+import { canAssignBugs, canInviteToRoom, canUseAi } from "../lib/permissions";
+import { resolveRoomWrite } from "../lib/roomWrite";
+import { RoomAccessSettings } from "./RoomAccessSettings";
 import { applyRoomFilters, hasActiveRoomFilters, parseRoomFilters } from "../lib/roomFilters";
 import { runBulk, type BulkResult } from "../lib/bulkActions";
 import { MetricsPanel } from "./MetricsPanel";
@@ -31,6 +33,7 @@ import { roomPath, pushPath } from "../lib/routes";
 import {
   ArrowLeft,
   BarChart3,
+  Eye,
   Link2,
   Plus,
   Kanban,
@@ -73,13 +76,23 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
 }) => {
   const { profile } = useAuth();
   const canUseAiTools = canUseAi(profile?.role, profile?.isSuperadmin, profile?.isGuest);
-  const canWrite = canWriteBugs(profile?.role, profile?.isSuperadmin, profile?.isGuest);
+  const [myReadOnly, setMyReadOnly] = useState(false);
   const canInvite = canInviteToRoom(profile?.role, profile?.isSuperadmin, profile?.isGuest);
   const { toast } = useToast();
   const { confirm } = useConfirm();
   const [copied, setCopied] = useState(false);
   const [warRoom, setWarRoom] = useState<WarRoom | null>(null);
   const [bugs, setBugs] = useState<Bug[]>([]);
+
+  // Escrever NESTA sala: papel + "somente leitura" da sala + regra do convidado (o banco impõe; isto evita botões que falhariam).
+  const writeDecision = resolveRoomWrite({
+    role: profile?.role,
+    isSuperadmin: profile?.isSuperadmin,
+    isGuest: profile?.isGuest,
+    guestPermission: warRoom?.guestPermission,
+    memberReadOnly: myReadOnly,
+  });
+  const canWrite = writeDecision.canWrite;
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"kanban" | "ai_report" | "metrics">("kanban");
   const [isBugModalOpen, setIsBugModalOpen] = useState(false);
@@ -333,6 +346,11 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
       unsubscribeBugs();
     };
   }, [roomId]);
+
+  useEffect(() => {
+    if (!profile?.id) return;
+    return subscribeMyRoomMembership(roomId, profile.id, (membership) => setMyReadOnly(Boolean(membership?.readOnly)));
+  }, [roomId, profile?.id]);
 
   useEffect(() => {
     const unsub = subscribeProjectByWarRoomId(roomId, (row) => {
@@ -671,13 +689,17 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
               <span className="fq-action-label">Meus cards</span>
             </button>
           )}
-          {canWrite && (
-            <button onClick={() => openCreateCardModal()} className="fq-btn-primary text-sm" title="Novo card (N)">
-              <Plus className="w-4 h-4" />
-              <span className="sm:hidden">Novo</span>
-              <span className="fq-action-label">Novo card</span>
-            </button>
-          )}
+          <button
+            onClick={() => canWrite && openCreateCardModal()}
+            className="fq-btn-primary text-sm"
+            title={canWrite ? "Novo card (N)" : writeDecision.reason ?? "Sem permissão"}
+            disabled={!canWrite}
+            aria-describedby={canWrite ? undefined : "room-readonly-notice"}
+          >
+            <Plus className="w-4 h-4" />
+            <span className="sm:hidden">Novo</span>
+            <span className="fq-action-label">Novo card</span>
+          </button>
           {canManageThisRoom && (
             <button
               type="button"
@@ -782,9 +804,9 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
                   onClick={() => {
                     void (async () => {
                       try {
-                        const url = await rotateGuestInviteUrl(roomId);
+                        const url = await rotateGuestInviteUrl(roomId, window.location.origin, 7);
                         await navigator.clipboard.writeText(url);
-                        toast("Convite renovado e copiado. O link antigo deixa de funcionar.", { kind: "success" });
+                        toast("Convite renovado e copiado, válido por 7 dias. O link antigo deixa de funcionar.", { kind: "success" });
                       } catch (err) {
                         toast(err instanceof Error ? err.message : "Não foi possível renovar o convite.", { kind: "error" });
                       } finally {
@@ -802,6 +824,18 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
           </div>
         </div>
       </div>
+
+      {!canWrite && (
+        <div
+          id="room-readonly-notice"
+          role="note"
+          data-testid="readonly-notice"
+          className="flex items-start gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-300"
+        >
+          <Eye className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+          <span><strong className="font-semibold">Modo leitura.</strong> {writeDecision.reason}</span>
+        </div>
+      )}
 
       {activeTab !== "kanban" && (
         <div className="flex items-center justify-between rounded-lg border border-white/[0.06] px-3 py-2">
@@ -899,6 +933,13 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
             </button>
           </div>
           )}
+
+          <RoomAccessSettings
+            roomId={roomId}
+            warRoom={warRoom}
+            canEdit={profile?.role === "admin" || Boolean(profile?.isSuperadmin) || warRoom.createdBy === profile?.id}
+            canManageInvite={canInvite}
+          />
 
           {onOpenIntegrations && (
             <button type="button" className="fq-btn-secondary text-xs py-1.5" onClick={onOpenIntegrations}>
@@ -1105,6 +1146,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
             columns={kanbanColumns}
             bugsByColumn={bugsByColumn}
             role={profile?.role}
+            canWrite={canWrite}
             isCoarsePointer={isCoarsePointer}
             selectedBugId={selectedBug?.id}
             onDragStart={handleDragStart}
@@ -1220,6 +1262,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
               open={isBugModalOpen}
               roomId={roomId}
               existingBugs={bugs}
+              canWrite={canWrite}
               presetType={createPresetType}
               onClose={() => setIsBugModalOpen(false)}
             />
@@ -1231,6 +1274,7 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
             <BugDetailModal
               bug={selectedBug}
               roomBugs={bugs}
+              canWrite={canWrite}
               onClose={closeSelectedBug}
             />
           )}

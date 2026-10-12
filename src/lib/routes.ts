@@ -105,7 +105,12 @@ export function adminPermissionsPath(): string {
   return "/admin/permissions";
 }
 
+export function adminAuditPath(): string {
+  return "/admin/audit";
+}
+
 export type AdminPagePath =
+  | "/admin/audit"
   | "/admin/board-views"
   | "/admin/users"
   | "/admin/integrations"

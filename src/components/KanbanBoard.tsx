@@ -3,7 +3,6 @@ import { Bug, KanbanColumn, UserRole } from "../types";
 import { BugTypeTag } from "./BugTypeTag";
 import { evidenceLabel, isImageEvidence } from "../lib/evidence";
 import { primaryAttachmentUrl } from "../lib/attachments";
-import { canWriteBugs } from "../lib/permissions";
 import { formatOpenAge, isSlaBreached } from "../lib/cardAge";
 import { displayColumnLabel, resolveBugColumnId } from "../lib/kanbanColumns";
 import { getSeverityConfig, getSeverityStripeClass } from "../lib/bugLabels";
@@ -13,6 +12,8 @@ interface KanbanBoardProps {
   columns: KanbanColumn[];
   bugsByColumn: Record<string, Bug[]>;
   role?: UserRole | string | null;
+  /** Pode criar/mover cards NESTA sala (papel + somente leitura + regra do convidado). */
+  canWrite: boolean;
   isCoarsePointer: boolean;
   onDragStart: (e: React.DragEvent, bugId: string) => void;
   onDragOver: (e: React.DragEvent) => void;
@@ -29,6 +30,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   columns,
   bugsByColumn,
   role,
+  canWrite,
   isCoarsePointer,
   onDragStart,
   onDragOver,
@@ -39,7 +41,6 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   bulkSelectedIds,
   onToggleBulk,
 }) => {
-  const canWrite = canWriteBugs(role);
   const canDrag = canWrite && !isCoarsePointer;
   const boardRef = useRef<HTMLDivElement>(null);
   const [announcement, setAnnouncement] = useState("");
@@ -224,7 +225,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                         </span>
                       </div>
 
-                      {canWriteBugs(role) && isCoarsePointer && (
+                      {canWrite && isCoarsePointer && (
                         <select
                           className="mt-2 w-full fq-select !text-[12px] !py-1"
                           value={resolveBugColumnId(bug, columns)}

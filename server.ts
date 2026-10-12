@@ -3,24 +3,25 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import { generateExecutiveReportForRoom } from "./api-src/ai/generate-report";
-import { clientErrorMessage, getSupabaseAdmin, httpErrorStatus, requireAdmin, requireAiUser, requireCapability, requireIntegrationsManager, requireSuperadmin, requireUser } from "./api-src/shared/auth";
-import { adminCreateUser, adminDeleteUser, adminMoveUser } from "./api-src/shared/adminUsers";
-import { createOrganizationWithAdmin, resolveActorOrganizationId } from "./api-src/shared/organizations";
-import { appRedirectTo } from "./api-src/shared/appUrl";
-import { assertActorCanAccessRoom, inviteToRoom, joinAsGuest, joinRoom, validateGuestRoom } from "./api-src/shared/rooms";
+import { clientErrorMessage, getSupabaseAdmin, httpErrorStatus, requireAiUser, requireCapability, requireSuperadmin } from "./api-src/shared/auth";
+
+import { createOrganizationWithAdmin } from "./api-src/shared/organizations";
+
+import { assertActorCanAccessRoom } from "./api-src/shared/rooms";
 import { detectDuplicate, suggestBugFields } from "./api-src/shared/geminiBugs";
-import { dispatchRoomWebhook, getOrgWebhookUrl, setOrgWebhookUrl, type WebhookKind } from "./api-src/shared/webhooks";
-import {
-  applyExportCors,
-  listExportCards,
-  listExportRooms,
-  requireExportOrganization,
-} from "./api-src/shared/exportApi";
-import { getExportTokenMeta, revokeExportToken, rotateExportToken } from "./api-src/shared/exportTokenStore";
-import { canGrantAdminRole } from "./src/lib/permissions";
-import { wantsExportToken } from "./src/lib/vercelApiPath";
+import { dispatchRoomWebhook, type WebhookKind } from "./api-src/shared/webhooks";
+
 import { logger } from "./api-src/shared/logger";
-import { clientIp, enforceRateLimit } from "./api-src/shared/rateLimit";
+
+import createUserHandler from "./api-src/admin/create-user";
+import deleteUserHandler from "./api-src/admin/delete-user";
+import moveUserHandler from "./api-src/admin/move-user";
+import orgWebhookHandler from "./api-src/admin/org-webhook";
+import validateRoomHandler from "./api-src/guest/validate-room";
+import joinRoomHandler from "./api-src/rooms/join";
+import inviteRoomHandler from "./api-src/rooms/invite";
+import exportRoomsHandler from "./api-src/export/rooms";
+import exportCardsHandler from "./api-src/export/cards";
 
 dotenv.config();
 
@@ -34,66 +35,6 @@ function sendError(res: express.Response, error: unknown, fallback: string) {
   logger.error(fallback, error);
   res.status(httpErrorStatus(error)).json({ error: message });
 }
-
-async function handleOrgIntegrations(req: express.Request, res: express.Response) {
-  try {
-    const actor = await requireIntegrationsManager(req.headers.authorization);
-    const exportToken = wantsExportToken(req);
-    if (exportToken) {
-      if (req.method === "GET") {
-        res.json(await getExportTokenMeta(actor.organizationId));
-        return;
-      }
-      if (req.method === "DELETE") {
-        await revokeExportToken(actor.organizationId);
-        res.json({ ok: true });
-        return;
-      }
-      if (req.method === "POST") {
-        res.json(await rotateExportToken(actor.organizationId));
-        return;
-      }
-      res.status(405).json({ error: "Method not allowed" });
-      return;
-    }
-    if (req.method === "GET") {
-      const url = await getOrgWebhookUrl(actor.organizationId);
-      res.json({ url: url || "" });
-      return;
-    }
-    if (req.method === "POST") {
-      const url = req.body?.url === null || req.body?.url === undefined ? "" : String(req.body.url);
-      await setOrgWebhookUrl(actor.organizationId, url);
-      res.json({ ok: true });
-      return;
-    }
-    res.status(405).json({ error: "Method not allowed" });
-  } catch (error) {
-    sendError(res, error, "Falha ao configurar a integração.");
-  }
-}
-
-app.post("/api/admin/create-user", async (req, res) => {
-  try {
-    const actor = await requireAdmin(req.headers.authorization);
-    const { name, email, password, role, squad, organizationId: requestedOrgId } = req.body;
-    if (role === "admin" && !canGrantAdminRole(actor.role, actor.isSuperadmin)) {
-      throw Object.assign(new Error("Apenas um admin da org pode criar outro admin."), { status: 403 });
-    }
-    const organizationId = await resolveActorOrganizationId(actor, requestedOrgId);
-    const userId = await adminCreateUser({
-      name,
-      email,
-      password,
-      role,
-      squad,
-      organizationId,
-    });
-    res.json({ success: true, userId });
-  } catch (error) {
-    sendError(res, error, "Falha ao criar usuário.");
-  }
-});
 
 app.post("/api/admin/create-organization", async (req, res) => {
   try {
@@ -111,92 +52,30 @@ app.post("/api/admin/create-organization", async (req, res) => {
   }
 });
 
-app.post("/api/admin/delete-user", async (req, res) => {
-  try {
-    const actor = await requireAdmin(req.headers.authorization);
-    await adminDeleteUser(String(req.body?.userId || ""), {
-      id: actor.user.id,
-      organizationId: actor.organizationId,
-      isSuperadmin: actor.isSuperadmin,
-    });
-    res.json({ success: true });
-  } catch (error) {
-    sendError(res, error, "Falha ao remover usuário.");
-  }
-});
+// Rotas que existem na Vercel: o servidor local usa os MESMOS handlers (api-src), então não há duas versões
+// da regra de negócio para ficar fora de sincronia.
+type Handler = (req: any, res: any) => unknown;
+const mount = (method: "get" | "post" | "put" | "delete" | "options", path: string, handler: Handler) =>
+  app[method](path, (req, res) => void handler(req, res));
 
-app.post("/api/admin/move-user", async (req, res) => {
-  try {
-    const actor = await requireSuperadmin(req.headers.authorization);
-    await adminMoveUser({
-      isSuperadmin: actor.isSuperadmin,
-      userId: String(req.body?.userId || ""),
-      organizationId: String(req.body?.organizationId || ""),
-    });
-    res.json({ success: true });
-  } catch (error) {
-    sendError(res, error, "Falha ao mover o usuário.");
-  }
-});
-
-app.post("/api/guest/validate-room", async (req, res) => {
-  try {
-    await enforceRateLimit(getSupabaseAdmin(), "validate-room", clientIp(req.headers), {
-      windowMs: 60 * 1000,
-      max: 30,
-      message: "Muitas tentativas. Aguarde um minuto e tente de novo.",
-    });
-    const input = String(req.body?.input || req.body?.warRoomName || "");
-    if (req.body?.join === true || req.body?.join === "true") {
-      res.json(
-        await joinAsGuest({
-          input,
-          name: String(req.body?.name || ""),
-          squad: String(req.body?.squad || ""),
-        })
-      );
-      return;
-    }
-    res.json(await validateGuestRoom(input));
-  } catch (error) {
-    sendError(res, error, "Falha ao validar a sala.");
-  }
-});
-
-app.post("/api/rooms/join", async (req, res) => {
-  try {
-    const authed = await requireUser(req.headers.authorization);
-    const roomId = await joinRoom(
-      authed.user.id,
-      String(req.body?.input || req.body?.roomId || ""),
-      authed.isGuest,
-      { organizationId: authed.organizationId, isSuperadmin: authed.isSuperadmin }
-    );
-    res.json({ roomId });
-  } catch (error) {
-    sendError(res, error, "Falha ao entrar na sala.");
-  }
-});
-
-app.post("/api/rooms/invite", async (req, res) => {
-  try {
-    const authed = await requireUser(req.headers.authorization);
-    const result = await inviteToRoom({
-      actorId: authed.user.id,
-      actorRole: authed.role,
-      actorOrganizationId: authed.organizationId,
-      isSuperadmin: authed.isSuperadmin,
-      isGuest: authed.isGuest,
-      roomId: String(req.body?.roomId || ""),
-      email: String(req.body?.email || ""),
-      role: String(req.body?.role || ""),
-      redirectTo: appRedirectTo(),
-    });
-    res.json(result);
-  } catch (error) {
-    sendError(res, error, "Falha ao enviar convite.");
-  }
-});
+mount("post", "/api/admin/create-user", createUserHandler);
+mount("post", "/api/admin/delete-user", deleteUserHandler);
+mount("post", "/api/admin/move-user", moveUserHandler);
+mount("post", "/api/guest/validate-room", validateRoomHandler);
+mount("post", "/api/rooms/join", joinRoomHandler);
+mount("post", "/api/rooms/invite", inviteRoomHandler);
+for (const method of ["get", "post", "delete"] as const) mount(method, "/api/admin/org-webhook", orgWebhookHandler);
+// O token de extração usa o mesmo handler (a Vercel reescreve esta rota para org-webhook?tab=export-token).
+for (const method of ["get", "post", "put", "delete"] as const) {
+  app[method]("/api/admin/org-export-token", (req, res) => {
+    req.query.tab = "export-token";
+    return void orgWebhookHandler(req as any, res as any);
+  });
+}
+for (const path of ["/api/export/rooms", "/api/export/cards"]) {
+  mount("get", path, path.endsWith("rooms") ? exportRoomsHandler : exportCardsHandler);
+  mount("options", path, path.endsWith("rooms") ? exportRoomsHandler : exportCardsHandler);
+}
 
 app.post("/api/ai/suggest-bug-fields", async (req, res) => {
   try {
@@ -220,52 +99,6 @@ app.post("/api/ai/detect-duplicate", async (req, res) => {
   } catch (error) {
     sendError(res, error, "Failed to detect duplicates");
   }
-});
-
-app.get("/api/admin/org-webhook", handleOrgIntegrations);
-app.post("/api/admin/org-webhook", handleOrgIntegrations);
-app.delete("/api/admin/org-webhook", handleOrgIntegrations);
-app.get("/api/admin/org-export-token", (req, res) => {
-  req.query.tab = "export-token";
-  return handleOrgIntegrations(req, res);
-});
-app.post("/api/admin/org-export-token", (req, res) => {
-  req.query.tab = "export-token";
-  return handleOrgIntegrations(req, res);
-});
-app.delete("/api/admin/org-export-token", (req, res) => {
-  req.query.tab = "export-token";
-  return handleOrgIntegrations(req, res);
-});
-
-app.get("/api/export/rooms", async (req, res) => {
-  applyExportCors(res);
-  try {
-    const { organizationId } = await requireExportOrganization(req.headers);
-    res.json(await listExportRooms(organizationId));
-  } catch (error) {
-    sendError(res, error, "Falha ao listar salas.");
-  }
-});
-
-app.get("/api/export/cards", async (req, res) => {
-  applyExportCors(res);
-  try {
-    const { organizationId } = await requireExportOrganization(req.headers);
-    res.json(await listExportCards(organizationId, req.query));
-  } catch (error) {
-    sendError(res, error, "Falha ao listar cards.");
-  }
-});
-
-app.options("/api/export/rooms", (_req, res) => {
-  applyExportCors(res);
-  res.status(204).end();
-});
-
-app.options("/api/export/cards", (_req, res) => {
-  applyExportCors(res);
-  res.status(204).end();
 });
 
 app.post("/api/webhooks/dispatch", async (req, res) => {

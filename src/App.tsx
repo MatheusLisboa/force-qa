@@ -10,7 +10,7 @@ import { subscribeNotifications } from "./lib/supabase";
 import { AppNotification } from "./types";
 import { ToastProvider } from "./context/ToastContext";
 import { ConfirmProvider } from "./context/ConfirmContext";
-import { adminBoardViewsPath, adminIntegrationsPath, adminOrganizationsPath, adminPermissionsPath, adminUsersPath, dashboardPath, inboxPath, pushPath, roomPath } from "./lib/routes";
+import { adminBoardViewsPath, adminIntegrationsPath, adminAuditPath, adminOrganizationsPath, adminPermissionsPath, adminUsersPath, dashboardPath, inboxPath, pushPath, roomPath } from "./lib/routes";
 import { parsePulseKind, PulseKind } from "./lib/dashboardPulse";
 import { formatRoleLabel } from "./lib/format";
 import { SquadSelect } from "./components/SquadSelect";
@@ -18,6 +18,7 @@ import { canManageIntegrations, canManageOrganizations, canManageUsers, canManag
 import { RoomRail } from "./components/RoomRail";
 import { useOrgSpaces } from "./hooks/useOrgSpaces";
 import { lazyNamed } from "./lib/lazyNamed";
+import type { AdminPagePath } from "./lib/routes";
 import { applyRoomFilters, parseRoomFilters } from "./lib/roomFilters";
 const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const DesignSystemPage = lazyNamed(() => import("./components/DesignSystemPage"), "DesignSystemPage");
@@ -36,6 +37,7 @@ const AdminBoardViews = lazyNamed(() => import("./components/AdminBoardViews"), 
 const AdminUsersPage = lazyNamed(() => import("./components/AdminUsersPage"), "AdminUsersPage");
 const AdminIntegrationsPage = lazyNamed(() => import("./components/AdminIntegrationsPage"), "AdminIntegrationsPage");
 const AdminOrganizationsPage = lazyNamed(() => import("./components/AdminOrganizationsPage"), "AdminOrganizationsPage");
+const AdminAuditPage = lazyNamed(() => import("./components/AdminAuditPage"), "AdminAuditPage");
 const AdminPermissionsPage = lazyNamed(() => import("./components/AdminPermissionsPage"), "AdminPermissionsPage");
 const InboxPage = lazyNamed(() => import("./components/InboxPage"), "InboxPage");
 
@@ -45,7 +47,7 @@ function AppContent() {
   const [roomPulse, setRoomPulse] = useState<PulseKind>("all");
   const [focusBugId, setFocusBugId] = useState<string | null>(null);
   const [focusBugAt, setFocusBugAt] = useState(0);
-  const [adminPage, setAdminPage] = useState<"board-views" | "users" | "integrations" | "organizations" | "permissions" | null>(null);
+  const [adminPage, setAdminPage] = useState<"board-views" | "users" | "integrations" | "organizations" | "permissions" | "audit" | null>(null);
   const [adminProjectId, setAdminProjectId] = useState<string | null>(null);
   const [inboxOpen, setInboxOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -105,6 +107,11 @@ function AppContent() {
     }
     if (path === "/admin/permissions") {
       setAdminPage("permissions");
+      setAdminProjectId(null);
+      return;
+    }
+    if (path === "/admin/audit") {
+      setAdminPage("audit");
       setAdminProjectId(null);
       return;
     }
@@ -279,7 +286,7 @@ function AppContent() {
     pushPath(dashboardPath());
   };
 
-  const handleOpenAdminPage = (path: "/admin/board-views" | "/admin/users" | "/admin/integrations" | "/admin/organizations" | "/admin/permissions", projectId?: string) => {
+  const handleOpenAdminPage = (path: AdminPagePath, projectId?: string) => {
     setSelectedRoomId(null);
     setInboxOpen(false);
     setRailOpen(false);
@@ -305,6 +312,12 @@ function AppContent() {
       setAdminPage("permissions");
       setAdminProjectId(null);
       pushPath(adminPermissionsPath());
+      return;
+    }
+    if (path === "/admin/audit") {
+      setAdminPage("audit");
+      setAdminProjectId(null);
+      pushPath(adminAuditPath());
       return;
     }
     setAdminPage("board-views");
@@ -579,7 +592,9 @@ function AppContent() {
           )}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">
         <Suspense fallback={<PageSkeleton />}>
-        {adminPage === "permissions" && canManageOrganizations(profile?.isSuperadmin) ? (
+        {adminPage === "audit" && canManageUsers(profile?.role, profile?.isSuperadmin, profile?.isGuest) ? (
+          <AdminAuditPage onBack={handleBackToDashboard} />
+        ) : adminPage === "permissions" && canManageOrganizations(profile?.isSuperadmin) ? (
           <AdminPermissionsPage onBack={handleBackToDashboard} />
         ) : adminPage === "organizations" && canManageOrganizations(profile?.isSuperadmin) ? (
           <AdminOrganizationsPage onBack={handleBackToDashboard} />

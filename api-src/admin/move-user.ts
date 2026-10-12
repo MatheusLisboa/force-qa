@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { adminMoveUser } from "../shared/adminUsers";
 import { clientErrorMessage, httpErrorStatus, readJsonBody, requireSuperadmin } from "../shared/auth";
+import { logAudit } from "../shared/audit";
 import { logger } from "../shared/logger";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -12,11 +13,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const actor = await requireSuperadmin(req.headers.authorization);
     const body = readJsonBody(req.body);
-    await adminMoveUser({
+    const moved = await adminMoveUser({
       isSuperadmin: actor.isSuperadmin,
       userId: String(body.userId || ""),
       organizationId: String(body.organizationId || ""),
     });
+    if (moved.changed) {
+      await logAudit({
+        organizationId: moved.to,
+        actorId: actor.user.id,
+        actorName: actor.name,
+        action: "user.org_changed",
+        targetType: "user",
+        targetId: String(body.userId || ""),
+        detail: { from: moved.from, to: moved.to },
+      });
+    }
     return res.status(200).json({ success: true });
   } catch (error: unknown) {
     const message = clientErrorMessage(error, "Falha ao mover o usuário.");

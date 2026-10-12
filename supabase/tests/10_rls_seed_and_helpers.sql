@@ -35,6 +35,43 @@ BEGIN
   RETURN res;
 END $$;
 
+-- Executa como o service_role faria (sem JWT, ignorando RLS) e devolve "ok" ou "ERR:<sqlstate>".
+-- Serve para testar os triggers que valem também para a API.
+CREATE FUNCTION rls_test.as_service(stmt text) RETURNS text LANGUAGE plpgsql AS $$
+BEGIN
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  EXECUTE stmt;
+  RETURN 'ok';
+EXCEPTION WHEN OTHERS THEN
+  RETURN 'ERR:' || SQLSTATE;
+END $$;
+
+-- Como q(), mas devolve a MENSAGEM do erro ("ok" se não houve erro). who = 'service' roda sem JWT.
+-- Necessário quando mais de um trigger pode recusar com o mesmo SQLSTATE (P0001).
+CREATE FUNCTION rls_test.msg(who text, stmt text) RETURNS text LANGUAGE plpgsql AS $$
+DECLARE res text;
+BEGIN
+  PERFORM set_config('request.jwt.claim.sub', CASE WHEN who IN ('anon', 'service') THEN '' ELSE rls_test.id(who)::text END, true);
+  PERFORM set_config('request.jwt.claim.role', CASE WHEN who = 'anon' THEN 'anon' WHEN who = 'service' THEN 'service_role' ELSE 'authenticated' END, true);
+  IF who <> 'service' THEN
+    EXECUTE CASE WHEN who = 'anon' THEN 'SET LOCAL ROLE anon' ELSE 'SET LOCAL ROLE authenticated' END;
+  END IF;
+  BEGIN
+    EXECUTE stmt;
+    res := 'ok';
+  EXCEPTION WHEN OTHERS THEN
+    res := SQLERRM;
+  END;
+  RESET ROLE;
+  RETURN res;
+END $$;
+
+CREATE FUNCTION rls_test.expect_msg(who text, stmt text, p_prefix text, p_name text) RETURNS void LANGUAGE plpgsql AS $$
+DECLARE got text := rls_test.msg(who, stmt);
+BEGIN
+  PERFORM rls_test.record(got LIKE p_prefix || '%', who || ': ' || p_name, CASE WHEN got LIKE p_prefix || '%' THEN NULL ELSE 'esperado erro "' || p_prefix || '...", veio "' || left(got, 90) || '"' END);
+END $$;
+
 CREATE FUNCTION rls_test.record(p_ok boolean, p_name text, p_detail text DEFAULT NULL) RETURNS void LANGUAGE sql AS
   $$ INSERT INTO rls_test.results VALUES (p_ok, p_name, p_detail) $$;
 
@@ -90,7 +127,7 @@ INSERT INTO public.users (id, name, email, role, squad, organization_id, is_gues
   (rls_test.id('qaA'), 'QA A', 'qaA@teste.dev', 'qa', 'Pagamentos', rls_test.id('orgA'), false, false),
   (rls_test.id('devA'), 'Dev A', 'devA@teste.dev', 'developer', 'Pagamentos', rls_test.id('orgA'), false, false),
   (rls_test.id('viewerA'), 'Viewer A', 'viewerA@teste.dev', 'viewer', 'Pagamentos', rls_test.id('orgA'), false, false),
-  (rls_test.id('guestA'), 'Guest A', 'guestA@teste.dev', 'qa', 'Externo', rls_test.id('orgA'), true, false),
+  (rls_test.id('guestA'), 'Guest A', 'guestA@teste.dev', 'viewer', 'Externo', rls_test.id('orgA'), true, false),
   (rls_test.id('qaB'), 'QA B', 'qaB@teste.dev', 'qa', 'Mobile', rls_test.id('orgB'), false, false),
   (rls_test.id('adminB'), 'Admin B', 'adminB@teste.dev', 'admin', 'Mobile', rls_test.id('orgB'), false, false),
   (rls_test.id('superadmin'), 'Super', 'super@teste.dev', 'admin', 'Plataforma', public.default_organization_id(), false, true);

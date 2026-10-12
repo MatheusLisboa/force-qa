@@ -1,14 +1,16 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Mail, Search, UserPlus, X } from "lucide-react";
+import { Eye, Mail, Pencil, Search, UserPlus, X } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { useConfirm } from "../context/ConfirmContext";
 import { subscribeUsers } from "../lib/supabase";
 import {
   addRoomMember,
-  fetchRoomMemberIds,
+  fetchRoomMembers,
   inviteToRoom,
   removeRoomMember,
+  setRoomMemberReadOnly,
+  type RoomMemberAccess,
 } from "../lib/services";
 import { UserProfile, UserRole } from "../types";
 import { RoleBadge } from "./BugBadges";
@@ -29,7 +31,12 @@ export const RoomMembersPanel: React.FC<RoomMembersPanelProps> = ({ roomId }) =>
   const { toast } = useToast();
   const { confirm } = useConfirm();
   const [users, setUsers] = useState<UserProfile[]>([]);
-  const [memberIds, setMemberIds] = useState<string[]>([]);
+  const [memberAccess, setMemberAccess] = useState<RoomMemberAccess[]>([]);
+  const memberIds = useMemo(() => memberAccess.map((member) => member.userId), [memberAccess]);
+  const readOnlyIds = useMemo(
+    () => new Set(memberAccess.filter((member) => member.readOnly).map((member) => member.userId)),
+    [memberAccess]
+  );
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<UserRole>(DEFAULT_INVITE_ROLE);
   const [memberQuery, setMemberQuery] = useState("");
@@ -44,17 +51,17 @@ export const RoomMembersPanel: React.FC<RoomMembersPanelProps> = ({ roomId }) =>
 
   const reloadMembers = async () => {
     try {
-      setMemberIds(await fetchRoomMemberIds(roomId));
+      setMemberAccess(await fetchRoomMembers(roomId));
     } catch (err) {
-      logger.error("fetchRoomMemberIds:", err);
+      logger.error("fetchRoomMembers:", err);
     }
   };
 
   useEffect(() => {
     const unsub = subscribeUsers(setUsers);
-    void fetchRoomMemberIds(roomId)
-      .then(setMemberIds)
-      .catch((err) => logger.error("fetchRoomMemberIds:", err));
+    void fetchRoomMembers(roomId)
+      .then(setMemberAccess)
+      .catch((err) => logger.error("fetchRoomMembers:", err));
     return unsub;
   }, [roomId]);
 
@@ -138,6 +145,18 @@ export const RoomMembersPanel: React.FC<RoomMembersPanelProps> = ({ roomId }) =>
     }
   };
 
+  const isOrgAdmin = profile?.role === "admin" || Boolean(profile?.isSuperadmin);
+
+  const handleToggleReadOnly = async (userId: string, name: string, next: boolean) => {
+    try {
+      await setRoomMemberReadOnly(roomId, userId, next);
+      await reloadMembers();
+      toast(next ? `${name} agora só lê e comenta nesta sala.` : `${name} voltou a poder editar nesta sala.`, { kind: "success" });
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Falha ao alterar o acesso.", { kind: "error" });
+    }
+  };
+
   const handleRemove = async (userId: string, name: string) => {
     const ok = await confirm({
       title: "Remover da sala",
@@ -181,6 +200,31 @@ export const RoomMembersPanel: React.FC<RoomMembersPanelProps> = ({ roomId }) =>
                   </span>
                   <span className="text-[12px] text-neutral-200 max-w-[120px] truncate">{user.name}</span>
                   <RoleBadge role={user.role} />
+                  {readOnlyIds.has(user.id) && (
+                    <span className="fq-badge !text-[10px] border-amber-500/30 bg-amber-500/10 text-amber-400" data-testid={`readonly-badge-${user.id}`}>
+                      leitura
+                    </span>
+                  )}
+                  {user.id !== profile?.id && (isOrgAdmin || user.role !== "admin") && !user.isGuest && (
+                    <button
+                      type="button"
+                      onClick={() => void handleToggleReadOnly(user.id, user.name, !readOnlyIds.has(user.id))}
+                      className="fq-btn-icon !p-0.5"
+                      aria-pressed={readOnlyIds.has(user.id)}
+                      title={
+                        readOnlyIds.has(user.id)
+                          ? `Liberar ${user.name} para editar nesta sala`
+                          : `Deixar ${user.name} somente leitura nesta sala (só esta sala)`
+                      }
+                      aria-label={
+                        readOnlyIds.has(user.id)
+                          ? `Liberar ${user.name} para editar`
+                          : `Deixar ${user.name} somente leitura`
+                      }
+                    >
+                      {readOnlyIds.has(user.id) ? <Pencil className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => handleRemove(user.id, user.name)}

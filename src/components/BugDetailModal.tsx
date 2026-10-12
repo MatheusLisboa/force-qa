@@ -41,6 +41,8 @@ import { friendlyError } from "../lib/networkErrors";
 interface BugDetailModalProps {
   bug: Bug;
   roomBugs?: Pick<Bug, "id" | "title">[];
+  /** Pode editar nesta sala (papel + somente leitura + regra do convidado). Sem o prop, vale só o papel. */
+  canWrite?: boolean;
   onClose: () => void;
 }
 
@@ -53,7 +55,7 @@ const STATUS_VALUES: BugStatus[] = [
   "reopened",
 ];
 
-export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, roomBugs = [], onClose }) => {
+export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, roomBugs = [], canWrite, onClose }) => {
   const { profile } = useAuth();
   const { toast } = useToast();
   const { confirm } = useConfirm();
@@ -84,7 +86,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, roomBugs = 
   useModalA11y(true, onClose, dialogRef);
   useModalA11y(isFullscreenEvidence && !!fullscreenUrl, closeEvidenceFullscreen, evidenceDialogRef);
 
-  const canEdit = canWriteBugs(profile?.role, profile?.isSuperadmin, profile?.isGuest);
+  const canEdit = canWrite ?? canWriteBugs(profile?.role, profile?.isSuperadmin, profile?.isGuest);
   const gallery = attachmentsOf(activeBug);
 
   useEffect(() => {
@@ -206,7 +208,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, roomBugs = 
 
   const handleUpdateStatus = async (newStatus: BugStatus) => {
     if (!profile) return;
-    if (!canWriteBugs(profile.role, profile.isSuperadmin, profile.isGuest)) {
+    if (!canEdit) {
       toast("Observadores não podem modificar o status de tarefas.", { kind: "error" });
       return;
     }
@@ -238,7 +240,7 @@ export const BugDetailModal: React.FC<BugDetailModalProps> = ({ bug, roomBugs = 
 
   const handleClaimTask = async () => {
     if (!profile) return;
-    if (!canWriteBugs(profile.role, profile.isSuperadmin, profile.isGuest)) {
+    if (!canEdit) {
       toast("Observadores não podem assumir cards.", { kind: "error" });
       return;
     }

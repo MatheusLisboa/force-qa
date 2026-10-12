@@ -12,8 +12,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { organizationId } = await requireExportOrganization(req.headers);
-    const payload = await listExportRooms(organizationId);
+    const { organizationId, roomIds } = await requireExportOrganization(req.headers);
+    const payload = await listExportRooms(organizationId, roomIds);
     return res.status(200).json(payload);
   } catch (error: unknown) {
     const message = clientErrorMessage(error, "Falha ao listar salas.");

@@ -56,9 +56,9 @@ O projeto tem testes automatizados em três camadas, todas rodando no CI a cada 
 | Camada | Ferramenta | Escopo |
 |--------|-----------|--------|
 | Estática | TypeScript (`npm run lint`) | Tipos, incluindo o React |
-| Unitária | Vitest (`npm test`) | ~195 testes: regras de negócio em `src/lib`; auth, rate limit, logger, keep-alive e `adminUsers` (isolamento entre organizações) em `api-src` |
+| Unitária | Vitest (`npm test`) | ~245 testes: regras de negócio em `src/lib`; auth, rate limit, logger, keep-alive, auditoria e `adminUsers` (isolamento entre organizações, último admin) em `api-src` |
 | E2E | Playwright (`npm run test:e2e`) | Login, painel, paleta, tema, Kanban por teclado, comentários, filtros na URL, ações em lote, métricas, conexão e acessibilidade, em Chromium |
-| RLS | PostgreSQL (`npm run test:rls`) | ~80 asserções que aplicam as migrations do zero num Postgres descartável e tentam ler/alterar dados de outra organização como cada papel |
+| RLS | PostgreSQL (`npm run test:rls`) | ~145 asserções que aplicam as migrations do zero num Postgres descartável e tentam ler/alterar dados de outra organização, escalar privilégio, burlar o "somente leitura" e forjar a auditoria, como cada papel |
 
 - Os testes E2E rodam contra um build com **Supabase simulado** (Auth, REST e Realtime em `e2e/support/supabaseMock.ts`), então nunca tocam o backend real e são determinísticos.
 - No CI, falhas geram `trace` na primeira repetição e o `playwright-report` é publicado como artefato por 7 dias.
@@ -131,6 +131,17 @@ As rotas `/api/*` na Vercel são funções serverless. Defina `SUPABASE_SERVICE_
 - **Métricas** (Mais → Métricas): criados × resolvidos por semana, backlog, tempo mediano de resolução, reabertura e SLA, com **Exportar PDF**.
 - Erro de rede claro no login e aviso quando o servidor não responde (projeto pausado, bloqueio, deploy sem variáveis).
 - Respeita `prefers-reduced-motion`.
+
+## Permissões, visibilidade e auditoria
+
+- **Papéis:** `admin`, `qa`, `scrum_master`, `developer`, `dba`, `devops` e `viewer`; a matriz de capacidades é editável pelo superadmin em **Permissões**. A tela mostra o que muda antes de salvar, avisa quando papéis têm exatamente as mesmas permissões (hoje QA = Scrum e Dev = DBA = DevOps: o cargo é só rótulo) e resume em português o que cada papel pode. A coluna **Admin é travada** (também no banco): ninguém tira permissão do admin.
+- **Nunca sem admin:** não dá para apagar, rebaixar, mover ou transformar em convidado o **último admin** da organização (trigger no banco + checagem na API). A tela Usuários avisa quando só há um admin: o ideal é ter pelo menos dois.
+- **Visibilidade da sala** (Administrar → Acesso à sala): *Toda a organização* (padrão: qualquer pessoa da org entra pelo link ou ID) ou *Somente membros* (só entra quem for adicionado ou convidado; a entrada por link é recusada).
+- **Papel por sala:** um membro pode ficar **somente leitura só naquela sala** (olho ao lado do nome, em Administrar). Só restringe, nunca promove acima do papel global.
+- **Convidados** só leem e comentam por padrão (a API cria convidados como `viewer`). Cada sala pode liberar **criar cards**; mesmo assim o convidado só edita os cards que ele mesmo criou. O link tem **validade** (24 h, 7 dias, 30 dias ou sem validade); gerar um link novo invalida o anterior.
+- **Modo leitura explicado:** quando você não pode escrever, "Novo card" fica desabilitado e um aviso diz **por quê** (papel, somente leitura da sala ou convidado).
+- **Token de extração (GitLab):** só **admin** gera, troca ou revoga, e pode ser limitado a **salas escolhidas** (sem escopo, lê toda a organização). Fora do escopo a API responde "sala não encontrada".
+- **Auditoria** (Mais → Auditoria, só admin): quem mudou papéis, acessos, visibilidade, convites, integrações e permissões. Registrada por triggers no banco (ações feitas no navegador) e pela API (ações com `service_role`), nunca guarda tokens, senhas nem URLs de webhook, e não pode ser editada nem apagada.
 
 ## Design system
 

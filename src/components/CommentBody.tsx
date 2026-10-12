@@ -58,7 +58,7 @@ export const CommentBody: React.FC<{ text: string; mentionNames?: string[] }> = 
       {blocks.map((block, i) => {
         if (block.t === "code") {
           return (
-            <pre key={i} className="overflow-x-auto rounded-md border border-white/[0.06] bg-black/30 p-2 font-mono text-[11px] text-neutral-300">
+            <pre key={i} className="overflow-x-auto rounded-md border border-white/[0.06] bg-[color:var(--color-fq-elevated)] p-2 font-mono text-[11px] text-neutral-300">
               {block.v}
             </pre>
           );

@@ -17,6 +17,7 @@ import {
   Webhook,
   Building2,
   Shield,
+  History,
 } from "lucide-react";
 import { AnimatePresence } from "motion/react";
 import { RoomStatusBadge, RoomTypeBadge } from "./BugBadges";
@@ -29,6 +30,7 @@ import {
 import { decorateSpaces, groupSpacesByProject, SpaceRow, UNGROUPED_PROJECT_LABEL } from "../lib/spaces";
 import { CreateWarRoomModal } from "./CreateWarRoomModal";
 import { CreateProjectModal } from "./CreateProjectModal";
+import type { AdminPagePath } from "../lib/routes";
 import { Button, CardGridSkeleton, EmptyState } from "./ui";
 
 interface DashboardProps {
@@ -36,7 +38,7 @@ interface DashboardProps {
   allBugs: PulseBug[];
   loading: boolean;
   onSelectRoom: (roomId: string, pulse?: PulseKind) => void;
-  onOpenAdminPage?: (path: "/admin/board-views" | "/admin/users" | "/admin/integrations" | "/admin/organizations" | "/admin/permissions", projectId?: string) => void;
+  onOpenAdminPage?: (path: AdminPagePath, projectId?: string) => void;
   onOpenInbox?: () => void;
 }
 
@@ -300,6 +302,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   >
                     <UserPlus className="w-3.5 h-3.5 text-neutral-500" />
                     Usuários
+                  </button>
+                )}
+                {onOpenAdminPage && canManageUsers(profile?.role, profile?.isSuperadmin, profile?.isGuest) && (
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-neutral-200 hover:bg-white/[0.05]"
+                    onClick={() => {
+                      onOpenAdminPage("/admin/audit");
+                      setMoreOpen(false);
+                    }}
+                  >
+                    <History className="w-3.5 h-3.5 text-neutral-500" />
+                    Auditoria
                   </button>
                 )}
                 {onOpenAdminPage && canManageViews(profile?.role, profile?.isSuperadmin, profile?.isGuest) && (

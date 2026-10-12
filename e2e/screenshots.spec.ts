@@ -108,3 +108,51 @@ test("servidor fora do ar no login", async ({ page }) => {
   await page.getByTestId("backend-status").waitFor();
   await page.screenshot(shot("11-login-servidor-fora"));
 });
+
+for (const theme of ["dark", "light"] as const) {
+  test.describe(`governança (${theme})`, () => {
+    test.use({ colorScheme: theme });
+
+    test("acesso à sala, modo leitura, auditoria, permissões, integrações e usuários", async ({ page, browser }) => {
+      await mockSupabase(page, { exportToken: { prefix: "fqex_abcd", roomIds: [ROOM_WAR] } });
+      await page.addInitScript((value) => localStorage.setItem("forceqa.theme", value), theme);
+
+      await page.goto(`/?room=${ROOM_WAR}`);
+      await page.getByRole("button", { name: new RegExp(`^${bugs[0].title}`) }).waitFor();
+      await page.getByRole("button", { name: "Administrar" }).click();
+      const access = page.getByTestId("room-access");
+      await access.waitFor();
+      await page.getByTestId("invite-expiry").waitFor();
+      await page.waitForTimeout(300);
+      await page.locator(".fq-admin-bar").screenshot(shot(`12-acesso-sala-${theme}`));
+
+      await page.goto("/admin/audit");
+      await page.getByTestId("audit-list").waitFor();
+      await page.screenshot(shot(`13-auditoria-${theme}`));
+
+      await page.goto("/admin/permissions");
+      await page.getByRole("heading", { name: "Permissões" }).waitFor();
+      await page.getByRole("checkbox", { name: "Escrever cards para Viewer" }).check();
+      await page.getByTestId("pending-changes").waitFor();
+      await page.screenshot({ ...shot(`14-permissoes-${theme}`), fullPage: true });
+
+      await page.goto("/admin/integrations");
+      await page.getByTestId("export-scope").waitFor();
+      await page.screenshot(shot(`15-integracoes-${theme}`));
+
+      await page.goto("/admin/users");
+      await page.getByTestId("single-admin-warning").waitFor();
+      await page.screenshot(shot(`16-usuarios-ultimo-admin-${theme}`));
+
+      // Visão de quem só pode ler (viewer) e de convidado
+      const viewer = await browser.newPage({ viewport: { width: 1440, height: 900 }, colorScheme: theme, locale: "pt-BR" });
+      await mockSupabase(viewer, { profile: { role: "viewer", is_superadmin: false } });
+      await viewer.addInitScript((value) => localStorage.setItem("forceqa.theme", value), theme);
+      await viewer.goto(`/?room=${ROOM_WAR}`);
+      await viewer.getByTestId("readonly-notice").waitFor();
+      await viewer.waitForTimeout(300);
+      await viewer.screenshot(shot(`17-modo-leitura-${theme}`));
+      await viewer.close();
+    });
+  });
+}

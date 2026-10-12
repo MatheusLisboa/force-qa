@@ -28,6 +28,7 @@ export function getSupabaseAdmin(): SupabaseClient {
 
 export interface AuthedUser {
   user: User;
+  name: string;
   role: string;
   isGuest: boolean;
   organizationId: string;
@@ -47,13 +48,14 @@ export async function requireUser(authHeader: string | undefined): Promise<Authe
 
   const { data: profile } = await admin
     .from("users")
-    .select("role, is_guest, organization_id, is_superadmin")
+    .select("name, role, is_guest, organization_id, is_superadmin")
     .eq("id", user.id)
     .maybeSingle();
 
   const isGuest = Boolean(profile?.is_guest);
   return {
     user,
+    name: String(profile?.name || user.email || ""),
     role: (profile?.role as string) || "viewer",
     isGuest,
     organizationId: isGuest

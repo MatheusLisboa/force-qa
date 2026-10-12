@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { httpErrorStatus, readJsonBody, requireUser } from "../shared/auth";
 import { appRedirectTo } from "../shared/appUrl";
 import { inviteToRoom } from "../shared/rooms";
+import { logAudit } from "../shared/audit";
 import { logger } from "../shared/logger";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -23,6 +24,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       email: String(body.email || ""),
       role: String(body.role || ""),
       redirectTo: appRedirectTo(),
+    });
+    await logAudit({
+      organizationId: authed.organizationId || null,
+      actorId: authed.user.id,
+      actorName: authed.name,
+      action: "room.member_invited",
+      targetType: "room",
+      targetId: String(body.roomId || ""),
+      detail: { email: String(body.email || "").trim().toLowerCase(), role: String(body.role || "") },
     });
     return res.status(200).json(result);
   } catch (error: unknown) {

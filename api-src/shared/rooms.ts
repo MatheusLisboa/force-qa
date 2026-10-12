@@ -3,10 +3,12 @@ import { getSupabaseAdmin, loadRolePermissionMatrix } from "./auth";
 import { enforceRateLimit, type RateLimitRule } from "./rateLimit";
 import { actorHasCapability } from "../../src/lib/permissions";
 import { resolveInviteRole } from "../../src/lib/inviteRole";
-import { looksLikeGuestToken } from "../../src/lib/guestInvite";
+import { isInviteExpired, looksLikeGuestToken } from "../../src/lib/guestInvite";
+import { canSelfJoinRoom, parseRoomVisibility } from "../../src/lib/roomAccess";
 import { parseGuestInvite } from "../../src/lib/routes";
 import type { UserRole } from "../../src/types";
 import { logger } from "./logger";
+import { logAudit } from "./audit";
 
 function newGuestInviteToken(): string {
   return `gst_${randomBytes(18).toString("base64url")}`;
@@ -14,15 +16,18 @@ function newGuestInviteToken(): string {
 
 async function roomFromGuestToken(
   token: string
-): Promise<{ id: string; name: string; guest_access_disabled: boolean } | null> {
+): Promise<{ id: string; name: string; guest_access_disabled: boolean; expired?: boolean } | null> {
   if (!looksLikeGuestToken(token)) return null;
   const admin = getSupabaseAdmin();
   const { data: invite } = await admin
     .from("room_guest_invites")
-    .select("war_room_id")
+    .select("war_room_id, expires_at")
     .eq("token", token)
     .maybeSingle();
   if (!invite?.war_room_id) return null;
+  if (isInviteExpired(invite.expires_at as string | null | undefined)) {
+    return { id: String(invite.war_room_id), name: "", guest_access_disabled: false, expired: true };
+  }
   const { data: room } = await admin
     .from("war_rooms")
     .select("id, name, guest_access_disabled")
@@ -38,6 +43,9 @@ export async function validateGuestRoom(input: string): Promise<{ id: string; na
   }
 
   const room = await roomFromGuestToken(parsed.token);
+  if (room?.expired) {
+    throw Object.assign(new Error("Este convite expirou. Peça um novo link a quem te chamou."), { status: 410 });
+  }
   if (!room || room.guest_access_disabled) {
     throw Object.assign(new Error("Convite inválido ou convidados bloqueados nesta sala."), { status: 404 });
   }
@@ -105,6 +113,17 @@ export async function joinAsGuest(params: {
   });
   if (memberError && memberError.code !== "23505") throw memberError;
 
+  const { data: roomRow } = await admin.from("war_rooms").select("organization_id").eq("id", room.id).maybeSingle();
+  await logAudit({
+    organizationId: (roomRow?.organization_id as string | null) ?? null,
+    actorId: data.user.id,
+    actorName: name,
+    action: "room.guest_joined",
+    targetType: "room",
+    targetId: room.id,
+    detail: { squad },
+  });
+
   return { roomId: room.id, email, password };
 }
 
@@ -138,8 +157,18 @@ export async function joinRoom(
   userId: string,
   input: string,
   isGuest: boolean,
-  access?: { organizationId: string; isSuperadmin: boolean }
+  access?: { organizationId: string; isSuperadmin: boolean; isOrgAdmin?: boolean }
 ): Promise<string> {
+  return (await joinRoomDetailed(userId, input, isGuest, access)).roomId;
+}
+
+/** Como joinRoom, mas diz se a pessoa acabou de entrar (para a auditoria) e a org da sala. */
+export async function joinRoomDetailed(
+  userId: string,
+  input: string,
+  isGuest: boolean,
+  access?: { organizationId: string; isSuperadmin: boolean; isOrgAdmin?: boolean }
+): Promise<{ roomId: string; created: boolean; organizationId: string | null }> {
   const admin = getSupabaseAdmin();
 
   if (isGuest) {
@@ -150,7 +179,7 @@ export async function joinRoom(
       added_by: userId,
     });
     if (error && error.code !== "23505") throw error;
-    return room.id;
+    return { roomId: room.id, created: !error, organizationId: null };
   }
 
   const parsed = parseGuestInvite(input);
@@ -159,7 +188,7 @@ export async function joinRoom(
     throw Object.assign(new Error("Cole o link da sala ou o ID."), { status: 400 });
   }
 
-  const { data: byId } = await admin.from("war_rooms").select("id, guest_access_disabled, organization_id").eq("id", trimmed).maybeSingle();
+  const { data: byId } = await admin.from("war_rooms").select("id, guest_access_disabled, organization_id, visibility").eq("id", trimmed).maybeSingle();
 
   if (!byId) {
     throw Object.assign(new Error("Sala não encontrada. Confira o link ou o ID."), { status: 404 });
@@ -182,7 +211,18 @@ export async function joinRoom(
     .eq("war_room_id", roomId)
     .eq("user_id", userId)
     .maybeSingle();
-  if (membership) return roomId;
+  if (membership) return { roomId, created: false, organizationId: roomOrgId };
+
+  // Sala "somente membros": entrar sozinho por link/ID não vale; só admin da org ou convite/adição.
+  const gate = canSelfJoinRoom({
+    visibility: parseRoomVisibility(byId.visibility),
+    isMember: false,
+    isOrgAdmin: Boolean(access?.isOrgAdmin),
+    isSuperadmin: Boolean(access?.isSuperadmin),
+  });
+  if (!gate.allowed) {
+    throw Object.assign(new Error(gate.reason || "Esta sala é restrita a membros."), { status: 403 });
+  }
 
   const { error } = await admin.from("room_members").insert({
     war_room_id: roomId,
@@ -190,7 +230,7 @@ export async function joinRoom(
     added_by: userId,
   });
   if (error && error.code !== "23505") throw error;
-  return roomId;
+  return { roomId, created: !error, organizationId: roomOrgId };
 }
 
 export async function inviteToRoom(params: {

@@ -199,6 +199,62 @@ describe("adminDeleteUser", () => {
   });
 });
 
+describe("último admin da organização", () => {
+  const actor = { id: "admin-a", organizationId: ORG_A, isSuperadmin: false };
+
+  it("não apaga o único admin da organização (409 com mensagem clara)", async () => {
+    db.users.push({ id: "admin-a", name: "Chefe", role: "admin", organization_id: ORG_A }, { id: "u-a", role: "qa", organization_id: ORG_A });
+    await expect(adminDeleteUser("admin-a", { ...actor, id: "outro", isSuperadmin: true })).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringContaining("último admin"),
+    });
+    expect(fake.authCalls.deleted).toHaveLength(0);
+  });
+
+  it("apaga um admin quando existe outro admin na organização", async () => {
+    db.users.push({ id: "admin-a", role: "admin", organization_id: ORG_A }, { id: "admin-b", role: "admin", organization_id: ORG_A });
+    await adminDeleteUser("admin-a", { id: "admin-b", organizationId: ORG_A, isSuperadmin: false });
+    expect(fake.authCalls.deleted).toEqual(["admin-a"]);
+  });
+
+  it("admin de OUTRA organização não conta como 'outro admin'", async () => {
+    db.users.push({ id: "admin-a", role: "admin", organization_id: ORG_A }, { id: "admin-x", role: "admin", organization_id: ORG_B });
+    await expect(adminDeleteUser("admin-a", { id: "su", organizationId: ORG_A, isSuperadmin: true })).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("convidado com papel admin não conta como admin", async () => {
+    db.users.push({ id: "admin-a", role: "admin", organization_id: ORG_A }, { id: "g", role: "admin", is_guest: true, organization_id: ORG_A });
+    await expect(adminDeleteUser("admin-a", { id: "su", organizationId: ORG_A, isSuperadmin: true })).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("devolve nome, papel e organização para a auditoria", async () => {
+    db.users.push({ id: "u-a", name: "Ana", role: "qa", organization_id: ORG_A });
+    const removed = await adminDeleteUser("u-a", actor);
+    expect(removed).toEqual({ name: "Ana", role: "qa", organizationId: ORG_A });
+  });
+
+  it("não move o único admin para outra organização", async () => {
+    db.users.push({ id: "admin-a", role: "admin", organization_id: ORG_A });
+    await expect(adminMoveUser({ isSuperadmin: true, userId: "admin-a", organizationId: ORG_B })).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringContaining("último admin"),
+    });
+    expect(db.users[0].organization_id).toBe(ORG_A);
+  });
+
+  it("move admin quando há outro, e informa origem e destino", async () => {
+    db.users.push({ id: "admin-a", role: "admin", organization_id: ORG_A }, { id: "admin-b", role: "admin", organization_id: ORG_A });
+    const moved = await adminMoveUser({ isSuperadmin: true, userId: "admin-a", organizationId: ORG_B });
+    expect(moved).toEqual({ changed: true, from: ORG_A, to: ORG_B });
+    expect(db.users[0].organization_id).toBe(ORG_B);
+  });
+
+  it("mover para a mesma organização informa changed=false", async () => {
+    db.users.push({ id: "u-a", role: "qa", organization_id: ORG_A });
+    expect(await adminMoveUser({ isSuperadmin: true, userId: "u-a", organizationId: ORG_A })).toEqual({ changed: false, from: ORG_A, to: ORG_A });
+  });
+});
+
 describe("adminMoveUser", () => {
   beforeEach(() => {
     db.users.push({ id: "u-a", organization_id: ORG_A });

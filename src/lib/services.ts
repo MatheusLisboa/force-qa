@@ -36,6 +36,8 @@ import {
   type RolePermissionMatrix,
 } from "./permissions";
 import { logger } from "./logger";
+import { inviteExpiryFromDays } from "./guestInvite";
+import type { AuditEventRow } from "./auditDescribe";
 
 function cleanUndefined<T extends object>(obj: T): T {
   const result = { ...obj } as Record<string, unknown>;
@@ -83,6 +85,9 @@ function warRoomToRow(data: Omit<WarRoom, "id" | "createdAt">, customId: string)
     created_by: data.createdBy,
     created_by_name: data.createdByName,
     guest_access_disabled: data.guestAccessDisabled ?? true,
+    // Só envia o que foge do padrão do banco: assim ainda funciona antes de aplicar a migration 22.
+    visibility: data.visibility === "members" ? "members" : undefined,
+    guest_permission: data.guestPermission === "write" ? "write" : undefined,
     kanban_columns: data.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS,
     organization_id: resolveOrganizationId(data.organizationId),
   });
@@ -194,12 +199,14 @@ export async function updateWarRoomStatus(
 
 export async function updateWarRoom(
   roomId: string,
-  fields: Partial<Pick<WarRoom, "status" | "guestAccessDisabled" | "kanbanColumns">>
+  fields: Partial<Pick<WarRoom, "status" | "guestAccessDisabled" | "kanbanColumns" | "visibility" | "guestPermission">>
 ): Promise<void> {
   const payload: Record<string, unknown> = {};
   if (fields.status !== undefined) payload.status = fields.status;
   if (fields.guestAccessDisabled !== undefined)
     payload.guest_access_disabled = fields.guestAccessDisabled;
+  if (fields.visibility !== undefined) payload.visibility = fields.visibility;
+  if (fields.guestPermission !== undefined) payload.guest_permission = fields.guestPermission;
   if (fields.kanbanColumns !== undefined) payload.kanban_columns = fields.kanbanColumns;
 
   const { error } = await supabase
@@ -571,6 +578,8 @@ export async function fetchOrgExportTokenMeta(): Promise<{
   configured: boolean;
   prefix: string | null;
   createdAt: string | null;
+  /** null = todas as salas da organização. */
+  roomIds: string[] | null;
 }> {
   const response = await authFetch("/api/admin/org-webhook?tab=export-token");
   if (!response.ok) {
@@ -579,15 +588,28 @@ export async function fetchOrgExportTokenMeta(): Promise<{
   return response.json();
 }
 
-export async function rotateOrgExportToken(): Promise<{ token: string; prefix: string }> {
+export async function rotateOrgExportToken(
+  roomIds: string[] | null = null
+): Promise<{ token: string; prefix: string; roomIds: string[] | null }> {
   const response = await authFetch("/api/admin/org-webhook?tab=export-token", {
     method: "POST",
-    body: JSON.stringify({}),
+    body: JSON.stringify({ roomIds }),
   });
   if (!response.ok) {
     throw new Error(await readApiError(response, "Não foi possível gerar o token de extração."));
   }
   return response.json();
+}
+
+/** Muda só as salas que o token enxerga, sem trocar o token. */
+export async function setOrgExportScope(roomIds: string[] | null): Promise<void> {
+  const response = await authFetch("/api/admin/org-webhook?tab=export-token", {
+    method: "PUT",
+    body: JSON.stringify({ roomIds }),
+  });
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Não foi possível alterar as salas do token."));
+  }
 }
 
 export async function revokeOrgExportToken(): Promise<void> {
@@ -628,31 +650,85 @@ export async function fetchGuestInviteUrl(
   roomId: string,
   origin = window.location.origin
 ): Promise<string> {
-  const { data, error } = await supabase
-    .from("room_guest_invites")
-    .select("token")
-    .eq("war_room_id", roomId)
-    .maybeSingle();
-  if (error || !data?.token) {
-    throw new Error("Você não tem permissão para copiar o convite de convidado.");
-  }
-  return roomInviteUrl(roomId, origin, String(data.token));
+  return (await fetchGuestInviteInfo(roomId, origin)).url;
 }
 
-export async function rotateGuestInviteUrl(
+/** Link do convite e quando ele expira (null = sem validade). */
+export async function fetchGuestInviteInfo(
   roomId: string,
   origin = window.location.origin
+): Promise<{ url: string; expiresAt: string | null }> {
+  const withExpiry = await supabase
+    .from("room_guest_invites")
+    .select("token, expires_at")
+    .eq("war_room_id", roomId)
+    .maybeSingle();
+  // Banco sem a migration 22 (coluna expires_at ausente): cai para só o token.
+  const result = withExpiry.error
+    ? await supabase.from("room_guest_invites").select("token").eq("war_room_id", roomId).maybeSingle()
+    : withExpiry;
+  const data = result.data as { token?: string; expires_at?: string | null } | null;
+  if (result.error || !data?.token) {
+    throw new Error("Você não tem permissão para copiar o convite de convidado.");
+  }
+  return { url: roomInviteUrl(roomId, origin, String(data.token)), expiresAt: data.expires_at ?? null };
+}
+
+/** Gera um link novo (o antigo deixa de valer) com a validade escolhida. */
+export async function rotateGuestInviteUrl(
+  roomId: string,
+  origin = window.location.origin,
+  validityDays: number | null = null
 ): Promise<string> {
   const token = generateGuestInviteToken();
   const { error } = await supabase.from("room_guest_invites").upsert({
     war_room_id: roomId,
     token,
     created_at: new Date().toISOString(),
+    // Sempre explícito: um upsert sem a coluna manteria a validade do link anterior.
+    expires_at: inviteExpiryFromDays(validityDays),
   });
   if (error) {
     throw new Error("Não foi possível renovar o convite de convidado.");
   }
   return roomInviteUrl(roomId, origin, token);
+}
+
+/** Muda só a validade do link atual, sem trocar o token. */
+export async function setGuestInviteExpiry(roomId: string, validityDays: number | null): Promise<void> {
+  const { error } = await supabase
+    .from("room_guest_invites")
+    .update({ expires_at: inviteExpiryFromDays(validityDays) })
+    .eq("war_room_id", roomId);
+  if (error) throw new Error("Não foi possível alterar a validade do convite.");
+}
+
+export interface RoomMemberAccess {
+  userId: string;
+  readOnly: boolean;
+}
+
+export async function fetchRoomMembers(roomId: string): Promise<RoomMemberAccess[]> {
+  const { data, error } = await supabase.from("room_members").select("user_id, read_only").eq("war_room_id", roomId);
+  if (error) {
+    // Sem a coluna read_only (migration 22 pendente): lista só os ids.
+    const fallback = await supabase.from("room_members").select("user_id").eq("war_room_id", roomId);
+    if (fallback.error) handleDbError(fallback.error, OperationType.LIST, `room_members/${roomId}`);
+    return (fallback.data || []).map((row) => ({ userId: row.user_id as string, readOnly: false }));
+  }
+  return (data || []).map((row) => ({ userId: row.user_id as string, readOnly: Boolean(row.read_only) }));
+}
+
+export async function setRoomMemberReadOnly(roomId: string, userId: string, readOnly: boolean): Promise<void> {
+  const { data, error } = await supabase
+    .from("room_members")
+    .update({ read_only: readOnly })
+    .eq("war_room_id", roomId)
+    .eq("user_id", userId)
+    .select("user_id");
+  if (error) handleDbError(error, OperationType.UPDATE, `room_members/${roomId}/${userId}`);
+  // RLS que filtra a linha devolve 0 linhas sem erro: não deixar a interface fingir que salvou.
+  if (!data || data.length === 0) throw new Error("Você não tem permissão para alterar este membro.");
 }
 
 export async function fetchMembershipPairs(): Promise<Array<{ userId: string; roomId: string }>> {
@@ -1093,3 +1169,38 @@ export async function reorderBoardViews(orderedIds: string[]): Promise<void> {
 }
 
 // Re-export for convenience
+
+// ---------------------------------------------------------------------------
+// Auditoria (somente leitura; admins da organização, superadmin vê tudo)
+// ---------------------------------------------------------------------------
+
+export const AUDIT_PAGE_SIZE = 100;
+
+export async function fetchAuditEvents(options: { before?: string } = {}): Promise<AuditEventRow[]> {
+  let request = supabase
+    .from("audit_events")
+    .select("id, organization_id, actor_id, actor_name, action, target_type, target_id, detail, created_at")
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(AUDIT_PAGE_SIZE);
+  if (options.before) request = request.lt("created_at", options.before);
+  const { data, error } = await request;
+  if (error) {
+    // Tabela ausente = migration 22 pendente: mensagem que diz o que fazer.
+    if (error.code === "42P01" || error.code === "PGRST205") {
+      throw new Error("A trilha de auditoria ainda não foi ativada neste banco (aplique a migration 20260101000022).");
+    }
+    handleDbError(error, OperationType.LIST, "audit_events");
+  }
+  return (data || []).map((row) => ({
+    id: row.id as number,
+    organizationId: (row.organization_id as string | null) ?? null,
+    actorId: (row.actor_id as string | null) ?? null,
+    actorName: (row.actor_name as string | null) ?? null,
+    action: row.action as string,
+    targetType: (row.target_type as string | null) ?? null,
+    targetId: (row.target_id as string | null) ?? null,
+    detail: (row.detail as Record<string, unknown>) ?? {},
+    createdAt: row.created_at as string,
+  }));
+}

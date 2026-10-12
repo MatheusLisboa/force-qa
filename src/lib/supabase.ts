@@ -18,6 +18,7 @@ import { withSignedMedia } from "./evidence";
 import { parseAttachments } from "./attachments";
 import { parseReproChecklist } from "./reproChecklist";
 import { logger } from "./logger";
+import { parseGuestPermission, parseRoomVisibility } from "./roomAccess";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -84,6 +85,8 @@ export function toWarRoom(row: Record<string, unknown>): WarRoom {
     createdBy: row.created_by as string,
     createdByName: (row.created_by_name as string) || undefined,
     guestAccessDisabled: row.guest_access_disabled as boolean,
+    visibility: parseRoomVisibility(row.visibility),
+    guestPermission: parseGuestPermission(row.guest_permission, "read"),
     organizationId: resolveOrganizationId(row.organization_id as string | undefined),
   };
 }
@@ -362,6 +365,29 @@ function subscribeTable(
   return () => {
     supabase.removeChannel(channel);
   };
+}
+
+/** A linha de participação da própria pessoa na sala (hoje: se está como "somente leitura"). */
+export function subscribeMyRoomMembership(
+  roomId: string,
+  userId: string,
+  callback: (membership: { readOnly: boolean } | null) => void
+): Unsubscribe {
+  const fetchRows = async () => {
+    const { data, error } = await supabase
+      .from("room_members")
+      .select("read_only")
+      .eq("war_room_id", roomId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    // Banco sem a migration 22 (coluna ausente) ou sem linha: trata como "não restrito".
+    if (error) {
+      callback(null);
+      return;
+    }
+    callback(data ? { readOnly: Boolean(data.read_only) } : null);
+  };
+  return subscribeTable("room_members", fetchRows, `my-membership-${roomId}-${userId}`);
 }
 
 export function subscribeWarRooms(

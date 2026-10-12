@@ -3,6 +3,7 @@ import { canGrantAdminRole } from "../../src/lib/permissions";
 import { adminCreateUser } from "../shared/adminUsers";
 import { clientErrorMessage, httpErrorStatus, readJsonBody, requireAdmin } from "../shared/auth";
 import { resolveActorOrganizationId } from "../shared/organizations";
+import { logAudit } from "../shared/audit";
 import { logger } from "../shared/logger";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -29,6 +30,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       role: String(body.role || ""),
       squad: String(body.squad || ""),
       organizationId,
+    });
+    await logAudit({
+      organizationId,
+      actorId: actor.user.id,
+      actorName: actor.name,
+      action: "user.created",
+      targetType: "user",
+      targetId: userId,
+      detail: { name: String(body.name || ""), role },
     });
     return res.status(200).json({ success: true, userId });
   } catch (error: unknown) {

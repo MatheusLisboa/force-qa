@@ -18,6 +18,7 @@ import { canGrantAdminRole } from "../lib/permissions";
 import { filterManagedUsers, roomsForOrganization } from "../lib/adminUsersView";
 import { formatRelativeTime } from "../lib/format";
 import { EmptyState, ListSkeleton } from "./ui";
+import { cleanAdminSafetyError, isLastAdmin, singleAdminWarning } from "../lib/adminSafety";
 import { logger } from "../lib/logger";
 
 interface AdminUsersPageProps {
@@ -315,7 +316,7 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
       setUserCreationError("");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Erro ao atualizar usuário.";
-      setUserCreationError(message);
+      setUserCreationError(cleanAdminSafetyError(message));
     }
   };
 
@@ -332,7 +333,7 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
       setUserCreationError("");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Erro ao deletar usuário.";
-      setUserCreationError(message);
+      setUserCreationError(cleanAdminSafetyError(message));
     }
   };
 
@@ -417,6 +418,11 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
       </div>
 
       {userCreationError && <div className="fq-alert-error text-sm">{userCreationError}</div>}
+      {profile?.organizationId && usersList.length > 0 && singleAdminWarning(usersList, profile.organizationId) && (
+        <div role="note" data-testid="single-admin-warning" className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[13px] text-amber-300">
+          {singleAdminWarning(usersList, profile.organizationId)}
+        </div>
+      )}
       {userCreationSuccess && <div className="fq-alert-success text-sm">{userCreationSuccess}</div>}
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] gap-8">
@@ -683,12 +689,19 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
                             onChange={(e) => setEditingRole(e.target.value as UserRole)}
                             className="fq-select text-sm py-1.5"
                           >
-                            {roleOptions.map((role) => (
-                              <option key={role.value} value={role.value}>
-                                {role.label}
-                              </option>
-                            ))}
+                            {roleOptions
+                              .filter((role) => !isLastAdmin(usersList, usr) || role.value === "admin")
+                              .map((role) => (
+                                <option key={role.value} value={role.value}>
+                                  {role.label}
+                                </option>
+                              ))}
                           </select>
+                          {isLastAdmin(usersList, usr) && (
+                            <p className="mt-1 text-[11px] text-amber-400">
+                              Último admin da organização: promova outra pessoa antes de mudar este papel.
+                            </p>
+                          )}
                         </div>
                         <div className="flex gap-1.5 pb-[2px]">
                           <button
@@ -814,8 +827,10 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ onBack }) => {
                       </button>
                       <button
                         onClick={() => handleDeleteUser(usr.id)}
-                        className="fq-btn-icon !p-1 hover:text-red-400 hover:bg-red-500/10"
-                        title="Excluir"
+                        disabled={isLastAdmin(usersList, usr)}
+                        className="fq-btn-icon !p-1 hover:text-red-400 hover:bg-red-500/10 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-inherit"
+                        title={isLastAdmin(usersList, usr) ? "Último admin da organização: promova outro admin antes de excluir" : "Excluir"}
+                        aria-label={isLastAdmin(usersList, usr) ? `Excluir ${usr.name} (indisponível: último admin)` : `Excluir ${usr.name}`}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
