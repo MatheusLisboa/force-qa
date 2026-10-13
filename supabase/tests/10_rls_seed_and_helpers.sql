@@ -135,6 +135,8 @@ INSERT INTO public.users (id, name, email, role, squad, organization_id, is_gues
 INSERT INTO public.war_rooms (id, name, project, squad, date, created_by, organization_id) VALUES
   ('room-a1', 'Sala A1', 'Loja', 'Pagamentos', '2026-10-01', rls_test.id('adminA'), rls_test.id('orgA')),
   ('room-a2', 'Sala A2 (privada)', 'Loja', 'Pagamentos', '2026-10-01', rls_test.id('adminA'), rls_test.id('orgA')),
+  ('room-a3', 'Sala A3 (visível à organização)', 'Loja', 'Pagamentos', '2026-10-01', rls_test.id('adminA'), rls_test.id('orgA')),
+  ('room-a4', 'Sala A4 (somente membros)', 'Loja', 'Pagamentos', '2026-10-01', rls_test.id('adminA'), rls_test.id('orgA')),
   ('room-b1', 'Sala B1', 'Mobile', 'Mobile', '2026-10-01', rls_test.id('adminB'), rls_test.id('orgB'));
 
 -- add_creator_as_room_member já coloca os criadores; acrescenta os demais.
@@ -143,11 +145,19 @@ INSERT INTO public.room_members (war_room_id, user_id) VALUES
   ('room-b1', rls_test.id('qaB'))
 ON CONFLICT DO NOTHING;
 
+-- room-a1/a2/b1 usam o comportamento de antes (link: só membros veem); a3 é visível à
+-- organização; a4 só membros. (As salas nascem "organization" por padrão desde a migration 23.)
+UPDATE public.war_rooms SET visibility = 'link' WHERE id IN ('room-a1', 'room-a2', 'room-b1');
+UPDATE public.war_rooms SET visibility = 'members' WHERE id = 'room-a4';
+
 INSERT INTO public.bugs (id, war_room_id, title, criticism, status, environment, type, created_by, created_by_name) VALUES
   ('bug-a1', 'room-a1', 'Bug da sala A1', 'high', 'new', 'dev', 'bug', rls_test.id('qaA'), 'QA A'),
   ('bug-a2', 'room-a2', 'Bug da sala A2', 'high', 'new', 'dev', 'bug', rls_test.id('adminA'), 'Admin A'),
-  ('bug-b1', 'room-b1', 'Bug da sala B1', 'high', 'new', 'dev', 'bug', rls_test.id('qaB'), 'QA B');
+  ('bug-b1', 'room-b1', 'Bug da sala B1', 'high', 'new', 'dev', 'bug', rls_test.id('qaB'), 'QA B'),
+  ('bug-a3', 'room-a3', 'Bug da sala A3', 'high', 'new', 'dev', 'bug', rls_test.id('adminA'), 'Admin A'),
+  ('bug-a4', 'room-a4', 'Bug da sala A4', 'high', 'new', 'dev', 'bug', rls_test.id('adminA'), 'Admin A');
 
 INSERT INTO public.bug_comments (id, bug_id, war_room_id, user_id, user_name, text) VALUES
   ('com-a1', 'bug-a1', 'room-a1', rls_test.id('qaA'), 'QA A', 'comentário A'),
-  ('com-b1', 'bug-b1', 'room-b1', rls_test.id('qaB'), 'QA B', 'comentário B');
+  ('com-b1', 'bug-b1', 'room-b1', rls_test.id('qaB'), 'QA B', 'comentário B'),
+  ('com-a3', 'bug-a3', 'room-a3', rls_test.id('adminA'), 'Admin A', 'comentário A3');

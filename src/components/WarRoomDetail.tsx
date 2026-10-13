@@ -1,6 +1,6 @@
 import React, { Suspense, useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { subscribeWarRoom, subscribeBugsByRoom, subscribeBoardViews, subscribeProjectByWarRoomId, subscribeMyRoomMembership } from "../lib/supabase";
-import { fetchGuestInviteUrl, fetchUsersList, rotateGuestInviteUrl, updateBugField, updateWarRoom, deleteWarRoom } from "../lib/services";
+import { subscribeWarRoom, subscribeBugsByRoom, subscribeBoardViews, subscribeProjectByWarRoomId, subscribeMyRoomMembership, type MyRoomMembership } from "../lib/supabase";
+import { becomeRoomMember, fetchGuestInviteUrl, fetchUsersList, rotateGuestInviteUrl, updateBugField, updateWarRoom, deleteWarRoom } from "../lib/services";
 import { useToast } from "../context/ToastContext";
 import { useConfirm } from "../context/ConfirmContext";
 import { useAuth } from "../context/AuthContext";
@@ -76,7 +76,10 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
 }) => {
   const { profile } = useAuth();
   const canUseAiTools = canUseAi(profile?.role, profile?.isSuperadmin, profile?.isGuest);
-  const [myReadOnly, setMyReadOnly] = useState(false);
+  const [membership, setMembership] = useState<MyRoomMembership>({ status: "unknown" });
+  const [joining, setJoining] = useState(false);
+  // Sobe depois de entrar na sala: relê a participação sem depender só do evento de realtime.
+  const [membershipEpoch, setMembershipEpoch] = useState(0);
   const canInvite = canInviteToRoom(profile?.role, profile?.isSuperadmin, profile?.isGuest);
   const { toast } = useToast();
   const { confirm } = useConfirm();
@@ -90,7 +93,8 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
     isSuperadmin: profile?.isSuperadmin,
     isGuest: profile?.isGuest,
     guestPermission: warRoom?.guestPermission,
-    memberReadOnly: myReadOnly,
+    memberReadOnly: membership.status === "member" && membership.readOnly,
+    notMember: membership.status === "not_member",
   });
   const canWrite = writeDecision.canWrite;
   const [loading, setLoading] = useState(true);
@@ -349,8 +353,21 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
 
   useEffect(() => {
     if (!profile?.id) return;
-    return subscribeMyRoomMembership(roomId, profile.id, (membership) => setMyReadOnly(Boolean(membership?.readOnly)));
-  }, [roomId, profile?.id]);
+    return subscribeMyRoomMembership(roomId, profile.id, setMembership);
+  }, [roomId, profile?.id, membershipEpoch]);
+
+  const joinThisRoom = async () => {
+    setJoining(true);
+    try {
+      await becomeRoomMember(roomId);
+      setMembershipEpoch((epoch) => epoch + 1);
+      toast("Você entrou na sala. Agora pode criar e editar cards.", { kind: "success" });
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Não foi possível entrar na sala.", { kind: "error" });
+    } finally {
+      setJoining(false);
+    }
+  };
 
   useEffect(() => {
     const unsub = subscribeProjectByWarRoomId(roomId, (row) => {
@@ -833,7 +850,12 @@ export const WarRoomDetail: React.FC<WarRoomDetailProps> = ({
           className="flex items-start gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-300"
         >
           <Eye className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-          <span><strong className="font-semibold">Modo leitura.</strong> {writeDecision.reason}</span>
+          <span className="flex-1"><strong className="font-semibold">Modo leitura.</strong> {writeDecision.reason}</span>
+          {writeDecision.joinable && (
+            <button type="button" className="fq-btn-primary !min-h-0 !px-3 !py-1 text-xs" onClick={() => void joinThisRoom()} disabled={joining} data-testid="join-room">
+              {joining ? "Entrando…" : "Entrar na sala"}
+            </button>
+          )}
         </div>
       )}
 

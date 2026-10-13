@@ -367,27 +367,60 @@ function subscribeTable(
   };
 }
 
-/** A linha de participação da própria pessoa na sala (hoje: se está como "somente leitura"). */
+/**
+ * Minha participação na sala: membro (e se está "somente leitura"), não-membro (vendo a sala por ela ser
+ * visível à organização) ou desconhecido (carregando, ou banco antigo: nesse caso não restringe nada).
+ */
+export type MyRoomMembership =
+  | { status: "member"; readOnly: boolean }
+  | { status: "not_member" }
+  | { status: "unknown" };
+
 export function subscribeMyRoomMembership(
   roomId: string,
   userId: string,
-  callback: (membership: { readOnly: boolean } | null) => void
+  callback: (membership: MyRoomMembership) => void
 ): Unsubscribe {
   const fetchRows = async () => {
-    const { data, error } = await supabase
+    let result = await supabase
       .from("room_members")
       .select("read_only")
       .eq("war_room_id", roomId)
       .eq("user_id", userId)
       .maybeSingle();
-    // Banco sem a migration 22 (coluna ausente) ou sem linha: trata como "não restrito".
+    // Banco sem a coluna read_only (migration 22 pendente): pergunta só se existe a linha.
+    if (result.error) {
+      result = (await supabase
+        .from("room_members")
+        .select("user_id")
+        .eq("war_room_id", roomId)
+        .eq("user_id", userId)
+        .maybeSingle()) as typeof result;
+    }
+    if (result.error) {
+      callback({ status: "unknown" });
+      return;
+    }
+    callback(
+      result.data
+        ? { status: "member", readOnly: Boolean((result.data as { read_only?: boolean }).read_only) }
+        : { status: "not_member" }
+    );
+  };
+  return subscribeTable("room_members", fetchRows, `my-membership-${roomId}-${userId}`);
+}
+
+/** Ids das salas de que a pessoa é membro (para marcar, na lista, as que ela só está vendo). */
+export function subscribeMyMemberships(userId: string, callback: (roomIds: Set<string> | null) => void): Unsubscribe {
+  const fetchRows = async () => {
+    const { data, error } = await supabase.from("room_members").select("war_room_id").eq("user_id", userId);
     if (error) {
       callback(null);
       return;
     }
-    callback(data ? { readOnly: Boolean(data.read_only) } : null);
+    callback(new Set((data || []).map((row) => row.war_room_id as string)));
   };
-  return subscribeTable("room_members", fetchRows, `my-membership-${roomId}-${userId}`);
+  return subscribeTable("room_members", fetchRows, `my-memberships-${userId}`);
 }
 
 export function subscribeWarRooms(

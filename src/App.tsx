@@ -70,7 +70,8 @@ function AppContent() {
   const [recoverySaving, setRecoverySaving] = useState(false);
   const { spaces, allBugs, loading: spacesLoading } = useOrgSpaces(
     profile?.organizationId,
-    Boolean(user && profile)
+    Boolean(user && profile),
+    { userId: profile?.id, isAdmin: profile?.role === "admin" || Boolean(profile?.isSuperadmin) }
   );
   const joinAttemptRef = useRef<string | null>(null);
 

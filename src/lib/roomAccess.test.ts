@@ -19,8 +19,9 @@ import { canSelfJoinRoom, parseGuestPermission, parseRoomVisibility } from "./ro
 describe("canSelfJoinRoom", () => {
   const base = { visibility: "organization" as const, isMember: false, isOrgAdmin: false, isSuperadmin: false };
 
-  it("sala da organização: qualquer interno entra", () => {
+  it("sala visível à organização ou por link: qualquer interno entra", () => {
     expect(canSelfJoinRoom(base)).toEqual({ allowed: true });
+    expect(canSelfJoinRoom({ ...base, visibility: "link" })).toEqual({ allowed: true });
   });
 
   it("sala somente membros: recusa quem não é membro, com motivo", () => {
@@ -39,8 +40,11 @@ describe("canSelfJoinRoom", () => {
 describe("parseRoomVisibility / parseGuestPermission", () => {
   it("valores desconhecidos caem no padrão seguro para cada caso", () => {
     expect(parseRoomVisibility("members")).toBe("members");
-    expect(parseRoomVisibility("publica")).toBe("organization");
-    expect(parseRoomVisibility(undefined)).toBe("organization");
+    expect(parseRoomVisibility("organization")).toBe("organization");
+    expect(parseRoomVisibility("link")).toBe("link");
+    // Desconhecido/ausente = comportamento de antes (só membros veem, entra por link).
+    expect(parseRoomVisibility("publica")).toBe("link");
+    expect(parseRoomVisibility(undefined)).toBe("link");
     expect(parseGuestPermission("read")).toBe("read");
     expect(parseGuestPermission("admin")).toBe("write");
     expect(parseGuestPermission("admin", "read")).toBe("read");

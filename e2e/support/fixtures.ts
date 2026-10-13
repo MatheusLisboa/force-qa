@@ -4,6 +4,7 @@ export const ORG_ID = "00000000-0000-0000-0000-000000000001";
 export const USER_ID = "11111111-1111-1111-1111-111111111111";
 export const ROOM_WAR = "22222222-2222-2222-2222-222222222201";
 export const ROOM_BOARD = "22222222-2222-2222-2222-222222222202";
+export const ROOM_ORG = "22222222-2222-2222-2222-222222222204";
 
 const daysAgo = (days: number, hours = 0) => new Date(Date.now() - days * 86_400_000 - hours * 3_600_000).toISOString();
 
@@ -23,7 +24,7 @@ export function userRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-export const rooms = [
+export const rooms: Array<Record<string, unknown>> = [
   {
     id: ROOM_WAR,
     name: "Sprint 42: Checkout",
@@ -105,6 +106,27 @@ const SEEDS: BugSeed[] = [
   ["Tela de sucesso não respeita o tema escuro", "validated", "low", "ihc", "Camila Duarte", 7],
   ["Validação de CPF aceita sequências repetidas", "validated", "medium", "bug", "Bruno Alves", 9],
 ];
+
+// Visível a toda a organização, e a pessoa logada NÃO é membro (só vê).
+rooms.push({
+  id: ROOM_ORG,
+  name: "Design System: Aberto",
+  project: "Design System",
+  squad: "Plataforma",
+  date: daysAgo(5).slice(0, 10),
+  period_end: null,
+  description: "Sala aberta a toda a organização.",
+  severity: "low",
+  status: "active",
+  room_type: "war_room",
+  kanban_columns: null,
+  created_at: daysAgo(5),
+  created_by: "44444444-4444-4444-4444-000000000002",
+  created_by_name: "Rafael Lima",
+  guest_access_disabled: true,
+  organization_id: ORG_ID,
+  visibility: "organization",
+});
 
 export const bugs = SEEDS.map(([title, status, criticism, type, owner, ageDays], index) => ({
   id: `33333333-3333-3333-3333-${String(index + 1).padStart(12, "0")}`,

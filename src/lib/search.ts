@@ -29,6 +29,17 @@ export function matchScore(text: string, query: string): number {
   return 10;
 }
 
+/**
+ * Pontua um item com nome principal e palavras-chave extras (área, projeto…). A busca aproximada
+ * (letras em sequência) vale só para o nome: nas palavras-chave exige ao menos um trecho contínuo,
+ * senão textos longos casariam com qualquer consulta curta.
+ */
+export function matchScoreWithKeywords(label: string, keywords: string, query: string): number {
+  const fromLabel = matchScore(label, query);
+  const fromKeywords = matchScore(keywords, query);
+  return Math.max(fromLabel, fromKeywords >= 40 ? fromKeywords - 10 : 0);
+}
+
 /** Filtra e ordena por relevância; mantém a ordem original em empates. */
 export function rankBy<T>(items: T[], query: string, getText: (item: T) => string): T[] {
   if (!normalizeText(query)) return items;

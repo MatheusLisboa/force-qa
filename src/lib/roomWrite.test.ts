@@ -38,4 +38,29 @@ describe("resolveRoomWrite", () => {
   it("superadmin sempre pode, até com somente leitura marcado", () => {
     expect(resolveRoomWrite({ role: "viewer", isSuperadmin: true, memberReadOnly: true }).canWrite).toBe(true);
   });
+
+  it("não-membro de sala visível à organização: lê e comenta, e pode entrar para escrever", () => {
+    const decision = resolveRoomWrite({ role: "qa", notMember: true });
+    expect(decision.canWrite).toBe(false);
+    expect(decision.joinable).toBe(true);
+    expect(decision.reason).toMatch(/visível a toda a organização/);
+  });
+
+  it("admin da organização escreve mesmo sem ser membro", () => {
+    expect(resolveRoomWrite({ role: "admin", notMember: true }).canWrite).toBe(true);
+    expect(resolveRoomWrite({ role: "viewer", isSuperadmin: true, notMember: true }).canWrite).toBe(true);
+  });
+
+  it("convidado nunca usa o caminho de entrar (a regra dele é a da sala)", () => {
+    const decision = resolveRoomWrite({ role: "viewer", isGuest: true, notMember: true, guestPermission: "read" });
+    expect(decision.joinable).toBeUndefined();
+    expect(decision.canWrite).toBe(false);
+  });
+
+  it("viewer não-membro NÃO recebe a opção de entrar (entrando, continuaria sem escrever): vê o motivo do papel", () => {
+    const decision = resolveRoomWrite({ role: "viewer", notMember: true });
+    expect(decision.joinable).toBeUndefined();
+    expect(decision.canWrite).toBe(false);
+    expect(decision.reason).toMatch(/Escrever cards/);
+  });
 });

@@ -9,6 +9,7 @@ import { SeverityPicker } from "./SeverityPicker";
 import {
   GUEST_PERMISSION_LABEL,
   ROOM_VISIBILITY_LABEL,
+  ROOM_VISIBILITY_OPTIONS,
   type GuestPermission,
   type RoomVisibility,
 } from "../lib/roomAccess";
@@ -191,7 +192,7 @@ export const CreateWarRoomModal: React.FC<CreateWarRoomModalProps> = ({
                 value={visibility}
                 onChange={(e) => setVisibility(e.target.value as RoomVisibility)}
               >
-                {(Object.keys(ROOM_VISIBILITY_LABEL) as RoomVisibility[]).map((key) => (
+                {ROOM_VISIBILITY_OPTIONS.map((key) => (
                   <option key={key} value={key}>{ROOM_VISIBILITY_LABEL[key].label}</option>
                 ))}
               </select>

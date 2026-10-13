@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchScore, normalizeText, rankBy } from "./search";
+import { matchScore, matchScoreWithKeywords, normalizeText, rankBy } from "./search";
 
 describe("normalizeText", () => {
   it("remove acentos e caixa", () => {
@@ -28,6 +28,21 @@ describe("matchScore", () => {
   });
   it("retorna 0 quando não casa", () => {
     expect(matchScore("kanban", "xyz")).toBe(0);
+  });
+});
+
+describe("matchScoreWithKeywords", () => {
+  it("o nome pesa mais que as palavras-chave", () => {
+    expect(matchScoreWithKeywords("Sprint 42", "Plataforma", "sprint")).toBeGreaterThan(
+      matchScoreWithKeywords("Outra sala", "Sprint squad", "sprint")
+    );
+  });
+  it("palavra-chave casa por trecho, mas não por letras espalhadas", () => {
+    expect(matchScoreWithKeywords("Design System: Aberto", "Plataforma Design System", "sprint")).toBe(0);
+    expect(matchScoreWithKeywords("Sala X", "Pagamentos Loja", "pagamen")).toBeGreaterThan(0);
+  });
+  it("o nome continua aceitando letras em sequência", () => {
+    expect(matchScoreWithKeywords("Sprint 42: Checkout", "", "sp42")).toBeGreaterThan(0);
   });
 });
 

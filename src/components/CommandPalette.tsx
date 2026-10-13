@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Building2, History, Inbox, Keyboard, LayoutGrid, LogOut, Moon, Plug, Shield, Sun, Users, Kanban, Columns3 } from "lucide-react";
 import { useModalA11y } from "../hooks/useModalA11y";
-import { rankBy } from "../lib/search";
+import { matchScoreWithKeywords, normalizeText } from "../lib/search";
 import type { SpaceRow } from "../lib/spaces";
 import type { AdminPagePath } from "../lib/routes";
 
@@ -43,7 +43,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose, c
   }, [open]);
 
   const results = useMemo(() => {
-    const ranked = rankBy<PaletteCommand>(commands, query, (c) => `${c.label} ${c.keywords ?? ""}`);
+    const ranked = normalizeText(query)
+      ? commands
+          .map((command, index) => ({ command, index, score: matchScoreWithKeywords(command.label, command.keywords ?? "", query) }))
+          .filter((entry) => entry.score > 0)
+          .sort((a, b) => b.score - a.score || a.index - b.index)
+          .map((entry) => entry.command)
+      : commands;
     // Mantém os grupos contíguos para a navegação por setas bater com o visual.
     return GROUP_ORDER.flatMap((group) => ranked.filter((c) => c.group === group)).slice(0, 40);
   }, [commands, query]);

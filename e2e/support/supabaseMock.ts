@@ -59,14 +59,18 @@ export interface MockHandle {
 const json = (route: Route, body: unknown, status = 200) =>
   route.fulfill({ status, contentType: "application/json", headers: { "access-control-allow-origin": "*" }, body: JSON.stringify(body) });
 
-function tableRows(table: string, profile: Record<string, unknown>, options: MockOptions): unknown[] {
+function tableRows(table: string, profile: Record<string, unknown>, options: MockOptions, joined: Set<string> = new Set()): unknown[] {
   switch (table) {
     case "users":
       return [profile, ...orgUsers.slice(1)];
     case "war_rooms":
       return rooms.map((room) => ({ ...room, ...(options.roomOverrides ?? {}) }));
     case "room_members":
-      return roomMembers.map((row) => (row.user_id === USER_ID ? { ...row, read_only: Boolean(options.memberReadOnly) } : row));
+      return [
+        ...roomMembers.map((row) => (row.user_id === USER_ID ? { ...row, read_only: Boolean(options.memberReadOnly) } : row)),
+        // Salas em que a pessoa entrou pela API durante o teste.
+        ...[...joined].map((roomId) => ({ war_room_id: roomId, user_id: USER_ID, read_only: false })),
+      ];
     case "audit_events":
       return audit_events;
     case "room_guest_invites":
@@ -141,7 +145,7 @@ export async function mockSupabase(page: Page, options: MockOptions = {}): Promi
     }
 
     if (method === "GET" || method === "HEAD") {
-      let rows = applyEqFilters(tableRows(table, profile, options), url);
+      let rows = applyEqFilters(tableRows(table, profile, options, joined), url);
       const wantsObject = (request.headers()["accept"] || "").includes("vnd.pgrst.object");
       if (wantsObject) {
         return rows.length
@@ -166,7 +170,7 @@ export async function mockSupabase(page: Page, options: MockOptions = {}): Promi
     if (failWrites) return json(route, { code: "42501", message: "permission denied", details: null, hint: null }, 403);
     // supabase-js manda "Prefer: return=representation" quando o código encadeia .select() depois do update.
     if (method === "PATCH" && (request.headers()["prefer"] || "").includes("return=representation")) {
-      const matched = applyEqFilters(tableRows(table, profile, options), url).map((row) => ({ ...(row as object), ...((body as object) ?? {}) }));
+      const matched = applyEqFilters(tableRows(table, profile, options, joined), url).map((row) => ({ ...(row as object), ...((body as object) ?? {}) }));
       return json(route, matched);
     }
     return route.fulfill({
@@ -201,6 +205,7 @@ export async function mockSupabase(page: Page, options: MockOptions = {}): Promi
     }
     return json(route, { error: "not found" }, 404);
   });
+  const joined = new Set<string>();
   let exportToken = options.exportToken === undefined ? null : options.exportToken;
   await page.route("**/api/**", async (route) => {
     const request = route.request();
@@ -231,6 +236,11 @@ export async function mockSupabase(page: Page, options: MockOptions = {}): Promi
         exportToken = null;
         return json(route, { ok: true });
       }
+    }
+    if (pathname === "/api/rooms/join" && request.method() === "POST") {
+      const roomId = String((body as { input?: string } | null)?.input ?? "");
+      joined.add(roomId);
+      return json(route, { roomId });
     }
     if (pathname === "/api/admin/org-webhook") return json(route, { url: "" });
     return json(route, { error: "mock" }, 404);

@@ -85,8 +85,8 @@ function warRoomToRow(data: Omit<WarRoom, "id" | "createdAt">, customId: string)
     created_by: data.createdBy,
     created_by_name: data.createdByName,
     guest_access_disabled: data.guestAccessDisabled ?? true,
-    // Só envia o que foge do padrão do banco: assim ainda funciona antes de aplicar a migration 22.
-    visibility: data.visibility === "members" ? "members" : undefined,
+    // Só envia o que foge do padrão do banco ("organization"): assim ainda funciona antes das migrations 22/23.
+    visibility: data.visibility && data.visibility !== "organization" ? data.visibility : undefined,
     guest_permission: data.guestPermission === "write" ? "write" : undefined,
     kanban_columns: data.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS,
     organization_id: resolveOrganizationId(data.organizationId),
@@ -631,6 +631,15 @@ async function joinWarRoomViaApi(input: string): Promise<string> {
   return data.roomId as string;
 }
 
+/**
+ * Vira MEMBRO da sala (sempre pela API). Diferente de joinWarRoom: a sala ser visível não significa mais
+ * que a pessoa já é membro (salas visíveis à organização aparecem para todos).
+ */
+export async function becomeRoomMember(roomId: string): Promise<string> {
+  return joinWarRoomViaApi(roomId);
+}
+
+/** Abre a sala: se já dá para ver, só devolve o id; senão entra pela API. */
 export async function joinWarRoom(input: string): Promise<string> {
   const parsed = parseGuestInvite(input);
   const roomKey = parsed.roomId || parseRoomInvite(input);

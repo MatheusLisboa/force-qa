@@ -76,7 +76,7 @@ test.describe("auditoria", () => {
     await page.goto("/admin/audit");
     const list = page.getByTestId("audit-list");
     await expect(list.getByRole("listitem")).toHaveCount(3);
-    await expect(list).toContainText("Marina Souza mudou a visibilidade da sala Sprint 42: Checkout: Toda a organização → Somente membros.");
+    await expect(list).toContainText("Marina Souza mudou a visibilidade da sala Sprint 42: Checkout: Visível a toda a organização → Somente membros.");
     await expect(list).toContainText("Marina Souza mudou o papel de Rafael Lima: Dev → QA.");
     await expect(list).toContainText("gerou um token de extração (2 sala(s))");
 

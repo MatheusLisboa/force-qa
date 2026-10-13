@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mockSupabase } from "./support/supabaseMock";
-import { bugs, orgUsers, ROOM_WAR } from "./support/fixtures";
+import { bugs, orgUsers, ROOM_ORG, ROOM_WAR } from "./support/fixtures";
 
 const PIX = bugs[0].title;
 const openRoom = async (page: Page) => {
@@ -192,5 +192,78 @@ test.describe("nova sala", () => {
     await page.getByLabel("Convidados").selectOption("write");
     await expect(page.getByText("Só entra quem for adicionado ou convidado")).toBeVisible();
     await expect(page.getByText("Convidados também criam e editam cards")).toBeVisible();
+  });
+});
+
+test.describe("sala visível à organização (quem não é membro lê e comenta)", () => {
+  const QA = { role: "qa", is_superadmin: false };
+
+  test("a lista marca como 'Só leitura' as salas que a pessoa só vê, e não as dela", async ({ page }) => {
+    await mockSupabase(page, { profile: QA });
+    await page.goto("/");
+    const open = page.locator(".fq-card-interactive", { hasText: "Design System: Aberto" });
+    await expect(open).toBeVisible();
+    await expect(open.getByTestId("view-only-badge")).toHaveText("Só leitura");
+    // Sala em que ela é membro não leva a marca.
+    await expect(page.locator(".fq-card-interactive", { hasText: "Sprint 42: Checkout" }).getByTestId("view-only-badge")).toHaveCount(0);
+  });
+
+  test("admin da organização não vê a marca (acessa tudo)", async ({ page }) => {
+    await mockSupabase(page);
+    await page.goto("/");
+    await page.getByText("Design System: Aberto").first().waitFor();
+    await expect(page.getByTestId("view-only-badge")).toHaveCount(0);
+  });
+
+  test("abrir como não-membro: modo leitura com 'Entrar na sala'; entrar libera a escrita", async ({ page }) => {
+    const handle = await mockSupabase(page, { profile: QA });
+    await page.goto(`/?room=${ROOM_ORG}`);
+    await page.getByRole("heading", { name: "Design System: Aberto" }).waitFor();
+
+    const notice = page.getByTestId("readonly-notice");
+    await expect(notice).toContainText("visível a toda a organização");
+    await expect(page.getByRole("button", { name: /Novo card/ })).toBeDisabled();
+
+    await page.getByTestId("join-room").click();
+    await expect.poll(() => handle.api.some((c) => c.path === "/api/rooms/join" && c.method === "POST")).toBe(true);
+    expect(handle.api.find((c) => c.path === "/api/rooms/join")!.body).toEqual({ input: ROOM_ORG });
+
+    // A participação é lida de novo e a escrita é liberada, sem recarregar.
+    await expect(page.getByTestId("readonly-notice")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Novo card/ })).toBeEnabled();
+  });
+
+  test("admin da organização escreve sem ser membro (sem aviso)", async ({ page }) => {
+    await mockSupabase(page);
+    await page.goto(`/?room=${ROOM_ORG}`);
+    await page.getByRole("heading", { name: "Design System: Aberto" }).waitFor();
+    await expect(page.getByTestId("readonly-notice")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Novo card/ })).toBeEnabled();
+  });
+
+  test("viewer não-membro: o aviso explica o papel e não oferece 'Entrar' (entrando, não escreveria)", async ({ page }) => {
+    await mockSupabase(page, { profile: { role: "viewer", is_superadmin: false } });
+    await page.goto(`/?room=${ROOM_ORG}`);
+    await page.getByRole("heading", { name: "Design System: Aberto" }).waitFor();
+    await expect(page.getByTestId("readonly-notice")).toContainText("Escrever cards");
+    await expect(page.getByTestId("join-room")).toHaveCount(0);
+  });
+
+  test("as três opções de visibilidade existem ao criar uma sala, e o padrão é 'visível à organização'", async ({ page }) => {
+    await mockSupabase(page);
+    await page.goto("/");
+    await page.getByText("Sprint 42: Checkout").first().waitFor();
+    await page.getByRole("button", { name: "Nova war room" }).click();
+    const select = page.getByLabel("Quem pode entrar");
+    await expect(select).toHaveValue("organization");
+    await expect(select.locator("option")).toHaveText(["Visível a toda a organização", "Só por link ou ID", "Somente membros"]);
+  });
+
+  test("salas existentes (sem o campo) aparecem como 'só por link', o comportamento de antes", async ({ page }) => {
+    await mockSupabase(page);
+    await page.goto(`/?room=${ROOM_WAR}`);
+    await page.getByRole("button", { name: new RegExp(`^${bugs[0].title}`) }).waitFor();
+    await page.getByRole("button", { name: "Administrar" }).click();
+    await expect(page.getByLabel("Quem pode entrar")).toHaveValue("link");
   });
 });

@@ -9,6 +9,7 @@ import {
   parseGuestPermission,
   parseRoomVisibility,
   ROOM_VISIBILITY_LABEL,
+  ROOM_VISIBILITY_OPTIONS,
   type GuestPermission,
   type RoomVisibility,
 } from "../lib/roomAccess";
@@ -113,10 +114,17 @@ export const RoomAccessSettings: React.FC<RoomAccessSettingsProps> = ({ roomId, 
             disabled={!canEdit}
             onChange={(e) => {
               const next = e.target.value as RoomVisibility;
-              void save({ visibility: next }, next === "members" ? "Sala restrita: só entra quem for adicionado ou convidado." : "Sala aberta à organização.");
+              void save(
+                { visibility: next },
+                next === "members"
+                  ? "Sala restrita: só entra quem for adicionado ou convidado."
+                  : next === "organization"
+                    ? "Sala visível a toda a organização (quem não é membro lê e comenta)."
+                    : "Sala só por link ou ID: só os membros a veem na lista."
+              );
             }}
           >
-            {(Object.keys(ROOM_VISIBILITY_LABEL) as RoomVisibility[]).map((key) => (
+            {ROOM_VISIBILITY_OPTIONS.map((key) => (
               <option key={key} value={key}>{ROOM_VISIBILITY_LABEL[key].label}</option>
             ))}
           </select>

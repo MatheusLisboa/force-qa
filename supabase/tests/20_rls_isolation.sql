@@ -156,7 +156,7 @@ SELECT rls_test.expect_some('adminA', $q$update public.room_members set read_onl
 
 -- Convidado: sala nova nasce somente leitura/comentário.
 SELECT rls_test.expect_value((SELECT guest_permission FROM public.war_rooms WHERE id = 'room-a1'), 'read', 'sala nova: convidado nasce somente leitura');
-SELECT rls_test.expect_value((SELECT visibility FROM public.war_rooms WHERE id = 'room-a1'), 'organization', 'sala nova: visível à organização por padrão');
+SELECT rls_test.expect_value((SELECT visibility FROM public.war_rooms WHERE id = 'room-a3'), 'organization', 'sala nova (sem valor explícito): visível à organização por padrão');
 SELECT rls_test.expect_none('guestA', $q$insert into public.bugs (id, war_room_id, title, criticism, status, environment, type, created_by) values ('g1', 'room-a1', 'convidado', 'low', 'new', 'dev', 'bug', rls_test.id('guestA'))$q$, 'convidado (sala read): não cria card');
 SELECT rls_test.expect_none('guestA', $q$update public.bugs set title = 'x' where id = 'bug-a1'$q$, 'convidado (sala read): não edita card');
 SELECT rls_test.expect_none('guestA', $q$insert into storage.objects (bucket_id, name) values ('evidence', 'room-a1/g.png')$q$, 'convidado (sala read): não envia arquivo');
@@ -200,6 +200,49 @@ SELECT rls_test.expect_some('superadmin', $q$select 1 from public.audit_events w
 SELECT rls_test.record(
   (SELECT count(*) FROM public.audit_events WHERE actor_id IS NULL) = 0,
   'auditoria: nenhum evento sem ator (ações sem JWT são registradas pela API, com o ator real)');
+
+-- ===== Sala visível à organização: quem não é membro lê e comenta, mas não escreve =====
+-- room-a3 é "organization"; devA e qaA NÃO são membros dela. room-a2 é "link" e room-a4 "members".
+SELECT rls_test.expect_some('devA', $q$select 1 from public.war_rooms where id = 'room-a3'$q$, 'org-visível: não-membro vê a sala listada');
+SELECT rls_test.expect_some('devA', $q$select 1 from public.bugs where war_room_id = 'room-a3'$q$, 'org-visível: não-membro lê os cards');
+SELECT rls_test.expect_some('devA', $q$select 1 from public.bug_comments where war_room_id = 'room-a3'$q$, 'org-visível: não-membro lê os comentários');
+SELECT rls_test.expect_some('viewerA', $q$select 1 from public.war_rooms where id = 'room-a3'$q$, 'org-visível: viewer também vê');
+SELECT rls_test.expect_some('devA', $q$insert into public.bug_comments (id, bug_id, war_room_id, user_id, text) values ('nm-c', 'bug-a3', 'room-a3', rls_test.id('devA'), 'comento sem ser membro')$q$, 'org-visível: não-membro comenta');
+SELECT rls_test.expect_some('devA', $q$insert into public.activity_logs (id, bug_id, war_room_id, user_id, user_name, type, description) values ('nm-l', 'bug-a3', 'room-a3', rls_test.id('devA'), 'Dev A', 'comment', 'comentou')$q$, 'org-visível: o registro de atividade do comentário também grava');
+SELECT rls_test.expect_none('devA', $q$insert into public.bug_comments (id, bug_id, war_room_id, user_id, text) values ('nm-c2', 'bug-a3', 'room-a3', rls_test.id('qaA'), 'em nome de outro')$q$, 'org-visível: não comenta em nome de outra pessoa');
+SELECT rls_test.expect_none('devA', $q$insert into public.bugs (id, war_room_id, title, criticism, status, environment, type, created_by) values ('nm-b', 'room-a3', 'sem ser membro', 'low', 'new', 'dev', 'bug', rls_test.id('devA'))$q$, 'org-visível: não-membro NÃO cria card');
+SELECT rls_test.expect_none('devA', $q$update public.bugs set title = 'mudou' where id = 'bug-a3'$q$, 'org-visível: não-membro NÃO edita card');
+SELECT rls_test.expect_none('devA', $q$delete from public.bugs where id = 'bug-a3'$q$, 'org-visível: não-membro NÃO apaga card');
+SELECT rls_test.expect_none('qaA', $q$insert into storage.objects (bucket_id, name) values ('evidence', 'room-a3/intruso.png')$q$, 'org-visível: não-membro NÃO envia arquivo');
+SELECT rls_test.expect_none('devA', $q$select 1 from public.room_members where war_room_id = 'room-a3'$q$, 'org-visível: não vê a lista de membros');
+SELECT rls_test.expect_none('devA', $q$select 1 from public.room_guest_invites where war_room_id = 'room-a3'$q$, 'org-visível: não vê o convite de convidado');
+SELECT rls_test.expect_none('devA', $q$insert into public.room_members (war_room_id, user_id) values ('room-a3', rls_test.id('devA'))$q$, 'org-visível: não se adiciona pelo banco (entra pela API)');
+-- Fora da organização, e quem não é "interno", nunca enxerga.
+SELECT rls_test.expect_none('qaB', $q$select 1 from public.war_rooms where id = 'room-a3'$q$, 'org-visível: outra organização NÃO vê');
+SELECT rls_test.expect_none('qaB', $q$select 1 from public.bugs where war_room_id = 'room-a3'$q$, 'org-visível: outra organização NÃO lê cards');
+SELECT rls_test.expect_none('guestN', $q$select 1 from public.war_rooms where id = 'room-a3'$q$, 'org-visível: convidado NÃO vê sala só por ser "da org"');
+SELECT rls_test.expect_none('guestN', $q$select 1 from public.bugs where war_room_id = 'room-a3'$q$, 'org-visível: convidado NÃO lê cards');
+SELECT rls_test.expect_none('anon', $q$select 1 from public.bugs where war_room_id = 'room-a3'$q$, 'org-visível: anon NÃO lê');
+-- Os outros níveis seguem fechados para não-membros.
+SELECT rls_test.expect_none('devA', $q$select 1 from public.war_rooms where id = 'room-a2'$q$, 'link: não-membro NÃO vê (comportamento de antes)');
+SELECT rls_test.expect_none('devA', $q$select 1 from public.bugs where war_room_id = 'room-a2'$q$, 'link: não-membro NÃO lê cards');
+SELECT rls_test.expect_none('devA', $q$select 1 from public.war_rooms where id = 'room-a4'$q$, 'members: não-membro NÃO vê');
+SELECT rls_test.expect_none('devA', $q$select 1 from public.bugs where war_room_id = 'room-a4'$q$, 'members: não-membro NÃO lê cards');
+SELECT rls_test.expect_none('devA', $q$insert into public.bug_comments (id, bug_id, war_room_id, user_id, text) values ('nm-c3', 'bug-a4', 'room-a4', rls_test.id('devA'), 'x')$q$, 'members: não-membro NÃO comenta');
+-- Evidência: lê em sala org-visível, não em link/members.
+INSERT INTO storage.buckets (id, name, public) VALUES ('evidence', 'evidence', false) ON CONFLICT DO NOTHING;
+INSERT INTO storage.objects (bucket_id, name) VALUES ('evidence', 'room-a3/print-a3.png'), ('evidence', 'room-a4/print-a4.png');
+SELECT rls_test.expect_some('devA', $q$select 1 from storage.objects where bucket_id = 'evidence' and name like 'room-a3/%'$q$, 'org-visível: não-membro vê os prints');
+SELECT rls_test.expect_none('devA', $q$select 1 from storage.objects where bucket_id = 'evidence' and name like 'room-a4/%'$q$, 'members: não-membro NÃO vê os prints');
+-- Constraint e padrão
+SELECT rls_test.expect_none('adminA', $q$update public.war_rooms set visibility = 'publica' where id = 'room-a3'$q$, 'visibilidade inválida continua recusada');
+SELECT rls_test.expect_some('adminA', $q$update public.war_rooms set visibility = 'link' where id = 'room-a3'$q$, 'admin pode fechar a sala de volta para "link"');
+SELECT rls_test.expect_none('devA', $q$select 1 from public.war_rooms where id = 'room-a3'$q$, 'depois de fechar, o não-membro deixa de ver');
+UPDATE public.war_rooms SET visibility = 'organization' WHERE id = 'room-a3';
+-- Virar membro libera a escrita (papel dev escreve)
+INSERT INTO public.room_members (war_room_id, user_id) VALUES ('room-a3', rls_test.id('devA'));
+SELECT rls_test.expect_some('devA', $q$insert into public.bugs (id, war_room_id, title, criticism, status, environment, type, created_by) values ('nm-b2', 'room-a3', 'agora sou membro', 'low', 'new', 'dev', 'bug', rls_test.id('devA'))$q$, 'ao entrar na sala, o mesmo dev passa a criar cards');
+SELECT rls_test.record((SELECT count(*) FROM public.war_rooms WHERE visibility = 'organization') >= 1, 'padrão: sala nova nasce "organization" (migration 23)');
 
 -- ===== Storage de evidências (bucket privado; a pasta = id da sala) =====
 INSERT INTO storage.buckets (id, name, public) VALUES ('evidence', 'evidence', false) ON CONFLICT DO NOTHING;

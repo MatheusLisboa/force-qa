@@ -3,6 +3,8 @@ import type { GuestPermission } from "./roomAccess";
 
 export interface RoomWriteDecision {
   canWrite: boolean;
+  /** Pode destravar a escrita entrando na sala (sala visível à organização e a pessoa ainda não é membro). */
+  joinable?: boolean;
   /** Por que não pode (texto para a interface); null quando pode. */
   reason: string | null;
 }
@@ -18,8 +20,18 @@ export function resolveRoomWrite(params: {
   isGuest?: boolean;
   guestPermission?: GuestPermission;
   memberReadOnly?: boolean;
+  /** Vê a sala por ela ser visível à organização, mas não é membro. Admin da organização escreve sem ser membro. */
+  notMember?: boolean;
 }): RoomWriteDecision {
   if (params.isSuperadmin) return { canWrite: true, reason: null };
+  // Só oferece "entrar" a quem, entrando, passaria a escrever; quem não tem a permissão de escrever segue ao motivo do papel.
+  if (params.notMember && !params.isGuest && params.role !== "admin" && canWriteBugs(params.role, false, false)) {
+    return {
+      canWrite: false,
+      joinable: true,
+      reason: "Você vê esta sala porque ela é visível a toda a organização: pode ler e comentar. Entre na sala para criar e editar cards.",
+    };
+  }
   if (params.memberReadOnly) {
     return { canWrite: false, reason: "Você está como somente leitura nesta sala. Peça a um admin para liberar a edição." };
   }

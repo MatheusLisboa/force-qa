@@ -2,7 +2,7 @@ import { test } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { mockSupabase } from "./support/supabaseMock";
-import { bugs, ROOM_WAR } from "./support/fixtures";
+import { bugs, ROOM_ORG, ROOM_WAR } from "./support/fixtures";
 
 /**
  * Gera as imagens de docs/screenshots. Roda só com `npm run screenshots`
@@ -154,5 +154,24 @@ for (const theme of ["dark", "light"] as const) {
       await viewer.screenshot(shot(`17-modo-leitura-${theme}`));
       await viewer.close();
     });
+  });
+}
+
+for (const theme of ["dark", "light"] as const) {
+  test(`sala visível à organização (${theme})`, async ({ browser }) => {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, colorScheme: theme, locale: "pt-BR" });
+    await mockSupabase(page, { profile: { role: "qa", is_superadmin: false } });
+    await page.addInitScript((value) => localStorage.setItem("forceqa.theme", value), theme);
+
+    await page.goto("/");
+    await page.getByTestId("view-only-badge").first().waitFor();
+    await page.waitForTimeout(300);
+    await page.screenshot(shot(`18-lista-so-leitura-${theme}`));
+
+    await page.goto(`/?room=${ROOM_ORG}`);
+    await page.getByTestId("join-room").waitFor();
+    await page.waitForTimeout(300);
+    await page.screenshot(shot(`19-entrar-na-sala-${theme}`));
+    await page.close();
   });
 }

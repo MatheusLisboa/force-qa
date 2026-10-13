@@ -20,6 +20,8 @@ export type SpaceRow = {
   status?: WarRoom["status"];
   dateLine?: string;
   viewCount?: number;
+  /** false = a pessoa só VÊ esta sala (visível à organização) e ainda não é membro. Indefinido = não se sabe. */
+  isMember?: boolean;
 };
 
 export type DecoratedSpace = {

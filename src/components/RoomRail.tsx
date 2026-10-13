@@ -129,6 +129,9 @@ export const RoomRail: React.FC<RoomRailProps> = ({
                   >
                     <span className="min-w-0 flex-1">
                       <span className="fq-rail-item-name">{space.name}</span>
+                      {space.isMember === false && (
+                        <span className="mt-0.5 flex items-center gap-1 text-[10px] text-amber-400">Só leitura</span>
+                      )}
                       {space.kind === "board" && (
                         <span className="mt-0.5 flex items-center gap-1 text-[10px] text-neutral-500">
                           <LayoutGrid className="h-3 w-3" />

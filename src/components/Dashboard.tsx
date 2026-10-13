@@ -180,11 +180,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <h4 className="truncate font-display text-[15px] font-semibold tracking-tight text-neutral-50" title={space.name}>
             {space.name}
           </h4>
-          {space.kind === "board" ? (
-            <RoomTypeBadge type="board" permanent />
-          ) : (
-            <RoomStatusBadge status={space.status || "active"} />
-          )}
+          <div className="flex shrink-0 items-center gap-1.5">
+            {space.isMember === false && (
+              <span
+                className="fq-badge border-amber-500/30 bg-amber-500/10 !text-[10px] text-amber-400"
+                title="Você vê esta sala porque ela é visível a toda a organização. Entre nela para criar e editar cards."
+                data-testid="view-only-badge"
+              >
+                Só leitura
+              </span>
+            )}
+            {space.kind === "board" ? (
+              <RoomTypeBadge type="board" permanent />
+            ) : (
+              <RoomStatusBadge status={space.status || "active"} />
+            )}
+          </div>
         </div>
         <div className="mt-2 text-[12px] text-neutral-500">
           {space.projectLabel ? (

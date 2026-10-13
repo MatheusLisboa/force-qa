@@ -73,8 +73,12 @@ export interface WarRoom {
   createdBy: string;
   createdByName?: string;
   guestAccessDisabled?: boolean;
-  /** "organization" (padrão) ou "members" (entrada só por convite/adição). */
-  visibility?: "organization" | "members";
+  /**
+   * "organization" (padrão): listada para toda a organização, quem não é membro lê e comenta;
+   * "link": só membros veem, qualquer pessoa da organização entra pelo link/ID;
+   * "members": entrada só por convite/adição.
+   */
+  visibility?: "organization" | "link" | "members";
   /** O que convidados podem fazer: só ler e comentar (padrão) ou também criar cards. */
   guestPermission?: "read" | "write";
   organizationId?: string;

@@ -22,10 +22,16 @@ describe("describeAuditEvent", () => {
 
   it("visibilidade e permissão do convidado usam os rótulos da interface", () => {
     expect(describeAuditEvent(event("room.visibility_changed", { name: "Sprint 42", from: "organization", to: "members" }))).toBe(
-      "Marina mudou a visibilidade da sala Sprint 42: Toda a organização → Somente membros."
+      "Marina mudou a visibilidade da sala Sprint 42: Visível a toda a organização → Somente membros."
     );
     expect(describeAuditEvent(event("room.guest_permission_changed", { name: "S", from: "read", to: "write" }))).toContain(
       "Ler e comentar → Criar e editar cards"
+    );
+  });
+
+  it("o nível \"link\" aparece com o rótulo próprio", () => {
+    expect(describeAuditEvent(event("room.visibility_changed", { name: "S", from: "link", to: "organization" }))).toContain(
+      "Só por link ou ID → Visível a toda a organização"
     );
   });
 

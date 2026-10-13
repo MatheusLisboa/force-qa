@@ -33,7 +33,7 @@ for v in 20260101000001 20260101000002 20260101000003 20260101000004 20260101000
          20260101000016 20260101000017 20260101000018 20260101000019; do
   supabase migration repair --status applied $v
 done
-supabase db push             # aplica só as novas: 20260101000020 (rate limit), 21 (convidado) e 22 (permissões e visibilidade)
+supabase db push             # aplica só as novas: 20260101000020 (rate limit), 21 (convidado), 22 (permissões) e 23 (salas visíveis à organização)
 ```
 
 Confira o que o banco realmente tem com `supabase migration list` antes de rodar o `repair`.
@@ -57,6 +57,7 @@ Confira o que o banco realmente tem com `supabase migration list` antes de rodar
 | 20 | `rate_limits` | Contador de rate limit compartilhado entre instâncias serverless |
 | 21 | `protect_guest_flag` | **Correção de segurança**: convidado não pode virar usuário interno (`is_guest`) editando o próprio perfil |
 | 22 | `permissions_visibility` | Último admin protegido; visibilidade da sala; convidado só lê (opt-in para criar cards); "somente leitura" por membro; validade do link de convidado; escopo do token de extração; matriz sem tirar permissão do admin; **trilha de auditoria** |
+| 23 | `org_visible_rooms` | Salas **visíveis à organização** (quem não é membro lê e comenta; escrever exige ser membro). Salas existentes viram `link` (sem abrir dados antigos) |
 
 No painel do Supabase: **Authentication → Providers → Email → desmarque "Allow new users to sign up"**
 (o cadastro no app usa a API admin, não o signup anônimo).
