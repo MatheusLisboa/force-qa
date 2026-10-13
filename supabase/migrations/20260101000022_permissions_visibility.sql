@@ -8,6 +8,14 @@
 -- 1. Colunas novas
 -- ---------------------------------------------------------------------------
 
+--
+-- Execução: cada passo é uma transação curta que bloqueia UMA tabela por vez (lock_timeout de 15 s).
+-- Numa transação só, os bloqueios exclusivos em várias tabelas deadlockavam (40P01) com o Realtime e o
+-- PostgREST no SQL Editor. Se ainda der 40P01 ou "lock timeout", rode de novo: tudo é idempotente.
+
+BEGIN;
+SET LOCAL lock_timeout = '15s';
+LOCK TABLE public.war_rooms IN ACCESS EXCLUSIVE MODE;
 -- "organization": qualquer pessoa da organização entra com o link/ID (comportamento de hoje).
 -- "members": só entra quem foi convidado/adicionado (a API recusa a auto-entrada).
 ALTER TABLE public.war_rooms ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'organization';
@@ -20,16 +28,40 @@ ALTER TABLE public.war_rooms ADD COLUMN IF NOT EXISTS guest_permission TEXT NOT 
 ALTER TABLE public.war_rooms DROP CONSTRAINT IF EXISTS war_rooms_guest_permission_check;
 ALTER TABLE public.war_rooms ADD CONSTRAINT war_rooms_guest_permission_check CHECK (guest_permission IN ('write', 'read'));
 
+COMMIT;
+
+BEGIN;
+SET LOCAL lock_timeout = '15s';
+LOCK TABLE public.room_members IN ACCESS EXCLUSIVE MODE;
+-- Passo: room_members.read_only
 -- Papel por sala: um membro pode ser rebaixado a "somente leitura" só nesta sala.
 -- (Por desenho só restringe; promover acima do papel global não é possível.)
 ALTER TABLE public.room_members ADD COLUMN IF NOT EXISTS read_only BOOLEAN NOT NULL DEFAULT false;
 
+COMMIT;
+
+BEGIN;
+SET LOCAL lock_timeout = '15s';
+LOCK TABLE public.room_guest_invites IN ACCESS EXCLUSIVE MODE;
+-- Passo: room_guest_invites.expires_at
 -- Convite de convidado com validade (NULL = sem validade, como os convites atuais).
 ALTER TABLE public.room_guest_invites ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
 
+COMMIT;
+
+BEGIN;
+SET LOCAL lock_timeout = '15s';
+LOCK TABLE public.organization_integrations IN ACCESS EXCLUSIVE MODE;
+-- Passo: escopo do token
 -- Token de extração: NULL = todas as salas da organização; senão, só estas.
 ALTER TABLE public.organization_integrations ADD COLUMN IF NOT EXISTS export_room_ids TEXT[];
 
+COMMIT;
+
+BEGIN;
+SET LOCAL lock_timeout = '15s';
+LOCK TABLE public.users IN ACCESS EXCLUSIVE MODE;
+-- Passo: último admin
 -- ---------------------------------------------------------------------------
 -- 2. Nunca deixar a organização sem admin
 -- ---------------------------------------------------------------------------
@@ -92,6 +124,11 @@ CREATE TRIGGER protect_last_admin_delete
   BEFORE DELETE ON public.users
   FOR EACH ROW EXECUTE FUNCTION public.protect_last_admin();
 
+COMMIT;
+
+BEGIN;
+SET LOCAL lock_timeout = '15s';
+-- Passo: função can_write_in_room
 -- ---------------------------------------------------------------------------
 -- 3. Escrita por sala: papel global + somente leitura da sala + regra do convidado
 -- ---------------------------------------------------------------------------
@@ -121,6 +158,12 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.can_write_in_room(TEXT) TO authenticated;
 
+COMMIT;
+
+BEGIN;
+SET LOCAL lock_timeout = '15s';
+LOCK TABLE public.bugs IN ACCESS EXCLUSIVE MODE;
+-- Passo: policies de cards
 DROP POLICY IF EXISTS "bugs_insert" ON public.bugs;
 CREATE POLICY "bugs_insert" ON public.bugs
   FOR INSERT TO authenticated
@@ -154,6 +197,11 @@ CREATE POLICY "bugs_delete" ON public.bugs
     )
   );
 
+COMMIT;
+
+BEGIN;
+SET LOCAL lock_timeout = '15s';
+-- Passo: policies de arquivos
 DROP POLICY IF EXISTS "evidence_insert" ON storage.objects;
 CREATE POLICY "evidence_insert" ON storage.objects
   FOR INSERT TO authenticated
@@ -181,6 +229,11 @@ CREATE POLICY "evidence_delete" ON storage.objects
     AND (public.is_admin() OR public.can_write_in_room(split_part(name, '/', 1)))
   );
 
+COMMIT;
+
+BEGIN;
+SET LOCAL lock_timeout = '15s';
+-- Passo: tabela e funções da auditoria
 -- ---------------------------------------------------------------------------
 -- 4. Auditoria
 -- ---------------------------------------------------------------------------
@@ -258,6 +311,12 @@ $$;
 
 REVOKE ALL ON FUNCTION public.audit_from_trigger(UUID, TEXT, TEXT, TEXT, JSONB) FROM PUBLIC, anon, authenticated;
 
+COMMIT;
+
+BEGIN;
+SET LOCAL lock_timeout = '15s';
+LOCK TABLE public.users IN ACCESS EXCLUSIVE MODE;
+-- Passo: trigger de auditoria em users
 CREATE OR REPLACE FUNCTION public.audit_users_change()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -293,6 +352,12 @@ CREATE TRIGGER audit_users_change
   AFTER UPDATE OR DELETE ON public.users
   FOR EACH ROW EXECUTE FUNCTION public.audit_users_change();
 
+COMMIT;
+
+BEGIN;
+SET LOCAL lock_timeout = '15s';
+LOCK TABLE public.room_members IN ACCESS EXCLUSIVE MODE;
+-- Passo: trigger de auditoria em room_members
 CREATE OR REPLACE FUNCTION public.audit_room_members_change()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -323,6 +388,12 @@ CREATE TRIGGER audit_room_members_change
   AFTER INSERT OR UPDATE OR DELETE ON public.room_members
   FOR EACH ROW EXECUTE FUNCTION public.audit_room_members_change();
 
+COMMIT;
+
+BEGIN;
+SET LOCAL lock_timeout = '15s';
+LOCK TABLE public.war_rooms IN ACCESS EXCLUSIVE MODE;
+-- Passo: trigger de auditoria em war_rooms
 CREATE OR REPLACE FUNCTION public.audit_war_rooms_change()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -359,6 +430,12 @@ CREATE TRIGGER audit_war_rooms_change
   AFTER INSERT OR UPDATE OR DELETE ON public.war_rooms
   FOR EACH ROW EXECUTE FUNCTION public.audit_war_rooms_change();
 
+COMMIT;
+
+BEGIN;
+SET LOCAL lock_timeout = '15s';
+LOCK TABLE public.role_permissions IN ACCESS EXCLUSIVE MODE;
+-- Passo: trigger de auditoria em role_permissions
 CREATE OR REPLACE FUNCTION public.audit_role_permissions_change()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -378,6 +455,12 @@ CREATE TRIGGER audit_role_permissions_change
   AFTER INSERT OR UPDATE OR DELETE ON public.role_permissions
   FOR EACH ROW EXECUTE FUNCTION public.audit_role_permissions_change();
 
+COMMIT;
+
+BEGIN;
+SET LOCAL lock_timeout = '15s';
+LOCK TABLE public.room_guest_invites IN ACCESS EXCLUSIVE MODE;
+-- Passo: trigger de auditoria em room_guest_invites
 -- Convite de convidado: registra renovação/validade, NUNCA o token.
 CREATE OR REPLACE FUNCTION public.audit_guest_invite_change()
 RETURNS TRIGGER
@@ -399,6 +482,12 @@ CREATE TRIGGER audit_guest_invite_change
   AFTER UPDATE ON public.room_guest_invites
   FOR EACH ROW EXECUTE FUNCTION public.audit_guest_invite_change();
 
+COMMIT;
+
+BEGIN;
+SET LOCAL lock_timeout = '15s';
+LOCK TABLE public.room_members IN ACCESS EXCLUSIVE MODE;
+-- Passo: somente leitura por membro
 -- ---------------------------------------------------------------------------
 -- 5. Quem pode marcar um membro como "somente leitura" nesta sala
 -- ---------------------------------------------------------------------------
@@ -445,6 +534,12 @@ CREATE TRIGGER protect_room_member_identity
   BEFORE UPDATE ON public.room_members
   FOR EACH ROW EXECUTE FUNCTION public.protect_room_member_identity();
 
+COMMIT;
+
+BEGIN;
+SET LOCAL lock_timeout = '15s';
+LOCK TABLE public.role_permissions IN ACCESS EXCLUSIVE MODE;
+-- Passo: matriz sem tirar permissão do admin
 -- ---------------------------------------------------------------------------
 -- 6. A matriz nunca tira permissão do papel admin
 -- ---------------------------------------------------------------------------
@@ -473,3 +568,5 @@ DROP TRIGGER IF EXISTS protect_admin_permissions ON public.role_permissions;
 CREATE TRIGGER protect_admin_permissions
   BEFORE INSERT OR UPDATE OR DELETE ON public.role_permissions
   FOR EACH ROW EXECUTE FUNCTION public.protect_admin_permissions();
+
+COMMIT;
